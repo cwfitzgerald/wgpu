@@ -165,7 +165,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                         .unwrap();
                     assert_eq!(bind_group.dynamic_count, offsets.len());
 
-                    log::trace!(
+                    tracing::trace!(
                         "Encoding barriers on binding of {:?} to {:?}",
                         bind_group_id,
                         encoder_id

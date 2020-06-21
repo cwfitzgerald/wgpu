@@ -232,7 +232,7 @@ impl<B: GfxBackend> Device<B> {
         };
         #[cfg(not(feature = "trace"))]
         match trace_path {
-            Some(_) => log::error!("Feature 'trace' is not enabled"),
+            Some(_) => tracing::error!("Feature 'trace' is not enabled"),
             None => (),
         }
 
@@ -260,7 +260,7 @@ impl<B: GfxBackend> Device<B> {
                     Some(Mutex::new(trace))
                 }
                 Err(e) => {
-                    log::error!("Unable to start a trace in '{:?}': {:?}", path, e);
+                    tracing::error!("Unable to start a trace in '{:?}': {:?}", path, e);
                     None
                 }
             }),
@@ -678,7 +678,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         let hub = B::hub(self);
         let mut token = Token::root();
 
-        log::info!("Create buffer {:?} with ID {:?}", desc, id_in);
+        tracing::info!("Create buffer {:?} with ID {:?}", desc, id_in);
 
         let (device_guard, mut token) = hub.devices.read(&mut token);
         let device = &device_guard[device_id];
@@ -703,7 +703,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                     };
                 }
                 Err(e) => {
-                    log::error!("failed to create buffer in a mapped state: {:?}", e);
+                    tracing::error!("failed to create buffer in a mapped state: {:?}", e);
                 }
             };
             resource::BufferUse::MAP_WRITE
@@ -733,7 +733,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         };
 
         let id = hub.buffers.register_identity(id_in, buffer, &mut token);
-        log::info!("Created buffer {:?} with {:?}", id, desc);
+        tracing::info!("Created buffer {:?} with {:?}", id, desc);
         #[cfg(feature = "trace")]
         match device.trace {
             Some(ref trace) => {
@@ -775,7 +775,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
 
         let device = &device_guard[device_id];
         if device.last_completed_submission_index() <= last_submission {
-            log::info!(
+            tracing::info!(
                 "Waiting for submission {:?} before accessing buffer {:?}",
                 last_submission,
                 buffer_id
@@ -837,7 +837,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                 ptr::copy_nonoverlapping(data.as_ptr(), ptr.as_ptr(), data.len());
             },
             Err(e) => {
-                log::error!("failed to map a buffer: {:?}", e);
+                tracing::error!("failed to map a buffer: {:?}", e);
                 return;
             }
         }
@@ -881,7 +881,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                 ptr::copy_nonoverlapping(ptr.as_ptr(), data.as_mut_ptr(), data.len());
             },
             Err(e) => {
-                log::error!("failed to map a buffer: {:?}", e);
+                tracing::error!("failed to map a buffer: {:?}", e);
                 return;
             }
         }
@@ -895,7 +895,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         let hub = B::hub(self);
         let mut token = Token::root();
 
-        log::info!("Buffer {:?} is dropped", buffer_id);
+        tracing::info!("Buffer {:?} is dropped", buffer_id);
         let device_id = {
             let (mut buffer_guard, _) = hub.buffers.write(&mut token);
             let buffer = &mut buffer_guard[buffer_id];
@@ -1765,7 +1765,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         let id = hub
             .bind_groups
             .register_identity(id_in, bind_group, &mut token);
-        log::debug!(
+        tracing::debug!(
             "Bind group {:?} {:#?}",
             id,
             hub.bind_groups.read(&mut token).0[id].used
@@ -1856,8 +1856,8 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                     naga::front::spv::Parser::new(spv_iter)
                         .parse()
                         .map_err(|err| {
-                            log::warn!("Failed to parse shader SPIR-V code: {:?}", err);
-                            log::warn!("Shader module will not be validated");
+                            tracing::warn!("Failed to parse shader SPIR-V code: {:?}", err);
+                            tracing::warn!("Shader module will not be validated");
                         })
                         .ok()
                 } else {
@@ -2269,7 +2269,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                 for (i, state) in color_states.iter().enumerate() {
                     let output = &interface[&(i as wgt::ShaderLocation)];
                     if !validation::check_texture_format(state.format, output) {
-                        log::warn!(
+                        tracing::warn!(
                             "Incompatible fragment output[{}]. Shader: {:?}. Expected: {:?}",
                             i,
                             state.format,
@@ -2585,7 +2585,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                 || height < caps.extents.start().height
                 || height > caps.extents.end().height
             {
-                log::warn!(
+                tracing::warn!(
                     "Requested size {}x{} is outside of the supported range: {:?}",
                     width,
                     height,
@@ -2593,7 +2593,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                 );
             }
             if !caps.present_modes.contains(config.present_mode) {
-                log::warn!(
+                tracing::warn!(
                     "Surface does not support present mode: {:?}, falling back to {:?}",
                     config.present_mode,
                     hal::window::PresentMode::FIFO
@@ -2602,7 +2602,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
             }
         }
 
-        log::info!("creating swap chain {:?}", desc);
+        tracing::info!("creating swap chain {:?}", desc);
         let hub = B::hub(self);
         let mut token = Token::root();
 
@@ -2812,7 +2812,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                     })
                 }
             };
-            log::debug!("Buffer {:?} map state -> Waiting", buffer_id);
+            tracing::debug!("Buffer {:?} map state -> Waiting", buffer_id);
 
             (buffer.device_id.value, buffer.life_guard.add_ref())
         };
@@ -2846,7 +2846,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                 ptr.as_ptr().offset(offset as isize)
             },
             resource::BufferMapState::Idle | resource::BufferMapState::Waiting(_) => {
-                log::error!("Buffer is not mapped");
+                tracing::error!("Buffer is not mapped");
                 ptr::null_mut()
             }
         }
@@ -2863,7 +2863,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         let buffer = &mut buffer_guard[buffer_id];
         let device = &mut device_guard[buffer.device_id.value];
 
-        log::debug!("Buffer {:?} map state -> Idle", buffer_id);
+        tracing::debug!("Buffer {:?} map state -> Idle", buffer_id);
         match mem::replace(&mut buffer.map_state, resource::BufferMapState::Idle) {
             resource::BufferMapState::Init {
                 ptr,
@@ -2922,7 +2922,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                     .consume_temp(stage_buffer, stage_memory);
             }
             resource::BufferMapState::Idle => {
-                log::error!("Buffer is not mapped");
+                tracing::error!("Buffer is not mapped");
             }
             resource::BufferMapState::Waiting(_) => {}
             resource::BufferMapState::Active {

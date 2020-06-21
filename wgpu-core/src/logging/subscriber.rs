@@ -1,3 +1,4 @@
+use smallvec::SmallVec;
 use std::{
     borrow::Cow,
     fmt, io,
@@ -8,7 +9,7 @@ use std::{
 };
 use tracing::{
     field::{Field, Visit},
-    span, Event, Metadata, Subscriber,
+    span, Event, Level, Metadata, Subscriber,
 };
 use tracing_subscriber::{
     layer::{Context, SubscriberExt},
@@ -25,7 +26,7 @@ use tracing_subscriber::{
 ///
 /// - `chrome_tracing_path` if set to `Some`, will create a trace compatible with chrome://tracing
 ///   at that location.  
-pub fn initialize_default_subscriber(chrome_trace_path: Option<impl AsRef<Path>>) {
+pub fn initialize_default_subscriber(chrome_trace_path: Option<&Path>) {
     let chrome_tracing_layer_opt =
         chrome_trace_path.map(|path| ChromeTracingLayer::with_file(path).unwrap());
 
@@ -34,18 +35,20 @@ pub fn initialize_default_subscriber(chrome_trace_path: Option<impl AsRef<Path>>
         tracing::subscriber::set_global_default(
             tracing_subscriber::Registry::default()
                 .with(chrome_tracing_layer)
-                .with(tracing_subscriber::fmt::Layer::new())
+                .with(WgpuFmtLayer)
                 .with(EnvFilter::from_default_env()),
         )
         .unwrap();
     } else {
         tracing::subscriber::set_global_default(
             tracing_subscriber::Registry::default()
-                .with(tracing_subscriber::fmt::Layer::new())
+                .with(WgpuFmtLayer)
                 .with(EnvFilter::from_default_env()),
         )
         .unwrap();
     }
+
+    tracing_log::LogTracer::init().unwrap();
 }
 
 static CURRENT_PROCESS_ID: once_cell::sync::Lazy<u32> =
@@ -208,5 +211,67 @@ where
 
         let span = ctx.span(id).unwrap();
         self.write_event(None, span.metadata(), EventType::End);
+    }
+}
+
+#[derive(Debug, Default)]
+struct FmtEventVisitor {
+    message: String,
+}
+
+impl Visit for FmtEventVisitor {
+    fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
+        match field.name() {
+            "message" => self.message = format!("{:?}", value),
+            _ => {}
+        }
+    }
+}
+
+struct WgpuFmtLayer;
+
+impl<S> Layer<S> for WgpuFmtLayer
+where
+    S: Subscriber + for<'span> LookupSpan<'span>,
+{
+    fn on_event(&self, event: &Event<'_>, ctx: Context<'_, S>) {
+        let time = chrono::Local::now().format("%Y-%m-%d %H-%M-%S%.6f");
+
+        let mut visitor = FmtEventVisitor::default();
+        event.record(&mut visitor);
+
+        let mut spans: SmallVec<[&str; 8]> = SmallVec::new();
+        for span in ctx.scope() {
+            spans.push(span.name());
+        }
+        let span_string = spans.join(" | ");
+
+        let metadata = event.metadata();
+        let level = match *metadata.level() {
+            Level::ERROR => "ERROR",
+            Level::WARN => "WARN",
+            Level::INFO => "INFO",
+            Level::DEBUG => "DEBUG",
+            Level::TRACE => "TRACE",
+        };
+
+        match *metadata.level() {
+            Level::ERROR | Level::WARN => eprintln!(
+                "[{} {}]({})({}): {}",
+                time,
+                level,
+                span_string,
+                metadata.module_path().unwrap_or("no module"),
+                visitor.message,
+            ),
+            _ => println!(
+                "[{} {}]({})({}): {}",
+                time,
+                level,
+                span_string,
+                metadata.module_path().unwrap_or("no module"),
+                visitor.message,
+            ),
+        };
     }
 }

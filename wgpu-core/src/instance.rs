@@ -356,7 +356,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                 if let Some(id_vulkan) = inputs.find(Backend::Vulkan) {
                     for raw in inst.enumerate_adapters() {
                         let adapter = Adapter::new(raw, unsafe_extensions);
-                        log::info!("Adapter Vulkan {:?}", adapter.raw.info);
+                        tracing::info!("Adapter Vulkan {:?}", adapter.raw.info);
                         adapters.push(backend::Vulkan::hub(self).adapters.register_identity(
                             id_vulkan.clone(),
                             adapter,
@@ -372,7 +372,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                 if let Some(id_metal) = inputs.find(Backend::Metal) {
                     for raw in inst.enumerate_adapters() {
                         let adapter = Adapter::new(raw, unsafe_extensions);
-                        log::info!("Adapter Metal {:?}", adapter.raw.info);
+                        tracing::info!("Adapter Metal {:?}", adapter.raw.info);
                         adapters.push(backend::Metal::hub(self).adapters.register_identity(
                             id_metal.clone(),
                             adapter,
@@ -388,7 +388,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                 if let Some(id_dx12) = inputs.find(Backend::Dx12) {
                     for raw in inst.enumerate_adapters() {
                         let adapter = Adapter::new(raw, unsafe_extensions);
-                        log::info!("Adapter Dx12 {:?}", adapter.raw.info);
+                        tracing::info!("Adapter Dx12 {:?}", adapter.raw.info);
                         adapters.push(backend::Dx12::hub(self).adapters.register_identity(
                             id_dx12.clone(),
                             adapter,
@@ -401,7 +401,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                 if let Some(id_dx11) = inputs.find(Backend::Dx11) {
                     for raw in inst.enumerate_adapters() {
                         let adapter = Adapter::new(raw, unsafe_extensions);
-                        log::info!("Adapter Dx11 {:?}", adapter.raw.info);
+                        tracing::info!("Adapter Dx11 {:?}", adapter.raw.info);
                         adapters.push(backend::Dx11::hub(self).adapters.register_identity(
                             id_dx11.clone(),
                             adapter,
@@ -523,7 +523,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         };
 
         if device_types.is_empty() {
-            log::warn!("No adapters are available!");
+            tracing::warn!("No adapters are available!");
             return None;
         }
 
@@ -551,7 +551,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                 Ok(false) => discrete.or(integrated).or(other).or(virt),
                 Ok(true) => integrated.or(discrete).or(other).or(virt),
                 Err(err) => {
-                    log::debug!(
+                    tracing::debug!(
                         "Power info unavailable, preferring integrated gpu ({})",
                         err
                     );
@@ -570,7 +570,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         {
             if selected < adapters_vk.len() {
                 let adapter = Adapter::new(adapters_vk.swap_remove(selected), unsafe_extensions);
-                log::info!("Adapter Vulkan {:?}", adapter.raw.info);
+                tracing::info!("Adapter Vulkan {:?}", adapter.raw.info);
                 let id = backend::Vulkan::hub(self).adapters.register_identity(
                     id_vulkan.unwrap(),
                     adapter,
@@ -584,7 +584,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         {
             if selected < adapters_mtl.len() {
                 let adapter = Adapter::new(adapters_mtl.swap_remove(selected), unsafe_extensions);
-                log::info!("Adapter Metal {:?}", adapter.raw.info);
+                tracing::info!("Adapter Metal {:?}", adapter.raw.info);
                 let id = backend::Metal::hub(self).adapters.register_identity(
                     id_metal.unwrap(),
                     adapter,
@@ -598,7 +598,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         {
             if selected < adapters_dx12.len() {
                 let adapter = Adapter::new(adapters_dx12.swap_remove(selected), unsafe_extensions);
-                log::info!("Adapter Dx12 {:?}", adapter.raw.info);
+                tracing::info!("Adapter Dx12 {:?}", adapter.raw.info);
                 let id = backend::Dx12::hub(self).adapters.register_identity(
                     id_dx12.unwrap(),
                     adapter,
@@ -609,7 +609,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
             selected -= adapters_dx12.len();
             if selected < adapters_dx11.len() {
                 let adapter = Adapter::new(adapters_dx11.swap_remove(selected), unsafe_extensions);
-                log::info!("Adapter Dx11 {:?}", adapter.raw.info);
+                tracing::info!("Adapter Dx11 {:?}", adapter.raw.info);
                 let id = backend::Dx11::hub(self).adapters.register_identity(
                     id_dx11.unwrap(),
                     adapter,
@@ -621,7 +621,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         }
 
         let _ = (selected, id_vulkan, id_metal, id_dx12, id_dx11);
-        log::warn!("Some adapters are present, but enumerating them failed!");
+        tracing::warn!("Some adapters are present, but enumerating them failed!");
         None
     }
 
@@ -726,7 +726,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                 .contains(wgt::Extensions::MAPPABLE_PRIMARY_BUFFERS)
                 && adapter.raw.info.device_type == hal::adapter::DeviceType::DiscreteGpu
             {
-                log::warn!("Extension MAPPABLE_PRIMARY_BUFFERS enabled on a discrete gpu. This is a massive performance footgun and likely not what you wanted");
+                tracing::warn!("Extension MAPPABLE_PRIMARY_BUFFERS enabled on a discrete gpu. This is a massive performance footgun and likely not what you wanted");
             }
 
             let available_features = adapter.raw.physical_device.features();
@@ -737,7 +737,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                 | hal::Features::NDC_Y_UP;
             let mut enabled_features = available_features & wishful_features;
             if enabled_features != wishful_features {
-                log::warn!(
+                tracing::warn!(
                     "Missing features: {:?}",
                     wishful_features - enabled_features
                 );
@@ -804,7 +804,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                 "Adapter uniform buffer offset alignment not compatible with WGPU"
             );
             if limits.max_bound_descriptor_sets == 0 {
-                log::warn!("max_bind_groups limit is missing");
+                tracing::warn!("max_bind_groups limit is missing");
             } else {
                 assert!(
                     u32::from(limits.max_bound_descriptor_sets) >= desc.limits.max_bind_groups,
@@ -814,7 +814,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
 
             let mem_props = phd.memory_properties();
             if !desc.shader_validation {
-                log::warn!("Shader validation is disabled");
+                tracing::warn!("Shader validation is disabled");
             }
             let private_features = PrivateFeatures {
                 shader_validation: desc.shader_validation,

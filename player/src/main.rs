@@ -438,7 +438,7 @@ fn main() {
     #[cfg(feature = "winit")]
     use winit::{event_loop::EventLoop, window::WindowBuilder};
 
-    env_logger::init();
+    wgc::logging::subscriber::initialize_default_subscriber(None);
 
     #[cfg(feature = "renderdoc")]
     let mut _rd = renderdoc::RenderDoc::<renderdoc::V110>::new()
@@ -452,15 +452,15 @@ fn main() {
         _ => panic!("Provide the dir path as the parameter"),
     };
 
-    log::info!("Loading trace '{:?}'", dir);
+    tracing::info!("Loading trace '{:?}'", dir);
     let file = fs::File::open(dir.join(trace::FILE_NAME)).unwrap();
     let mut actions: Vec<trace::Action> = ron::de::from_reader(file).unwrap();
     actions.reverse(); // allows us to pop from the top
-    log::info!("Found {} actions", actions.len());
+    tracing::info!("Found {} actions", actions.len());
 
     #[cfg(feature = "winit")]
     let event_loop = {
-        log::info!("Creating a window");
+        tracing::info!("Creating a window");
         EventLoop::new()
     };
     #[cfg(feature = "winit")]
@@ -480,7 +480,7 @@ fn main() {
 
     let device = match actions.pop() {
         Some(trace::Action::Init { desc, backend }) => {
-            log::info!("Initializing the device for backend: {:?}", backend);
+            tracing::info!("Initializing the device for backend: {:?}", backend);
             let adapter = global
                 .pick_adapter(
                     &wgc::instance::RequestAdapterOptions {
@@ -499,7 +499,7 @@ fn main() {
                 .expect("Unable to find an adapter for selected backend");
 
             let info = gfx_select!(adapter => global.adapter_get_info(adapter));
-            log::info!("Picked '{}'", info.name);
+            tracing::info!("Picked '{}'", info.name);
             gfx_select!(adapter => global.adapter_request_device(
                 adapter,
                 &desc,
@@ -510,7 +510,7 @@ fn main() {
         _ => panic!("Expected Action::Init"),
     };
 
-    log::info!("Executing actions");
+    tracing::info!("Executing actions");
     #[cfg(not(feature = "winit"))]
     {
         #[cfg(feature = "renderdoc")]
@@ -541,7 +541,7 @@ fn main() {
                 Event::RedrawRequested(_) => loop {
                     match actions.pop() {
                         Some(trace::Action::CreateSwapChain { id, desc }) => {
-                            log::info!("Initializing the swapchain");
+                            tracing::info!("Initializing the swapchain");
                             assert_eq!(id.to_surface_id(), surface);
                             window.set_inner_size(winit::dpi::PhysicalSize::new(
                                 desc.width,
@@ -551,7 +551,7 @@ fn main() {
                         }
                         Some(trace::Action::PresentSwapChain(id)) => {
                             frame_count += 1;
-                            log::debug!("Presenting frame {}", frame_count);
+                            tracing::debug!("Presenting frame {}", frame_count);
                             gfx_select!(device => global.swap_chain_present(id));
                             break;
                         }
@@ -577,7 +577,7 @@ fn main() {
                     _ => {}
                 },
                 Event::LoopDestroyed => {
-                    log::info!("Closing");
+                    tracing::info!("Closing");
                     gfx_select!(device => global.device_poll(device, true));
                 }
                 _ => {}

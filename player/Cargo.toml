@@ -20,6 +20,7 @@ log = "0.4"
 raw-window-handle = "0.3"
 renderdoc = { version = "0.8", optional = true, default_features = false }
 ron = "0.5"
+tracing = { version = "0.1", default-features = false, features = ["std"] }
 winit = { version = "0.22", optional = true }
 
 [dependencies.wgt]
@@ -32,7 +33,7 @@ features = ["replay"]
 path = "../wgpu-core"
 package = "wgpu-core"
 version = "0.5"
-features = ["replay", "raw-window-handle"]
+features = ["replay", "raw-window-handle", "subscriber"]
 
 [target.'cfg(all(unix, not(target_os = "ios"), not(target_os = "macos")))'.dependencies]
 gfx-backend-vulkan = { version = "0.5", features = ["x11"] }

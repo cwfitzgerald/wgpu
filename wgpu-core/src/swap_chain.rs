@@ -217,7 +217,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
             unsafe { queue.present_surface(B::get_surface_mut(surface), image, sem) }
         };
         if let Err(e) = err {
-            log::warn!("present failed: {:?}", e);
+            tracing::warn!("present failed: {:?}", e);
         }
 
         tracing::debug!(trace = true, "Presented. End of Frame");

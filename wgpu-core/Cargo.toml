@@ -20,11 +20,12 @@ replay = ["serde", "wgt/replay"]
 # Enable serializable compute/render passes, and bundle encoders.
 serial-pass = ["serde", "wgt/serde", "arrayvec/serde"]
 # Enable chrome-tracing backend and default tracing subscriber
-subscriber = ["once_cell", "thread-id", "tracing-subscriber"]
+subscriber = ["chrono", "once_cell", "thread-id", "tracing-log", "tracing-subscriber"]
 
 [dependencies]
 arrayvec = "0.5"
 bitflags = "1.0"
+chrono = { version = "0.4", optional = true }
 copyless = "0.1"
 fxhash = "0.2"
 log = "0.4"
@@ -39,7 +40,8 @@ smallvec = "1"
 spirv_headers = { version = "1.4.2" }
 thread-id = { version = "3", optional = true }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
-tracing-subscriber =  { version = "0.2", optional = true }
+tracing-log = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.2", default-features = false, optional = true, features = ["env-filter", "registry"] }
 vec_map = "0.8.1"
 
 [dependencies.naga]
