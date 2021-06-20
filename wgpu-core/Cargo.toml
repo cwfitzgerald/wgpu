@@ -67,8 +67,5 @@ path = "../wgpu-types"
 package = "wgpu-types"
 version = "0.9"
 
-[dev-dependencies]
-loom = "0.3"
-
 [build-dependencies]
 cfg_aliases = "0.1"

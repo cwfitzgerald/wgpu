@@ -55,9 +55,6 @@ pub mod swap_chain;
 mod track;
 mod validation;
 
-#[cfg(test)]
-use loom::sync::atomic;
-#[cfg(not(test))]
 use std::sync::atomic;
 
 use atomic::{AtomicUsize, Ordering};
@@ -139,28 +136,6 @@ impl Drop for RefCount {
             self.rich_drop_inner();
         }
     }
-}
-
-#[cfg(test)]
-#[test]
-fn loom() {
-    loom::model(move || {
-        let bx = Box::new(AtomicUsize::new(1));
-        let ref_count_main = ptr::NonNull::new(Box::into_raw(bx)).map(RefCount).unwrap();
-        let ref_count_spawned = ref_count_main.clone();
-
-        let join_handle = loom::thread::spawn(move || {
-            let _ = ref_count_spawned.clone();
-            ref_count_spawned.rich_drop_outer()
-        });
-
-        let dropped_in_main = ref_count_main.rich_drop_outer();
-        let dropped_in_spawned = join_handle.join().unwrap();
-        assert_ne!(
-            dropped_in_main, dropped_in_spawned,
-            "must drop exactly once"
-        );
-    });
 }
 
 /// Reference count object that tracks multiple references.
