@@ -847,6 +847,7 @@ impl<A: Api> Clone for TextureBinding<'_, A> {
 pub struct BindGroupEntry {
     pub binding: u32,
     pub resource_index: u32,
+    pub count: u32,
 }
 
 /// BindGroup descriptor.

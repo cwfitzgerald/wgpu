@@ -1387,7 +1387,7 @@ impl<A: HalApi> Device<A> {
                 .entries
                 .get(&binding)
                 .ok_or(Error::MissingBindingDeclaration(binding))?;
-            let res_index = match entry.resource {
+            let (res_index, count) = match entry.resource {
                 Br::Buffer(ref bb) => {
                     let bb = Self::create_buffer_binding(
                         bb,
@@ -1402,21 +1402,34 @@ impl<A: HalApi> Device<A> {
 
                     let res_index = hal_buffers.len();
                     hal_buffers.push(bb);
-                    res_index
+                    (res_index, 1)
                 }
                 Br::BufferArray(ref bindings_array) => {
+                    let num_bindings = bindings_array.len();
                     if let Some(count) = decl.count {
                         let count = count.get() as usize;
-                        let num_bindings = bindings_array.len();
-                        if count != num_bindings {
+                        if count < num_bindings {
+                            return Err(Error::BindingArrayPartialLengthMismatch {
+                                actual: num_bindings,
+                                expected: count,
+                            });
+                        }
+                        if count != num_bindings
+                            && !self
+                                .features
+                                .contains(wgt::Features::PARTIALLY_BOUND_BINDING_ARRAY)
+                        {
                             return Err(Error::BindingArrayLengthMismatch {
                                 actual: num_bindings,
                                 expected: count,
                             });
                         }
+                        if num_bindings == 0 {
+                            return Err(Error::BindingArrayZeroLength);
+                        }
                     } else {
                         return Err(Error::SingleBindingExpected);
-                    }
+                    };
 
                     let res_index = hal_buffers.len();
                     for bb in bindings_array.iter() {
@@ -1432,7 +1445,7 @@ impl<A: HalApi> Device<A> {
                         )?;
                         hal_buffers.push(bb);
                     }
-                    res_index
+                    (res_index, num_bindings)
                 }
                 Br::Sampler(id) => {
                     match decl.ty {
@@ -1464,7 +1477,7 @@ impl<A: HalApi> Device<A> {
 
                             let res_index = hal_samplers.len();
                             hal_samplers.push(&sampler.raw);
-                            res_index
+                            (res_index, 1)
                         }
                         _ => {
                             return Err(Error::WrongBindingType {
@@ -1505,21 +1518,34 @@ impl<A: HalApi> Device<A> {
                         view: &view.raw,
                         usage: internal_use,
                     });
-                    res_index
+                    (res_index, 1)
                 }
                 Br::TextureViewArray(ref bindings_array) => {
+                    let num_bindings = bindings_array.len();
                     if let Some(count) = decl.count {
                         let count = count.get() as usize;
-                        let num_bindings = bindings_array.len();
-                        if count != num_bindings {
+                        if count < num_bindings {
+                            return Err(Error::BindingArrayPartialLengthMismatch {
+                                actual: num_bindings,
+                                expected: count,
+                            });
+                        }
+                        if count != num_bindings
+                            && !self
+                                .features
+                                .contains(wgt::Features::PARTIALLY_BOUND_BINDING_ARRAY)
+                        {
                             return Err(Error::BindingArrayLengthMismatch {
                                 actual: num_bindings,
                                 expected: count,
                             });
                         }
+                        if num_bindings == 0 {
+                            return Err(Error::BindingArrayZeroLength);
+                        }
                     } else {
                         return Err(Error::SingleBindingExpected);
-                    }
+                    };
 
                     let res_index = hal_textures.len();
                     for &id in bindings_array.iter() {
@@ -1551,13 +1577,14 @@ impl<A: HalApi> Device<A> {
                         });
                     }
 
-                    res_index
+                    (res_index, num_bindings)
                 }
             };
 
             hal_entries.push(hal::BindGroupEntry {
                 binding,
                 resource_index: res_index as u32,
+                count: count as u32,
             });
         }
 

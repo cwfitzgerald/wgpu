@@ -377,7 +377,11 @@ impl
             })
             .collect::<ArrayVec<_, 8>>();
 
-        let mut vk_flags = vk::DescriptorPoolCreateFlags::empty();
+        let mut vk_flags = if self.private_caps.update_after_bind {
+            vk::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND
+        } else {
+            vk::DescriptorPoolCreateFlags::empty()
+        };
         if flags.contains(gpu_descriptor::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET) {
             vk_flags |= vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET;
         }
@@ -1012,9 +1016,52 @@ impl crate::Device<super::Api> for super::Device {
             })
             .collect::<Vec<_>>();
 
+        let dsl_create_flags = if self.shared.private_caps.update_after_bind {
+            vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT
+        } else {
+            vk::DescriptorSetLayoutCreateFlags::empty()
+        };
+
         let vk_info = vk::DescriptorSetLayoutCreateInfo::builder()
-            .flags(vk::DescriptorSetLayoutCreateFlags::empty())
+            .flags(dsl_create_flags)
             .bindings(&vk_bindings);
+
+        let mut binding_flag_info;
+        let binding_flag_vec;
+
+        let partially_bound = self
+            .shared
+            .features
+            .intersects(wgt::Features::PARTIALLY_BOUND_BINDING_ARRAY);
+
+        let vk_info = if self.shared.private_caps.update_after_bind || partially_bound {
+            binding_flag_vec = desc
+                .entries
+                .iter()
+                .map(|entry| {
+                    let mut flags = vk::DescriptorBindingFlags::empty();
+
+                    if partially_bound && entry.count.is_some() {
+                        flags |= vk::DescriptorBindingFlags::PARTIALLY_BOUND;
+                    }
+
+                    if self.shared.private_caps.update_after_bind
+                        && !matches!(entry.ty, wgt::BindingType::Sampler { .. })
+                    {
+                        flags |= vk::DescriptorBindingFlags::UPDATE_AFTER_BIND;
+                    }
+
+                    flags
+                })
+                .collect::<Vec<_>>();
+
+            binding_flag_info = vk::DescriptorSetLayoutBindingFlagsCreateInfo::builder()
+                .binding_flags(&binding_flag_vec);
+
+            vk_info.push_next(&mut binding_flag_info)
+        } else {
+            vk_info
+        };
 
         let raw = self
             .shared
@@ -1085,7 +1132,11 @@ impl crate::Device<super::Api> for super::Device {
         let mut vk_sets = self.desc_allocator.lock().allocate(
             &*self.shared,
             &desc.layout.raw,
-            gpu_descriptor::DescriptorSetLayoutCreateFlags::empty(),
+            if self.shared.private_caps.update_after_bind {
+                gpu_descriptor::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND
+            } else {
+                gpu_descriptor::DescriptorSetLayoutCreateFlags::empty()
+            },
             &desc.layout.desc_count,
             1,
         )?;
@@ -1122,7 +1173,7 @@ impl crate::Device<super::Api> for super::Device {
                 vk::DescriptorType::SAMPLED_IMAGE | vk::DescriptorType::STORAGE_IMAGE => {
                     let index = image_infos.len();
                     let start = entry.resource_index;
-                    let end = start + size;
+                    let end = start + entry.count;
                     image_infos.extend(desc.textures[start as usize..end as usize].iter().map(
                         |binding| {
                             let layout =
@@ -1141,7 +1192,7 @@ impl crate::Device<super::Api> for super::Device {
                 | vk::DescriptorType::STORAGE_BUFFER_DYNAMIC => {
                     let index = buffer_infos.len();
                     let start = entry.resource_index;
-                    let end = start + size;
+                    let end = start + entry.count;
                     buffer_infos.extend(desc.buffers[start as usize..end as usize].iter().map(
                         |binding| {
                             vk::DescriptorBufferInfo::builder()

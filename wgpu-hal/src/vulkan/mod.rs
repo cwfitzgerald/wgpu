@@ -164,6 +164,8 @@ struct PrivateCapabilities {
     non_coherent_map_mask: wgt::BufferAddress,
     robust_buffer_access: bool,
     robust_image_access: bool,
+    /// We don't actually use this feature, but this raises resource limits 10,000 fold on intel.
+    update_after_bind: bool,
 }
 
 bitflags::bitflags!(
@@ -234,6 +236,7 @@ struct DeviceShared {
     extension_fns: DeviceExtensionFunctions,
     vendor_id: u32,
     timestamp_period: f32,
+    features: wgt::Features,
     downlevel_flags: wgt::DownlevelFlags,
     private_caps: PrivateCapabilities,
     workarounds: Workarounds,

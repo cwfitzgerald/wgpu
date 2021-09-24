@@ -5,9 +5,14 @@ use parking_lot::Mutex;
 
 use std::{ffi::CStr, mem, ptr, sync::Arc};
 
+/// Update After Bind is used on intel only, and all intel devices have at least 524288
+const MAX_UPDATE_AFTER_BIND_DESCRIPTORS_IN_ALL_POOLS: u32 = 524288;
+
 //TODO: const fn?
 fn indexing_features() -> wgt::Features {
-    wgt::Features::BUFFER_BINDING_ARRAY | wgt::Features::TEXTURE_BINDING_ARRAY
+    wgt::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING
+        | wgt::Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING
+        | wgt::Features::UNSIZED_BINDING_ARRAY
 }
 
 /// Aggregate of the `vk::PhysicalDevice*Features` structs used by `gfx`.
@@ -55,6 +60,27 @@ impl PhysicalDeviceFeatures {
         downlevel_flags: wgt::DownlevelFlags,
         private_caps: &super::PrivateCapabilities,
     ) -> Self {
+        let needs_sampled_image_non_uniform = requested_features.contains(
+            wgt::Features::TEXTURE_BINDING_ARRAY
+                | wgt::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
+        );
+        let needs_storage_buffer_non_uniform = requested_features.contains(
+            wgt::Features::BUFFER_BINDING_ARRAY
+                | wgt::Features::STORAGE_RESOURCE_BINDING_ARRAY
+                | wgt::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
+        );
+        let needs_uniform_buffer_non_uniform = requested_features.contains(
+            wgt::Features::TEXTURE_BINDING_ARRAY
+                | wgt::Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING,
+        );
+        let needs_storage_image_non_uniform = requested_features.contains(
+            wgt::Features::TEXTURE_BINDING_ARRAY
+                | wgt::Features::STORAGE_RESOURCE_BINDING_ARRAY
+                | wgt::Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING,
+        );
+        let needs_partially_bound =
+            requested_features.intersects(wgt::Features::PARTIALLY_BOUND_BINDING_ARRAY);
+
         Self {
             // vk::PhysicalDeviceFeatures is a struct composed of Bool32's while
             // Features is a bitfield so we need to map everything manually
@@ -132,32 +158,30 @@ impl PhysicalDeviceFeatures {
                         )
                         .descriptor_indexing(requested_features.intersects(indexing_features()))
                         .shader_sampled_image_array_non_uniform_indexing(
-                            requested_features.contains(
-                                wgt::Features::TEXTURE_BINDING_ARRAY
-                                    | wgt::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
-                            ),
+                            needs_sampled_image_non_uniform,
                         )
                         .shader_storage_image_array_non_uniform_indexing(
-                            requested_features.contains(
-                                wgt::Features::TEXTURE_BINDING_ARRAY
-                                    | wgt::Features::STORAGE_RESOURCE_BINDING_ARRAY
-                                    | wgt::Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING,
-                            ),
+                            needs_storage_image_non_uniform,
                         )
-                        //.shader_storage_buffer_array_non_uniform_indexing(
                         .shader_uniform_buffer_array_non_uniform_indexing(
-                            requested_features.contains(
-                                wgt::Features::BUFFER_BINDING_ARRAY
-                                    | wgt::Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING,
-                            ),
+                            needs_uniform_buffer_non_uniform,
                         )
                         .shader_storage_buffer_array_non_uniform_indexing(
-                            requested_features.contains(
-                                wgt::Features::BUFFER_BINDING_ARRAY
-                                    | wgt::Features::STORAGE_RESOURCE_BINDING_ARRAY
-                                    | wgt::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
-                            ),
+                            needs_storage_buffer_non_uniform,
                         )
+                        .descriptor_binding_sampled_image_update_after_bind(
+                            private_caps.update_after_bind,
+                        )
+                        .descriptor_binding_storage_image_update_after_bind(
+                            private_caps.update_after_bind,
+                        )
+                        .descriptor_binding_uniform_buffer_update_after_bind(
+                            private_caps.update_after_bind,
+                        )
+                        .descriptor_binding_storage_buffer_update_after_bind(
+                            private_caps.update_after_bind,
+                        )
+                        .descriptor_binding_partially_bound(needs_partially_bound)
                         .runtime_descriptor_array(
                             requested_features.contains(wgt::Features::UNSIZED_BINDING_ARRAY),
                         )
@@ -175,32 +199,18 @@ impl PhysicalDeviceFeatures {
                 Some(
                     vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::builder()
                         .shader_sampled_image_array_non_uniform_indexing(
-                            requested_features.contains(
-                                wgt::Features::TEXTURE_BINDING_ARRAY
-                                    | wgt::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
-                            ),
+                            needs_sampled_image_non_uniform,
                         )
                         .shader_storage_image_array_non_uniform_indexing(
-                            requested_features.contains(
-                                wgt::Features::TEXTURE_BINDING_ARRAY
-                                    | wgt::Features::STORAGE_RESOURCE_BINDING_ARRAY
-                                    | wgt::Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING,
-                            ),
+                            needs_storage_image_non_uniform,
                         )
-                        //.shader_storage_buffer_array_non_uniform_indexing(
                         .shader_uniform_buffer_array_non_uniform_indexing(
-                            requested_features.contains(
-                                wgt::Features::BUFFER_BINDING_ARRAY
-                                    | wgt::Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING,
-                            ),
+                            needs_uniform_buffer_non_uniform,
                         )
                         .shader_storage_buffer_array_non_uniform_indexing(
-                            requested_features.contains(
-                                wgt::Features::BUFFER_BINDING_ARRAY
-                                    | wgt::Features::STORAGE_RESOURCE_BINDING_ARRAY
-                                    | wgt::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
-                            ),
+                            needs_storage_buffer_non_uniform,
                         )
+                        .descriptor_binding_partially_bound(needs_partially_bound)
                         .runtime_descriptor_array(
                             requested_features.contains(wgt::Features::UNSIZED_BINDING_ARRAY),
                         )
@@ -380,6 +390,9 @@ impl PhysicalDeviceFeatures {
             if vulkan_1_2.runtime_descriptor_array != 0 {
                 features |= F::UNSIZED_BINDING_ARRAY;
             }
+            if vulkan_1_2.descriptor_binding_partially_bound != 0 {
+                features |= F::PARTIALLY_BOUND_BINDING_ARRAY;
+            }
             //if vulkan_1_2.sampler_mirror_clamp_to_edge != 0 {
             //if vulkan_1_2.sampler_filter_minmax != 0 {
             if vulkan_1_2.draw_indirect_count != 0 {
@@ -419,6 +432,9 @@ impl PhysicalDeviceFeatures {
             ) {
                 features.insert(F::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING);
             }
+            if descriptor_indexing.descriptor_binding_partially_bound != 0 {
+                features |= F::PARTIALLY_BOUND_BINDING_ARRAY;
+            }
             if descriptor_indexing.runtime_descriptor_array != 0 {
                 features |= F::UNSIZED_BINDING_ARRAY;
             }
@@ -438,10 +454,17 @@ impl PhysicalDeviceFeatures {
 }
 
 /// Information gathered about a physical device capabilities.
+#[derive(Default)]
 pub struct PhysicalDeviceCapabilities {
     supported_extensions: Vec<vk::ExtensionProperties>,
     properties: vk::PhysicalDeviceProperties,
+    vulkan_1_2: Option<vk::PhysicalDeviceVulkan12Properties>,
+    descriptor_indexing: Option<vk::PhysicalDeviceDescriptorIndexingPropertiesEXT>,
 }
+
+// This is safe because the structs have `p_next: *mut c_void`, which we null out/never read.
+unsafe impl Send for PhysicalDeviceCapabilities {}
+unsafe impl Sync for PhysicalDeviceCapabilities {}
 
 impl PhysicalDeviceCapabilities {
     fn supports_extension(&self, extension: &CStr) -> bool {
@@ -498,8 +521,56 @@ impl PhysicalDeviceCapabilities {
         extensions
     }
 
-    fn to_wgpu_limits(&self) -> wgt::Limits {
+    fn to_wgpu_limits(&self, private_caps: &super::PrivateCapabilities) -> wgt::Limits {
         let limits = &self.properties.limits;
+        let max_sampled_textures = if private_caps.update_after_bind {
+            if let Some(di) = self.descriptor_indexing {
+                di.max_per_stage_descriptor_update_after_bind_sampled_images
+            } else if let Some(vk_1_2) = self.vulkan_1_2 {
+                vk_1_2.max_per_stage_descriptor_update_after_bind_sampled_images
+            } else {
+                limits.max_per_stage_descriptor_sampled_images
+            }
+        } else {
+            limits.max_per_stage_descriptor_sampled_images
+        };
+
+        let max_storage_textures = if private_caps.update_after_bind {
+            if let Some(di) = self.descriptor_indexing {
+                di.max_per_stage_descriptor_update_after_bind_storage_images
+            } else if let Some(vk_1_2) = self.vulkan_1_2 {
+                vk_1_2.max_per_stage_descriptor_update_after_bind_storage_images
+            } else {
+                limits.max_per_stage_descriptor_storage_images
+            }
+        } else {
+            limits.max_per_stage_descriptor_storage_images
+        };
+
+        let max_uniform_buffers = if private_caps.update_after_bind {
+            if let Some(di) = self.descriptor_indexing {
+                di.max_per_stage_descriptor_update_after_bind_uniform_buffers
+            } else if let Some(vk_1_2) = self.vulkan_1_2 {
+                vk_1_2.max_per_stage_descriptor_update_after_bind_uniform_buffers
+            } else {
+                limits.max_per_stage_descriptor_uniform_buffers
+            }
+        } else {
+            limits.max_per_stage_descriptor_uniform_buffers
+        };
+
+        let max_storage_buffers = if private_caps.update_after_bind {
+            if let Some(di) = self.descriptor_indexing {
+                di.max_per_stage_descriptor_update_after_bind_storage_buffers
+            } else if let Some(vk_1_2) = self.vulkan_1_2 {
+                vk_1_2.max_per_stage_descriptor_update_after_bind_storage_buffers
+            } else {
+                limits.max_per_stage_descriptor_storage_buffers
+            }
+        } else {
+            limits.max_per_stage_descriptor_storage_buffers
+        };
+
         wgt::Limits {
             max_texture_dimension_1d: limits.max_image_dimension1_d,
             max_texture_dimension_2d: limits.max_image_dimension2_d,
@@ -512,11 +583,11 @@ impl PhysicalDeviceCapabilities {
                 .max_descriptor_set_uniform_buffers_dynamic,
             max_dynamic_storage_buffers_per_pipeline_layout: limits
                 .max_descriptor_set_storage_buffers_dynamic,
-            max_sampled_textures_per_shader_stage: limits.max_per_stage_descriptor_sampled_images,
+            max_sampled_textures_per_shader_stage: max_sampled_textures,
             max_samplers_per_shader_stage: limits.max_per_stage_descriptor_samplers,
-            max_storage_buffers_per_shader_stage: limits.max_per_stage_descriptor_storage_buffers,
-            max_storage_textures_per_shader_stage: limits.max_per_stage_descriptor_storage_images,
-            max_uniform_buffers_per_shader_stage: limits.max_per_stage_descriptor_uniform_buffers,
+            max_storage_buffers_per_shader_stage: max_storage_buffers,
+            max_storage_textures_per_shader_stage: max_storage_textures,
+            max_uniform_buffers_per_shader_stage: max_uniform_buffers,
             max_uniform_buffer_binding_size: limits.max_uniform_buffer_range,
             max_storage_buffer_binding_size: limits.max_storage_buffer_range,
             max_vertex_buffers: limits
@@ -547,11 +618,46 @@ impl super::InstanceShared {
         &self,
         phd: vk::PhysicalDevice,
     ) -> (PhysicalDeviceCapabilities, PhysicalDeviceFeatures) {
-        let capabilities = unsafe {
-            PhysicalDeviceCapabilities {
-                supported_extensions: self.raw.enumerate_device_extension_properties(phd).unwrap(),
-                properties: self.raw.get_physical_device_properties(phd),
-            }
+        let capabilities = {
+            let mut capabilities = PhysicalDeviceCapabilities::default();
+            capabilities.supported_extensions =
+                unsafe { self.raw.enumerate_device_extension_properties(phd).unwrap() };
+            capabilities.properties = if let Some(ref get_device_properties) =
+                self.get_physical_device_properties
+            {
+                let core = vk::PhysicalDeviceProperties::builder().build();
+                let mut properites2 = vk::PhysicalDeviceProperties2::builder()
+                    .properties(core)
+                    .build();
+
+                if capabilities.properties.api_version >= vk::API_VERSION_1_2 {
+                    capabilities.vulkan_1_2 =
+                        Some(vk::PhysicalDeviceVulkan12Properties::builder().build());
+
+                    let mut_ref = capabilities.vulkan_1_2.as_mut().unwrap();
+                    mut_ref.p_next =
+                        mem::replace(&mut properites2.p_next, mut_ref as *mut _ as *mut _);
+                }
+
+                if capabilities.supports_extension(vk::ExtDescriptorIndexingFn::name()) {
+                    capabilities.descriptor_indexing =
+                        Some(vk::PhysicalDeviceDescriptorIndexingPropertiesEXT::builder().build());
+
+                    let mut_ref = capabilities.descriptor_indexing.as_mut().unwrap();
+                    mut_ref.p_next =
+                        mem::replace(&mut properites2.p_next, mut_ref as *mut _ as *mut _);
+                }
+
+                unsafe {
+                    get_device_properties
+                        .get_physical_device_properties2_khr(phd, &mut properites2);
+                }
+                properites2.properties
+            } else {
+                unsafe { self.raw.get_physical_device_properties(phd) }
+            };
+
+            capabilities
         };
 
         let mut features = PhysicalDeviceFeatures::default();
@@ -645,6 +751,8 @@ impl super::Instance {
         &self,
         phd: vk::PhysicalDevice,
     ) -> Option<crate::ExposedAdapter<super::Api>> {
+        use crate::auxil::db;
+
         let (phd_capabilities, phd_features) = self.shared.inspect(phd);
 
         let info = wgt::AdapterInfo {
@@ -670,7 +778,6 @@ impl super::Instance {
         let (available_features, downlevel_flags) = phd_features.to_wgpu(&phd_capabilities);
         let mut workarounds = super::Workarounds::empty();
         {
-            use crate::auxil::db;
             // see https://github.com/gfx-rs/gfx/issues/1930
             let _is_windows_intel_dual_src_bug = cfg!(windows)
                 && phd_capabilities.properties.vendor_id == db::intel::VENDOR
@@ -749,10 +856,29 @@ impl super::Instance {
                     None => false,
                 },
             },
+            update_after_bind: {
+                if phd_capabilities.properties.vendor_id == db::intel::VENDOR {
+                    if let Some(ref di) = phd_features.descriptor_indexing {
+                        di.descriptor_binding_sampled_image_update_after_bind != 0
+                            && di.descriptor_binding_storage_image_update_after_bind != 0
+                            && di.descriptor_binding_uniform_buffer_update_after_bind != 0
+                            && di.descriptor_binding_storage_buffer_update_after_bind != 0
+                    } else if let Some(di) = phd_features.vulkan_1_2 {
+                        di.descriptor_binding_sampled_image_update_after_bind != 0
+                            && di.descriptor_binding_storage_image_update_after_bind != 0
+                            && di.descriptor_binding_uniform_buffer_update_after_bind != 0
+                            && di.descriptor_binding_storage_buffer_update_after_bind != 0
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            },
         };
 
         let capabilities = crate::Capabilities {
-            limits: phd_capabilities.to_wgpu_limits(),
+            limits: phd_capabilities.to_wgpu_limits(&private_caps),
             alignments: phd_capabilities.to_hal_alignments(),
             downlevel: wgt::DownlevelCapabilities {
                 flags: downlevel_flags,
@@ -829,6 +955,7 @@ impl super::Adapter {
         raw_device: ash::Device,
         handle_is_owned: bool,
         enabled_extensions: &[&'static CStr],
+        features: wgt::Features,
         family_index: u32,
         queue_index: u32,
     ) -> Result<crate::OpenDevice<super::Api>, crate::DeviceError> {
@@ -934,10 +1061,11 @@ impl super::Adapter {
                 timeline_semaphore: timeline_semaphore_fn,
             },
             vendor_id: self.phd_capabilities.properties.vendor_id,
+            timestamp_period: self.phd_capabilities.properties.limits.timestamp_period,
+            features,
             downlevel_flags: self.downlevel_flags,
             private_caps: self.private_caps.clone(),
             workarounds: self.workarounds,
-            timestamp_period: self.phd_capabilities.properties.limits.timestamp_period,
             render_passes: Mutex::new(Default::default()),
             framebuffers: Mutex::new(Default::default()),
         });
@@ -979,7 +1107,9 @@ impl super::Adapter {
             };
             gpu_alloc::GpuAllocator::new(config, properties)
         };
-        let desc_allocator = gpu_descriptor::DescriptorAllocator::new(0);
+        let desc_allocator = gpu_descriptor::DescriptorAllocator::new(
+            MAX_UPDATE_AFTER_BIND_DESCRIPTORS_IN_ALL_POOLS,
+        );
 
         let device = super::Device {
             shared,
@@ -1030,6 +1160,7 @@ impl crate::Adapter<super::Api> for super::Adapter {
             raw_device,
             true,
             &enabled_extensions,
+            features,
             family_info.queue_family_index,
             0,
         )
