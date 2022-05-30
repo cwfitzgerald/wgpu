@@ -127,7 +127,6 @@ impl super::Swapchain {
             profiling::scope!("vkDeviceWaitIdle");
             let _ = device.device_wait_idle();
         };
-        device.destroy_fence(self.fence, None);
         self
     }
 }
@@ -712,40 +711,43 @@ impl crate::Surface<super::Api> for super::Surface {
         let sc = self.swapchain.as_mut().unwrap();
         let timeout_ns = timeout_ms as u64 * super::MILLIS_TO_NANOS;
 
+        let mut relay_semaphore = *sc.relay_semaphores.front().unwrap();
+        let (_, signal_semaphore) = relay_semaphore.next();
+
         // will block if no image is available
-        let (index, suboptimal) =
-            match sc
-                .functor
-                .acquire_next_image(sc.raw, timeout_ns, vk::Semaphore::null(), sc.fence)
-            {
-                Ok(pair) => pair,
-                Err(error) => {
-                    return match error {
-                        vk::Result::TIMEOUT => Ok(None),
-                        vk::Result::NOT_READY | vk::Result::ERROR_OUT_OF_DATE_KHR => {
-                            Err(crate::SurfaceError::Outdated)
-                        }
-                        vk::Result::ERROR_SURFACE_LOST_KHR => Err(crate::SurfaceError::Lost),
-                        other => Err(crate::DeviceError::from(other).into()),
+        let (index, suboptimal) = match sc.functor.acquire_next_image(
+            sc.raw,
+            0,
+            signal_semaphore,
+            vk::Fence::null(),
+        ) {
+            Ok(pair) => pair,
+            Err(error) => {
+                return match error {
+                    vk::Result::TIMEOUT => Ok(None),
+                    vk::Result::NOT_READY | vk::Result::ERROR_OUT_OF_DATE_KHR => {
+                        Err(crate::SurfaceError::Outdated)
                     }
+                    vk::Result::ERROR_SURFACE_LOST_KHR => Err(crate::SurfaceError::Lost),
+                    other => Err(crate::DeviceError::from(other).into()),
                 }
-            };
+            }
+        };
 
         // special case for Intel Vulkan returning bizzare values (ugh)
         if sc.device.vendor_id == crate::auxil::db::intel::VENDOR && index > 0x100 {
             return Err(crate::SurfaceError::Outdated);
         }
 
-        let fences = &[sc.fence];
 
-        sc.device
-            .raw
-            .wait_for_fences(fences, true, !0)
-            .map_err(crate::DeviceError::from)?;
-        sc.device
-            .raw
-            .reset_fences(fences)
-            .map_err(crate::DeviceError::from)?;
+        // sc.device
+        //     .raw
+        //     .wait_for_fences(fences, true, !0)
+        //     .map_err(crate::DeviceError::from)?;
+        // sc.device
+        //     .raw
+        //     .reset_fences(fences)
+        //     .map_err(crate::DeviceError::from)?;
 
         let texture = super::SurfaceTexture {
             index,
@@ -762,6 +764,7 @@ impl crate::Surface<super::Api> for super::Surface {
                     wgt::TextureDimension::D2,
                 ),
             },
+            relay_semaphore,
         };
         Ok(Some(crate::AcquiredSurfaceTexture {
             texture,

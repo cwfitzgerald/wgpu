@@ -7,7 +7,7 @@ use parking_lot::Mutex;
 
 use std::{
     borrow::Cow,
-    collections::{hash_map::Entry, BTreeMap},
+    collections::{hash_map::Entry, BTreeMap, VecDeque},
     ffi::CString,
     num::NonZeroU32,
     ptr,
@@ -575,19 +575,17 @@ impl super::Device {
             .get_swapchain_images(raw)
             .map_err(crate::DeviceError::from)?;
 
-        let vk_info = vk::FenceCreateInfo::builder().build();
-        let fence = self
-            .shared
-            .raw
-            .create_fence(&vk_info, None)
+        let relay_semaphores = (0..images.len())
+            .map(|_| super::RelaySemaphore::new(&self.shared.raw))
+            .collect::<Result<VecDeque<_>, _>>()
             .map_err(crate::DeviceError::from)?;
 
         Ok(super::Swapchain {
             raw,
             functor,
             device: Arc::clone(&self.shared),
-            fence,
             images,
+            relay_semaphores,
             config: config.clone(),
         })
     }
@@ -702,12 +700,9 @@ impl super::Device {
 }
 
 impl crate::Device<super::Api> for super::Device {
-    unsafe fn exit(self, queue: super::Queue) {
+    unsafe fn exit(self, _queue: super::Queue) {
         self.mem_allocator.into_inner().cleanup(&*self.shared);
         self.desc_allocator.into_inner().cleanup(&*self.shared);
-        for &sem in queue.relay_semaphores.iter() {
-            self.shared.raw.destroy_semaphore(sem, None);
-        }
         self.shared.free_resources();
     }
 

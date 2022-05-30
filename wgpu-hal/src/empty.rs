@@ -96,6 +96,7 @@ impl crate::Queue<Api> for Context {
     unsafe fn submit(
         &mut self,
         command_buffers: &[&Resource],
+        surface_textures: &mut [&mut Resource],
         signal_fence: Option<(&mut Resource, crate::FenceValue)>,
     ) -> DeviceResult<()> {
         Ok(())

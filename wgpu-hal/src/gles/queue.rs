@@ -1150,6 +1150,7 @@ impl crate::Queue<super::Api> for super::Queue {
     unsafe fn submit(
         &mut self,
         command_buffers: &[&super::CommandBuffer],
+        _surface_textures: &mut [&mut super::Texture],
         signal_fence: Option<(&mut super::Fence, crate::FenceValue)>,
     ) -> Result<(), crate::DeviceError> {
         let shared = Arc::clone(&self.shared);

@@ -818,6 +818,11 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                     log::trace!("Device after submission {}", submit_index);
                 }
 
+                let (_, mut token) = hub.buffers.read(&mut token); // skip token
+                let (mut texture_guard, _) = hub.textures.write(&mut token);
+
+                let mut surface_texture_references = Vec::new();
+
                 let super::Device {
                     ref mut pending_writes,
                     ref mut queue,
@@ -832,9 +837,6 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                     // (2) it's doing the extra locking unconditionally
                     // Maybe we can only do so if any surfaces are being written to?
 
-                    let (_, mut token) = hub.buffers.read(&mut token); // skip token
-                    let (mut texture_guard, _) = hub.textures.write(&mut token);
-
                     used_surface_textures.set_size(texture_guard.len());
 
                     for &id in pending_writes.dst_textures.iter() {
@@ -845,9 +847,12 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                             }
                             TextureInner::Native { raw: Some(_) } => {}
                             TextureInner::Surface {
-                                ref mut has_work, ..
+                                ref mut has_work,
+                                ref mut raw,
+                                ..
                             } => {
                                 *has_work = true;
+                                surface_texture_references.push(raw);
                                 let ref_count = texture.life_guard.add_ref();
                                 unsafe {
                                     used_surface_textures
@@ -894,7 +899,11 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                     .collect::<Vec<_>>();
                 unsafe {
                     queue
-                        .submit(&refs, Some((fence, submit_index)))
+                        .submit(
+                            &refs,
+                            &mut surface_texture_references,
+                            Some((fence, submit_index)),
+                        )
                         .map_err(DeviceError::from)?;
                 }
             }

@@ -206,6 +206,7 @@ impl crate::Queue<super::Api> for super::Queue {
     unsafe fn submit(
         &mut self,
         command_buffers: &[&super::CommandBuffer],
+        surface_textures: &mut [&mut super::SurfaceTexture],
         signal_fence: Option<(&mut super::Fence, crate::FenceValue)>,
     ) -> Result<(), crate::DeviceError> {
         todo!()

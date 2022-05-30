@@ -734,6 +734,7 @@ impl crate::Queue<Api> for Queue {
     unsafe fn submit(
         &mut self,
         command_buffers: &[&CommandBuffer],
+        _surface_textures: &mut [&mut Texture],
         signal_fence: Option<(&mut Fence, crate::FenceValue)>,
     ) -> Result<(), crate::DeviceError> {
         self.temp_lists.clear();

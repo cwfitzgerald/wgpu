@@ -130,7 +130,7 @@ fn fill_screen(exposed: &hal::ExposedAdapter<hal::api::Gles>, width: u32, height
     .unwrap();
 
     let format = wgt::TextureFormat::Rgba8UnormSrgb;
-    let texture = <hal::api::Gles as hal::Api>::Texture::default_framebuffer(format);
+    let mut texture = <hal::api::Gles as hal::Api>::Texture::default_framebuffer(format);
     let view = unsafe {
         od.device
             .create_texture_view(
@@ -180,6 +180,6 @@ fn fill_screen(exposed: &hal::ExposedAdapter<hal::api::Gles>, width: u32, height
         encoder.begin_render_pass(&rp_desc);
         encoder.end_render_pass();
         let cmd_buf = encoder.end_encoding().unwrap();
-        od.queue.submit(&[&cmd_buf], None).unwrap();
+        od.queue.submit(&[&cmd_buf], &mut [&mut texture], None).unwrap();
     }
 }

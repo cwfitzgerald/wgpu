@@ -462,7 +462,7 @@ impl<A: hal::Api> Example<A> {
             let mut fence = device.create_fence().unwrap();
             let init_cmd = cmd_encoder.end_encoding().unwrap();
             queue
-                .submit(&[&init_cmd], Some((&mut fence, init_fence_value)))
+                .submit(&[&init_cmd], &mut [], Some((&mut fence, init_fence_value)))
                 .unwrap();
             device.wait(&fence, init_fence_value, !0).unwrap();
             device.destroy_buffer(staging_buffer);
@@ -514,7 +514,7 @@ impl<A: hal::Api> Example<A> {
             {
                 let ctx = &mut self.contexts[self.context_index];
                 self.queue
-                    .submit(&[], Some((&mut ctx.fence, ctx.fence_value)))
+                    .submit(&[], &mut [], Some((&mut ctx.fence, ctx.fence_value)))
                     .unwrap();
             }
 
@@ -614,7 +614,7 @@ impl<A: hal::Api> Example<A> {
 
         let ctx = &mut self.contexts[self.context_index];
 
-        let surface_tex = unsafe { self.surface.acquire_texture(!0).unwrap().unwrap().texture };
+        let mut surface_tex = unsafe { self.surface.acquire_texture(!0).unwrap().unwrap().texture };
 
         let target_barrier0 = hal::TextureBarrier {
             texture: surface_tex.borrow(),
@@ -699,7 +699,7 @@ impl<A: hal::Api> Example<A> {
             } else {
                 None
             };
-            self.queue.submit(&[&cmd_buf], fence_param).unwrap();
+            self.queue.submit(&[&cmd_buf], &mut [&mut surface_tex], fence_param).unwrap();
             self.queue.present(&mut self.surface, surface_tex).unwrap();
             ctx.used_cmd_bufs.push(cmd_buf);
             ctx.used_views.push(surface_tex_view);

@@ -31,7 +31,9 @@ mod conv;
 mod device;
 mod instance;
 
-use std::{borrow::Borrow, ffi::CStr, num::NonZeroU32, sync::Arc};
+use std::{
+    borrow::Borrow, collections::VecDeque, ffi::CStr, mem, num::NonZeroU32, slice, sync::Arc,
+};
 
 use arrayvec::ArrayVec;
 use ash::{
@@ -99,8 +101,8 @@ struct Swapchain {
     raw: vk::SwapchainKHR,
     functor: khr::Swapchain,
     device: Arc<DeviceShared>,
-    fence: vk::Fence,
     images: Vec<vk::Image>,
+    relay_semaphores: VecDeque<RelaySemaphore>,
     config: crate::SurfaceConfiguration,
 }
 
@@ -115,6 +117,7 @@ pub struct Surface {
 pub struct SurfaceTexture {
     index: u32,
     texture: Texture,
+    relay_semaphore: RelaySemaphore,
 }
 
 impl Borrow<Texture> for SurfaceTexture {
@@ -178,6 +181,31 @@ bitflags::bitflags!(
         const EMPTY_RESOLVE_ATTACHMENT_LISTS = 0x2;
     }
 );
+
+#[derive(Debug, Copy, Clone)]
+struct RelaySemaphore {
+    semaphore_a: vk::Semaphore,
+    semaphore_b: vk::Semaphore,
+}
+
+impl RelaySemaphore {
+    unsafe fn new(device: &ash::Device) -> ash::prelude::VkResult<Self> {
+        Ok(Self {
+            semaphore_a: device.create_semaphore(&vk::SemaphoreCreateInfo::builder(), None)?,
+            semaphore_b: device.create_semaphore(&vk::SemaphoreCreateInfo::builder(), None)?,
+        })
+    }
+
+    fn next(&mut self) -> (vk::Semaphore, vk::Semaphore) {
+        mem::swap(&mut self.semaphore_a, &mut self.semaphore_b);
+        (self.semaphore_a, self.semaphore_b)
+    }
+
+    unsafe fn destroy(&mut self, device: &ash::Device) {
+        device.destroy_semaphore(self.semaphore_a, None);
+        device.destroy_semaphore(self.semaphore_b, None);
+    }
+}
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct AttachmentKey {
@@ -340,13 +368,6 @@ pub struct Queue {
     swapchain_fn: khr::Swapchain,
     device: Arc<DeviceShared>,
     family_index: u32,
-    /// We use a redundant chain of semaphores to pass on the signal
-    /// from submissions to the last present, since it's required by the
-    /// specification.
-    /// It would be correct to use a single semaphore there, but
-    /// [Intel hangs in `anv_queue_finish`](https://gitlab.freedesktop.org/mesa/mesa/-/issues/5508).
-    relay_semaphores: [vk::Semaphore; 2],
-    relay_index: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -562,6 +583,7 @@ impl crate::Queue<Api> for Queue {
     unsafe fn submit(
         &mut self,
         command_buffers: &[&CommandBuffer],
+        surface_textures: &mut [&mut SurfaceTexture],
         signal_fence: Option<(&mut Fence, crate::FenceValue)>,
     ) -> Result<(), crate::DeviceError> {
         let vk_cmd_buffers = command_buffers
@@ -603,25 +625,19 @@ impl crate::Queue<Api> for Queue {
             }
         }
 
-        let wait_stage_mask = [vk::PipelineStageFlags::TOP_OF_PIPE];
-        let sem_index = match self.relay_index {
-            Some(old_index) => {
-                vk_info = vk_info
-                    .wait_semaphores(&self.relay_semaphores[old_index..old_index + 1])
-                    .wait_dst_stage_mask(&wait_stage_mask);
-                (old_index + 1) % self.relay_semaphores.len()
-            }
-            None => 0,
-        };
-        self.relay_index = Some(sem_index);
-        signal_semaphores[0] = self.relay_semaphores[sem_index];
-
-        let signal_count = if signal_semaphores[1] == vk::Semaphore::null() {
-            1
-        } else {
-            2
-        };
-        vk_info = vk_info.signal_semaphores(&signal_semaphores[..signal_count]);
+        let mut wait_stage_mask = Vec::with_capacity(surface_textures.len());
+        let mut wait_semaphores = Vec::with_capacity(surface_textures.len());
+        let mut signal_semaphores = Vec::with_capacity(surface_textures.len());
+        for &mut &mut ref mut surface in surface_textures {
+            let (wait, signal) = surface.relay_semaphore.next();
+            wait_stage_mask.push(vk::PipelineStageFlags::TOP_OF_PIPE);
+            wait_semaphores.push(wait);
+            signal_semaphores.push(signal);
+        }
+        vk_info = vk_info
+            .wait_semaphores(&wait_semaphores)
+            .signal_semaphores(&signal_semaphores)
+            .wait_dst_stage_mask(&wait_stage_mask);
 
         profiling::scope!("vkQueueSubmit");
         self.device
@@ -633,19 +649,18 @@ impl crate::Queue<Api> for Queue {
     unsafe fn present(
         &mut self,
         surface: &mut Surface,
-        texture: SurfaceTexture,
+        mut texture: SurfaceTexture,
     ) -> Result<(), crate::SurfaceError> {
         let ssc = surface.swapchain.as_ref().unwrap();
 
+        let (wait_semaphore, _) = texture.relay_semaphore.next();
+
         let swapchains = [ssc.raw];
         let image_indices = [texture.index];
-        let mut vk_info = vk::PresentInfoKHR::builder()
+        let vk_info = vk::PresentInfoKHR::builder()
             .swapchains(&swapchains)
+            .wait_semaphores(slice::from_ref(&wait_semaphore))
             .image_indices(&image_indices);
-
-        if let Some(old_index) = self.relay_index.take() {
-            vk_info = vk_info.wait_semaphores(&self.relay_semaphores[old_index..old_index + 1]);
-        }
 
         let suboptimal = {
             profiling::scope!("vkQueuePresentKHR");

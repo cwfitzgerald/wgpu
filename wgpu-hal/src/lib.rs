@@ -322,9 +322,12 @@ pub trait Queue<A: Api>: Send + Sync {
     /// - all of the command buffers were created from command pools
     ///   that are associated with this queue.
     /// - all of the command buffers had `CommadBuffer::finish()` called.
+    /// - all surface textures that the command buffers write to must be
+    ///   passed to the surface_textures argument
     unsafe fn submit(
         &mut self,
         command_buffers: &[&A::CommandBuffer],
+        surface_textures: &mut [&mut A::SurfaceTexture],
         signal_fence: Option<(&mut A::Fence, FenceValue)>,
     ) -> Result<(), DeviceError>;
     unsafe fn present(

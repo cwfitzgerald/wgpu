@@ -318,6 +318,7 @@ impl crate::Queue<Api> for Queue {
     unsafe fn submit(
         &mut self,
         command_buffers: &[&CommandBuffer],
+        surface_textures: &mut [&mut SurfaceTexture],
         signal_fence: Option<(&mut Fence, crate::FenceValue)>,
     ) -> Result<(), crate::DeviceError> {
         objc::rc::autoreleasepool(|| {
