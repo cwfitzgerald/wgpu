@@ -93,7 +93,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         surface_id: SurfaceId,
         texture_id_in: Input<G, TextureId>,
     ) -> Result<SurfaceOutput, SurfaceError> {
-        profiling::scope!("get_next_texture", "SwapChain");
+        profiling::scope!("SwapChain::get_next_texture");
 
         let hub = A::hub(self);
         let mut token = Token::root();
@@ -126,12 +126,19 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         let mut fence = None;
         if let Some(ref mut presentation) = surface.presentation {
             if presentation.last_used_submissions.len() == presentation.num_frames as usize {
-                fence = Some((&device.fence, presentation.last_used_submissions.pop_front().unwrap()));
+                fence = Some((
+                    &device.fence,
+                    presentation.last_used_submissions.pop_front().unwrap(),
+                ));
+            } else {
+                // To be updated by the next submit.
+                presentation.last_used_submissions.push_back(0);
             }
         }
 
         let suf = A::get_surface_mut(surface);
-        let (texture_id, status) = match unsafe { suf.raw.acquire_texture(FRAME_TIMEOUT_MS, fence) } {
+        let (texture_id, status) = match unsafe { suf.raw.acquire_texture(FRAME_TIMEOUT_MS, fence) }
+        {
             Ok(Some(ast)) => {
                 let clear_view_desc = hal::TextureViewDescriptor {
                     label: Some("(wgpu internal) clear surface texture view"),

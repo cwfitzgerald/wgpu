@@ -713,23 +713,30 @@ impl crate::Surface<super::Api> for super::Surface {
         fence: Option<(&super::Fence, crate::FenceValue)>,
     ) -> Result<Option<crate::AcquiredSurfaceTexture<super::Api>>, crate::SurfaceError> {
         let sc = self.swapchain.as_mut().unwrap();
+        let timeout_ns = timeout_ms as u64 * super::MILLIS_TO_NANOS;
+
+        // dbg!(&sc.relay_semaphores);
 
         if let Some((fence, value)) = fence {
+            eprintln!("waiting, {}", value);
             assert!(sc.device.wait(fence, value, timeout_ms)?);
         }
 
-        let mut relay_semaphore = *sc.relay_semaphores.front().unwrap();
+        let mut relay_semaphore = sc.relay_semaphores.front_mut().unwrap();
         let (_, signal_semaphore) = relay_semaphore.next();
+        let relay_semaphore = relay_semaphore.clone();
+        sc.relay_semaphores.rotate_left(1);
 
         // will block if no image is available
-        let (index, suboptimal) =
+        let (index, suboptimal) = {
+            profiling::scope!("vkAcquireNextImage");
             match sc
                 .functor
-                .acquire_next_image(sc.raw, 0, signal_semaphore, vk::Fence::null())
+                .acquire_next_image(sc.raw, timeout_ns, signal_semaphore, vk::Fence::null())
             {
                 Ok(pair) => pair,
                 Err(error) => {
-                    return match error {
+                    return match dbg!(error) {
                         vk::Result::TIMEOUT => Ok(None),
                         vk::Result::NOT_READY | vk::Result::ERROR_OUT_OF_DATE_KHR => {
                             Err(crate::SurfaceError::Outdated)
@@ -738,7 +745,8 @@ impl crate::Surface<super::Api> for super::Surface {
                         other => Err(crate::DeviceError::from(other).into()),
                     }
                 }
-            };
+            }
+        };
 
         // special case for Intel Vulkan returning bizzare values (ugh)
         if sc.device.vendor_id == crate::auxil::db::intel::VENDOR && index > 0x100 {

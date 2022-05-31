@@ -599,6 +599,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
             let mut used_surface_textures = track::TextureUsageScope::new();
 
             {
+                let mut surface_texture_id = Vec::new();
                 let (mut command_buffer_guard, mut token) = hub.command_buffers.write(&mut token);
 
                 if !command_buffer_ids.is_empty() {
@@ -680,9 +681,28 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                                 }
                                 TextureInner::Native { raw: Some(_) } => false,
                                 TextureInner::Surface {
-                                    ref mut has_work, ..
+                                    ref mut has_work,
+                                    parent_id,
+                                    ..
                                 } => {
                                     *has_work = true;
+
+                                    let surface = &mut surface_guard[parent_id];
+
+                                    let surface_submission_indexes = &mut surface
+                                        .presentation
+                                        .as_mut()
+                                        .unwrap()
+                                        .last_used_submissions;
+                                    if surface_submission_indexes.is_empty() {
+                                        surface_submission_indexes.push_back(0);
+                                    }
+                                    *surface_submission_indexes.back_mut().unwrap() = submit_index;
+                                    // dbg!(surface_submission_indexes);
+
+                                    // We've validated it above
+                                    surface_texture_id.push(id);
+
                                     true
                                 }
                             };
@@ -822,8 +842,6 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                 let (_, mut token) = hub.buffers.read(&mut token); // skip token
                 let (mut texture_guard, _) = hub.textures.write(&mut token);
 
-                let mut surface_texture_id = Vec::new();
-
                 let super::Device {
                     ref mut pending_writes,
                     ref mut queue,
@@ -913,6 +931,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                             .flat_map(|pool_execution| pool_execution.cmd_buffers.iter()),
                     )
                     .collect::<Vec<_>>();
+
 
                 let surface_textures = texture_guard.get_sparse_mut(&mut surface_texture_id);
 

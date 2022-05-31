@@ -182,7 +182,7 @@ bitflags::bitflags!(
     }
 );
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 struct RelaySemaphore {
     semaphore_a: vk::Semaphore,
     semaphore_b: vk::Semaphore,
@@ -593,19 +593,28 @@ impl crate::Queue<Api> for Queue {
 
         let mut vk_info = vk::SubmitInfo::builder().command_buffers(&vk_cmd_buffers);
 
+        let mut wait_stage_mask = Vec::with_capacity(surface_textures.len());
+        let mut wait_semaphores = Vec::with_capacity(surface_textures.len());
+        let mut signal_semaphores = Vec::with_capacity(surface_textures.len());
+        let mut timeline_semaphore_values = Vec::with_capacity(surface_textures.len());
+        for &mut &mut ref mut surface in surface_textures {
+            let (wait, signal) = surface.relay_semaphore.next();
+            wait_stage_mask.push(vk::PipelineStageFlags::TOP_OF_PIPE);
+            wait_semaphores.push(wait);
+            signal_semaphores.push(signal);
+            timeline_semaphore_values.push(!0)
+        }
+
         let mut fence_raw = vk::Fence::null();
         let mut vk_timeline_info;
-        let mut signal_semaphores = [vk::Semaphore::null(), vk::Semaphore::null()];
-        let signal_values;
-
         if let Some((fence, value)) = signal_fence {
             fence.maintain(&self.device.raw)?;
             match *fence {
                 Fence::TimelineSemaphore(raw) => {
-                    signal_values = [!0, value];
-                    signal_semaphores[1] = raw;
+                    signal_semaphores.push(raw);
+                    timeline_semaphore_values.push(value);
                     vk_timeline_info = vk::TimelineSemaphoreSubmitInfo::builder()
-                        .signal_semaphore_values(&signal_values);
+                        .signal_semaphore_values(&timeline_semaphore_values);
                     vk_info = vk_info.push_next(&mut vk_timeline_info);
                 }
                 Fence::FencePool {
@@ -623,16 +632,6 @@ impl crate::Queue<Api> for Queue {
                     active.push((value, fence_raw));
                 }
             }
-        }
-
-        let mut wait_stage_mask = Vec::with_capacity(surface_textures.len());
-        let mut wait_semaphores = Vec::with_capacity(surface_textures.len());
-        let mut signal_semaphores = Vec::with_capacity(surface_textures.len());
-        for &mut &mut ref mut surface in surface_textures {
-            let (wait, signal) = surface.relay_semaphore.next();
-            wait_stage_mask.push(vk::PipelineStageFlags::TOP_OF_PIPE);
-            wait_semaphores.push(wait);
-            signal_semaphores.push(signal);
         }
         vk_info = vk_info
             .wait_semaphores(&wait_semaphores)
