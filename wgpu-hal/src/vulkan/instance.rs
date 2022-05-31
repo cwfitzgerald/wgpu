@@ -121,12 +121,15 @@ unsafe extern "system" fn debug_utils_messenger_callback(
 }
 
 impl super::Swapchain {
-    unsafe fn release_resources(self, device: &ash::Device) -> Self {
+    unsafe fn release_resources(mut self, device: &ash::Device) -> Self {
         profiling::scope!("Swapchain::release_resources");
         {
             profiling::scope!("vkDeviceWaitIdle");
             let _ = device.device_wait_idle();
         };
+        for semaphore in self.relay_semaphores.drain(..) {
+            semaphore.destroy(device);
+        }
         self
     }
 }
@@ -707,38 +710,40 @@ impl crate::Surface<super::Api> for super::Surface {
     unsafe fn acquire_texture(
         &mut self,
         timeout_ms: u32,
+        fence: Option<(&super::Fence, crate::FenceValue)>,
     ) -> Result<Option<crate::AcquiredSurfaceTexture<super::Api>>, crate::SurfaceError> {
         let sc = self.swapchain.as_mut().unwrap();
-        let timeout_ns = timeout_ms as u64 * super::MILLIS_TO_NANOS;
+
+        if let Some((fence, value)) = fence {
+            assert!(sc.device.wait(fence, value, timeout_ms)?);
+        }
 
         let mut relay_semaphore = *sc.relay_semaphores.front().unwrap();
         let (_, signal_semaphore) = relay_semaphore.next();
 
         // will block if no image is available
-        let (index, suboptimal) = match sc.functor.acquire_next_image(
-            sc.raw,
-            0,
-            signal_semaphore,
-            vk::Fence::null(),
-        ) {
-            Ok(pair) => pair,
-            Err(error) => {
-                return match error {
-                    vk::Result::TIMEOUT => Ok(None),
-                    vk::Result::NOT_READY | vk::Result::ERROR_OUT_OF_DATE_KHR => {
-                        Err(crate::SurfaceError::Outdated)
+        let (index, suboptimal) =
+            match sc
+                .functor
+                .acquire_next_image(sc.raw, 0, signal_semaphore, vk::Fence::null())
+            {
+                Ok(pair) => pair,
+                Err(error) => {
+                    return match error {
+                        vk::Result::TIMEOUT => Ok(None),
+                        vk::Result::NOT_READY | vk::Result::ERROR_OUT_OF_DATE_KHR => {
+                            Err(crate::SurfaceError::Outdated)
+                        }
+                        vk::Result::ERROR_SURFACE_LOST_KHR => Err(crate::SurfaceError::Lost),
+                        other => Err(crate::DeviceError::from(other).into()),
                     }
-                    vk::Result::ERROR_SURFACE_LOST_KHR => Err(crate::SurfaceError::Lost),
-                    other => Err(crate::DeviceError::from(other).into()),
                 }
-            }
-        };
+            };
 
         // special case for Intel Vulkan returning bizzare values (ugh)
         if sc.device.vendor_id == crate::auxil::db::intel::VENDOR && index > 0x100 {
             return Err(crate::SurfaceError::Outdated);
         }
-
 
         // sc.device
         //     .raw

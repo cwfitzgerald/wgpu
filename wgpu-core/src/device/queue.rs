@@ -587,6 +587,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
             let hub = A::hub(self);
             let mut token = Token::root();
 
+            let (mut surface_guard, mut token) = self.surfaces.write(&mut token);
             let (mut device_guard, mut token) = hub.devices.write(&mut token);
             let device = device_guard
                 .get_mut(queue_id)
@@ -821,7 +822,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                 let (_, mut token) = hub.buffers.read(&mut token); // skip token
                 let (mut texture_guard, _) = hub.textures.write(&mut token);
 
-                let mut surface_texture_references = Vec::new();
+                let mut surface_texture_id = Vec::new();
 
                 let super::Device {
                     ref mut pending_writes,
@@ -848,11 +849,26 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                             TextureInner::Native { raw: Some(_) } => {}
                             TextureInner::Surface {
                                 ref mut has_work,
-                                ref mut raw,
+                                parent_id,
                                 ..
                             } => {
                                 *has_work = true;
-                                surface_texture_references.push(raw);
+
+                                let surface = &mut surface_guard[parent_id];
+
+                                let surface_submission_indexes = &mut surface
+                                    .presentation
+                                    .as_mut()
+                                    .unwrap()
+                                    .last_used_submissions;
+                                if surface_submission_indexes.is_empty() {
+                                    surface_submission_indexes.push_back(0);
+                                }
+                                *surface_submission_indexes.back_mut().unwrap() = submit_index;
+
+                                // We've validated it above
+                                surface_texture_id.push(id::Valid(id));
+
                                 let ref_count = texture.life_guard.add_ref();
                                 unsafe {
                                     used_surface_textures
@@ -897,11 +913,22 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                             .flat_map(|pool_execution| pool_execution.cmd_buffers.iter()),
                     )
                     .collect::<Vec<_>>();
+
+                let surface_textures = texture_guard.get_sparse_mut(&mut surface_texture_id);
+
+                let mut surface_texture_reference: Vec<_> = surface_textures
+                    .into_iter()
+                    .map(|t| match t.inner {
+                        TextureInner::Surface { ref mut raw, .. } => raw,
+                        TextureInner::Native { .. } => unreachable!(),
+                    })
+                    .collect();
+
                 unsafe {
                     queue
                         .submit(
                             &refs,
-                            &mut surface_texture_references,
+                            &mut surface_texture_reference,
                             Some((fence, submit_index)),
                         )
                         .map_err(DeviceError::from)?;

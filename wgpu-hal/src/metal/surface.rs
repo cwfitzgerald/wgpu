@@ -217,6 +217,7 @@ impl crate::Surface<super::Api> for super::Surface {
     unsafe fn acquire_texture(
         &mut self,
         _timeout_ms: u32, //TODO
+        _fence: Option<(super::Fence, crate::FenceValue)>,
     ) -> Result<Option<crate::AcquiredSurfaceTexture<super::Api>>, crate::SurfaceError> {
         let render_layer = self.render_layer.lock();
         let (drawable, texture) = match autoreleasepool(|| {

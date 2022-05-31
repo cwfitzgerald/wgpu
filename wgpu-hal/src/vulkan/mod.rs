@@ -201,7 +201,7 @@ impl RelaySemaphore {
         (self.semaphore_a, self.semaphore_b)
     }
 
-    unsafe fn destroy(&mut self, device: &ash::Device) {
+    unsafe fn destroy(&self, device: &ash::Device) {
         device.destroy_semaphore(self.semaphore_a, None);
         device.destroy_semaphore(self.semaphore_b, None);
     }

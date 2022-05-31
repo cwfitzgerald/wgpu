@@ -197,6 +197,7 @@ pub trait Surface<A: Api>: Send + Sync {
     unsafe fn acquire_texture(
         &mut self,
         timeout_ms: u32,
+        fence: Option<(&A::Fence, FenceValue)>,
     ) -> Result<Option<AcquiredSurfaceTexture<A>>, SurfaceError>;
     unsafe fn discard_texture(&mut self, texture: A::SurfaceTexture);
 }

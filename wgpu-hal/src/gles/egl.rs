@@ -1195,6 +1195,7 @@ impl crate::Surface<super::Api> for Surface {
     unsafe fn acquire_texture(
         &mut self,
         _timeout_ms: u32, //TODO
+        _fence: Option<(&super::Fence, crate::FenceValue)>,
     ) -> Result<Option<crate::AcquiredSurfaceTexture<super::Api>>, crate::SurfaceError> {
         let sc = self.swapchain.as_ref().unwrap();
         let texture = super::Texture {

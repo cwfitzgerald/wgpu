@@ -61,6 +61,61 @@ impl super::DeviceShared {
         );
     }
 
+    pub(super) unsafe fn wait(
+        &self,
+        fence: &super::Fence,
+        wait_value: crate::FenceValue,
+        timeout_ms: u32,
+    ) -> Result<bool, crate::DeviceError> {
+        let timeout_ns = timeout_ms as u64 * super::MILLIS_TO_NANOS;
+        match *fence {
+            super::Fence::TimelineSemaphore(raw) => {
+                let semaphores = [raw];
+                let values = [wait_value];
+                let vk_info = vk::SemaphoreWaitInfo::builder()
+                    .semaphores(&semaphores)
+                    .values(&values);
+                let result = match self.extension_fns.timeline_semaphore {
+                    Some(super::ExtensionFn::Extension(ref ext)) => {
+                        ext.wait_semaphores(&vk_info, timeout_ns)
+                    }
+                    Some(super::ExtensionFn::Promoted) => {
+                        self.raw.wait_semaphores(&vk_info, timeout_ns)
+                    }
+                    None => unreachable!(),
+                };
+                match result {
+                    Ok(()) => Ok(true),
+                    Err(vk::Result::TIMEOUT) => Ok(false),
+                    Err(other) => Err(other.into()),
+                }
+            }
+            super::Fence::FencePool {
+                last_completed,
+                ref active,
+                free: _,
+            } => {
+                if wait_value <= last_completed {
+                    Ok(true)
+                } else {
+                    match active.iter().find(|&&(value, _)| value >= wait_value) {
+                        Some(&(_, raw)) => {
+                            match self.raw.wait_for_fences(&[raw], true, timeout_ns) {
+                                Ok(()) => Ok(true),
+                                Err(vk::Result::TIMEOUT) => Ok(false),
+                                Err(other) => Err(other.into()),
+                            }
+                        }
+                        None => {
+                            log::error!("No signals reached value {}", wait_value);
+                            Err(crate::DeviceError::Lost)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     pub fn make_render_pass(
         &self,
         key: super::RenderPassKey,
@@ -1772,53 +1827,7 @@ impl crate::Device<super::Api> for super::Device {
         wait_value: crate::FenceValue,
         timeout_ms: u32,
     ) -> Result<bool, crate::DeviceError> {
-        let timeout_ns = timeout_ms as u64 * super::MILLIS_TO_NANOS;
-        match *fence {
-            super::Fence::TimelineSemaphore(raw) => {
-                let semaphores = [raw];
-                let values = [wait_value];
-                let vk_info = vk::SemaphoreWaitInfo::builder()
-                    .semaphores(&semaphores)
-                    .values(&values);
-                let result = match self.shared.extension_fns.timeline_semaphore {
-                    Some(super::ExtensionFn::Extension(ref ext)) => {
-                        ext.wait_semaphores(&vk_info, timeout_ns)
-                    }
-                    Some(super::ExtensionFn::Promoted) => {
-                        self.shared.raw.wait_semaphores(&vk_info, timeout_ns)
-                    }
-                    None => unreachable!(),
-                };
-                match result {
-                    Ok(()) => Ok(true),
-                    Err(vk::Result::TIMEOUT) => Ok(false),
-                    Err(other) => Err(other.into()),
-                }
-            }
-            super::Fence::FencePool {
-                last_completed,
-                ref active,
-                free: _,
-            } => {
-                if wait_value <= last_completed {
-                    Ok(true)
-                } else {
-                    match active.iter().find(|&&(value, _)| value >= wait_value) {
-                        Some(&(_, raw)) => {
-                            match self.shared.raw.wait_for_fences(&[raw], true, timeout_ns) {
-                                Ok(()) => Ok(true),
-                                Err(vk::Result::TIMEOUT) => Ok(false),
-                                Err(other) => Err(other.into()),
-                            }
-                        }
-                        None => {
-                            log::error!("No signals reached value {}", wait_value);
-                            Err(crate::DeviceError::Lost)
-                        }
-                    }
-                }
-            }
-        }
+        self.shared.wait(fence, wait_value, timeout_ms)
     }
 
     unsafe fn start_capture(&self) -> bool {

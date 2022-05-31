@@ -67,6 +67,7 @@ impl crate::Surface<Api> for Context {
     unsafe fn acquire_texture(
         &mut self,
         timeout_ms: u32,
+        fence: Option<(&Resource, crate::FenceValue)>,
     ) -> Result<Option<crate::AcquiredSurfaceTexture<Api>>, crate::SurfaceError> {
         Ok(None)
     }

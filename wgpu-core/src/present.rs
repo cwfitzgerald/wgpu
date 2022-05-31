@@ -9,7 +9,7 @@ When this texture is presented, we remove it from the device tracker as well as
 extract it from the hub.
 !*/
 
-use std::borrow::Borrow;
+use std::{borrow::Borrow, collections::VecDeque};
 
 #[cfg(feature = "trace")]
 use crate::device::trace::Action;
@@ -19,7 +19,7 @@ use crate::{
     hub::{Global, GlobalIdentityHandlerFactory, HalApi, Input, Token},
     id::{DeviceId, SurfaceId, TextureId, Valid},
     init_tracker::TextureInitTracker,
-    resource, track, LifeGuard, Stored,
+    resource, track, LifeGuard, Stored, SubmissionIndex,
 };
 
 use hal::{Queue as _, Surface as _};
@@ -36,6 +36,7 @@ pub(crate) struct Presentation {
     #[allow(unused)]
     pub(crate) num_frames: u32,
     pub(crate) acquired_texture: Option<Stored<TextureId>>,
+    pub(crate) last_used_submissions: VecDeque<SubmissionIndex>,
 }
 
 impl Presentation {
@@ -122,8 +123,15 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         #[cfg(not(feature = "trace"))]
         let _ = device;
 
+        let mut fence = None;
+        if let Some(ref mut presentation) = surface.presentation {
+            if presentation.last_used_submissions.len() == presentation.num_frames as usize {
+                fence = Some((&device.fence, presentation.last_used_submissions.pop_front().unwrap()));
+            }
+        }
+
         let suf = A::get_surface_mut(surface);
-        let (texture_id, status) = match unsafe { suf.raw.acquire_texture(FRAME_TIMEOUT_MS) } {
+        let (texture_id, status) = match unsafe { suf.raw.acquire_texture(FRAME_TIMEOUT_MS, fence) } {
             Ok(Some(ast)) => {
                 let clear_view_desc = hal::TextureViewDescriptor {
                     label: Some("(wgpu internal) clear surface texture view"),

@@ -202,6 +202,35 @@ impl<T, I: id::TypedId> Storage<T, I> {
         }
     }
 
+    pub(crate) fn get_sparse_mut(&mut self, ids: &mut [id::Valid<I>]) -> Vec<&mut T> {
+        ids.sort_by_key(|id| id.0);
+
+        let mut iter = ids.iter().peekable();
+
+        while let Some(&left) = iter.next() {
+            let right = match iter.peek() {
+                Some(v) => **v,
+                None => break,
+            };
+            assert_ne!(left.0, right.0);
+        }
+
+        let mut references = Vec::new();
+        for &mut id in ids {
+            let index = id.0.unzip().0 as usize;
+            if index >= self.map.len() {
+                panic!("ID {} is out of range", index);
+            }
+            // This is sound because we know the index in unique and in range
+            match *unsafe { &mut *self.map.as_mut_ptr().add(index) } {
+                Element::Occupied(ref mut v, _) => references.push(v),
+                Element::Vacant => panic!("{}[{:?}] does not exist", self.kind, id),
+                Element::Error(_, _) => panic!(""),
+            }
+        }
+        references
+    }
+
     pub(crate) fn label_for_invalid_id(&self, id: I) -> &str {
         let (index, _, _) = id.unzip();
         match self.map.get(index as usize) {

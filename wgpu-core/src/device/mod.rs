@@ -22,7 +22,7 @@ use smallvec::SmallVec;
 use thiserror::Error;
 use wgt::{BufferAddress, TextureFormat, TextureViewDimension};
 
-use std::{borrow::Cow, iter, mem, num::NonZeroU32, ops::Range, ptr};
+use std::{borrow::Cow, collections::VecDeque, iter, mem, num::NonZeroU32, ops::Range, ptr};
 
 mod life;
 pub mod queue;
@@ -276,7 +276,7 @@ pub struct Device<A: HalApi> {
 
     command_allocator: Mutex<CommandAllocator<A>>,
     pub(crate) active_submission_index: SubmissionIndex,
-    fence: A::Fence,
+    pub(crate) fence: A::Fence,
 
     /// All live resources allocated with this [`Device`].
     ///
@@ -4922,6 +4922,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                 config: config.clone(),
                 num_frames,
                 acquired_texture: None,
+                last_used_submissions: VecDeque::with_capacity(num_frames as usize),
             });
 
             return None;

@@ -702,6 +702,7 @@ impl crate::Surface<Api> for Surface {
     unsafe fn acquire_texture(
         &mut self,
         timeout_ms: u32,
+        _fence: Option<(&Fence, crate::FenceValue)>,
     ) -> Result<Option<crate::AcquiredSurfaceTexture<Api>>, crate::SurfaceError> {
         let sc = self.swap_chain.as_mut().unwrap();
 
