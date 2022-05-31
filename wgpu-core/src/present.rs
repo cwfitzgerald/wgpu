@@ -92,7 +92,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         surface_id: SurfaceId,
         texture_id_in: Input<G, TextureId>,
     ) -> Result<SurfaceOutput, SurfaceError> {
-        profiling::scope!("get_next_texture", "SwapChain");
+        profiling::scope!("SwapChain::get_next_texture");
 
         let hub = A::hub(self);
         let mut token = Token::root();

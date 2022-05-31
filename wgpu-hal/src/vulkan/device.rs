@@ -1780,6 +1780,7 @@ impl crate::Device<super::Api> for super::Device {
         let timeout_ns = timeout_ms as u64 * super::MILLIS_TO_NANOS;
         match *fence {
             super::Fence::TimelineSemaphore(raw) => {
+                profiling::scope!("vkWaitSemaphores");
                 let semaphores = [raw];
                 let values = [wait_value];
                 let vk_info = vk::SemaphoreWaitInfo::builder()
@@ -1810,6 +1811,7 @@ impl crate::Device<super::Api> for super::Device {
                 } else {
                     match active.iter().find(|&&(value, _)| value >= wait_value) {
                         Some(&(_, raw)) => {
+                            profiling::scope!("vkWaitForFences");
                             match self.shared.raw.wait_for_fences(&[raw], true, timeout_ns) {
                                 Ok(()) => Ok(true),
                                 Err(vk::Result::TIMEOUT) => Ok(false),

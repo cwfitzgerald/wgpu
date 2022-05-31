@@ -528,6 +528,7 @@ impl SwapChain {
     }
 
     unsafe fn wait(&mut self, timeout_ms: u32) -> Result<bool, crate::SurfaceError> {
+        profiling::scope!("WaitForSingleObject(waitable_swapchain)");
         match synchapi::WaitForSingleObject(self.waitable, timeout_ms) {
             winbase::WAIT_ABANDONED | winbase::WAIT_FAILED => Err(crate::SurfaceError::Lost),
             winbase::WAIT_OBJECT_0 => Ok(true),

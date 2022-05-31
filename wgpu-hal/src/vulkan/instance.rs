@@ -713,7 +713,8 @@ impl crate::Surface<super::Api> for super::Surface {
         let timeout_ns = timeout_ms as u64 * super::MILLIS_TO_NANOS;
 
         // will block if no image is available
-        let (index, suboptimal) =
+        let (index, suboptimal) = {
+            profiling::scope!("vkAcquireNextImage");
             match sc
                 .functor
                 .acquire_next_image(sc.raw, timeout_ns, vk::Semaphore::null(), sc.fence)
@@ -729,7 +730,8 @@ impl crate::Surface<super::Api> for super::Surface {
                         other => Err(crate::DeviceError::from(other).into()),
                     }
                 }
-            };
+            }
+        };
 
         // special case for Intel Vulkan returning bizzare values (ugh)
         if sc.device.vendor_id == crate::auxil::db::intel::VENDOR && index > 0x100 {
@@ -738,10 +740,13 @@ impl crate::Surface<super::Api> for super::Surface {
 
         let fences = &[sc.fence];
 
-        sc.device
-            .raw
-            .wait_for_fences(fences, true, !0)
-            .map_err(crate::DeviceError::from)?;
+        {
+            profiling::scope!("vkWaitForFences");
+            sc.device
+                .raw
+                .wait_for_fences(fences, true, !0)
+                .map_err(crate::DeviceError::from)?;
+        }
         sc.device
             .raw
             .reset_fences(fences)
