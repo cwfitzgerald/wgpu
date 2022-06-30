@@ -17,7 +17,7 @@ Top level categories:
 - Major changes
 - Added/New Features
 - Changes
-- Bug Fixes (that don't change api)
+- Bug Fixes (that don't change API)
 - Performance
 - Documentation
 - Dependency Updates
@@ -44,25 +44,25 @@ Bottom level categories:
 
 ### Major Changes
 
-#### Wgsl Syntex
+#### WGSL Syntax
 
-Wgsl syntax has changed in a couple ways. The new syntax is easier to read and work with:
+WGSL syntax has changed in a couple ways. The new syntax is easier to read and work with.
 
-Attributes changed declaration style:
+Attribute declarations are written differently:
 
 ```diff
-- [[location(0)]]
-+ @location(0)
+- [[group(1), binding(0)]]
++ @group(1) @binding(0)
 ```
 
-Stage declarations are now separate attributes:
+Stage declarations are now separate attributes rather than part of the `stage` attribute:
 
 ```diff
 - [[stage(vertex)]]
 + @vertex
 ```
 
-Structs now use `,` as their separator and no longer need semicolons after the declaration:
+Structs now use `,` as field separator and no longer need semicolons after the declaration:
 
 ```diff
 - struct MyStruct {
@@ -73,7 +73,7 @@ Structs now use `,` as their separator and no longer need semicolons after the d
 + }
 ```
 
-#### Surface Api
+#### Surface API
 
 The method of getting the preferred swapchain format has changed to allow viewing all formats supported by the surface.
 
@@ -83,7 +83,7 @@ The method of getting the preferred swapchain format has changed to allow viewin
 ```
 
 Presentation modes now need to match exactly what the surface supports. `FIFO` is _always_ supported,
-but all other modes vary from API to API and Device to Device. To get a list of all supported modes,
+but all other modes vary from API to API and `Device` to `Device`. To get a list of all supported modes,
 call the following. The order does not indicate preference.
 
 ```rust
@@ -92,20 +92,20 @@ let modes = surface.get_supported_present_modes(&adapter);
 
 #### Timestamp Queries
 
-Timestamp queries are now restricted behind multiple features to allow implementation on TDBR (Tile-Based Deferred Rendering)
-based gpus such as mobile devices and Apple's M chips.
+Timestamp queries are now restricted behind multiple features to allow implementation on TBDR (Tile-Based Deferred Rendering)
+based GPUs, such as mobile devices and Apple's M chips.
 
-`Features::TIMESTAMP_QUERIES` now allows for calling write_timestamp only on `CommandEncoder`s.
+`Features::TIMESTAMP_QUERIES` now allows for calling `write_timestamp` only on `CommandEncoder`s.
 
-`Features::WRITE_TIMESTAMP_INSIDE_PASSES` is needed to calling write_timestamp on `RenderPassEncoder`s or `ComputePassEncoder`s.
+`Features::WRITE_TIMESTAMP_INSIDE_PASSES` is needed to calling `write_timestamp` on `RenderPassEncoder`s or `ComputePassEncoder`s.
 
 #### map_async
 
-The function for mapping buffers no longer returns a future and instead calls a callback when the buffer is mapped.
+The function for mapping buffers no longer returns a future, and instead calls a callback when the buffer is mapped.
 
-This aligns with the use of the api more clearly - you aren't supposed to block and wait on the future to resolve,
+This aligns with the use of the API more clearly - you aren't supposed to block and wait on the future to resolve,
 you are supposed to keep rendering and wait until the buffer maps on its own. Mapping and the flow of mapping
-is an under documented area that we hope to improve in the future.
+is an under-documented area that we hope to improve in the future.
 
 ```diff
 - let future = buffer.slice(..).map_async(MapMode::Read);
