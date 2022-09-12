@@ -1221,7 +1221,10 @@ impl crate::Queue<super::Api> for super::Queue {
             fence.maintain(gl);
             let sync = gl
                 .fence_sync(glow::SYNC_GPU_COMMANDS_COMPLETE, 0)
-                .map_err(|_| crate::DeviceError::OutOfMemory)?;
+                .map_err(|e| {
+                    log::error!("failed to create a gl sync object");
+                    crate::DeviceError::OutOfMemory
+                })?;
             fence.pending.push((value, sync));
         }
 
