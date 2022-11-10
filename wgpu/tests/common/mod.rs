@@ -7,7 +7,10 @@ use wgt::{Backends, DeviceDescriptor, DownlevelCapabilities, Features, Limits};
 
 use wgpu::{util, Adapter, Device, DownlevelFlags, Instance, Queue};
 
+mod context;
 pub mod image;
+
+pub use context::*;
 
 async fn initialize_device(
     adapter: &Adapter,
@@ -29,16 +32,6 @@ async fn initialize_device(
         Ok(b) => b,
         Err(e) => panic!("Failed to initialize device: {}", e),
     }
-}
-
-pub struct TestingContext {
-    pub adapter: Adapter,
-    pub adapter_info: wgt::AdapterInfo,
-    pub adapter_downlevel_capabilities: wgt::DownlevelCapabilities,
-    pub device: Device,
-    pub device_features: wgt::Features,
-    pub device_limits: wgt::Limits,
-    pub queue: Queue,
 }
 
 fn lowest_downlevel_properties() -> DownlevelCapabilities {
@@ -166,7 +159,10 @@ impl TestParameters {
         self
     }
 }
-pub fn initialize_test(parameters: TestParameters, test_function: impl FnOnce(TestingContext)) {
+pub fn initialize_test(
+    parameters: TestParameters,
+    test_function: impl FnOnce(context::TestingContext),
+) {
     // We don't actually care if it fails
     let _ = env_logger::try_init();
 
@@ -222,7 +218,7 @@ pub fn initialize_test(parameters: TestParameters, test_function: impl FnOnce(Te
         parameters.required_limits.clone(),
     ));
 
-    let context = TestingContext {
+    let context = context::TestingContext {
         adapter,
         adapter_info: adapter_info.clone(),
         adapter_downlevel_capabilities,
