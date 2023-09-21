@@ -30,6 +30,8 @@ The following binaries:
 
 For an overview of all the components in the gfx-rs ecosystem, see [the big picture](./etc/big-picture.png).
 
+Some changes.
+
 ### MSRV policy
 
 Minimum Supported Rust Version is **1.65**.
