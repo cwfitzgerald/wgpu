@@ -881,28 +881,8 @@ bitflags::bitflags! {
     pub struct InstanceFlags: u32 {
         /// Generate debug information in shaders and objects.
         const DEBUG = 1 << 0;
-        /// Enable validation, if possible.
-        const VALIDATION = 1 << 1;
         /// Don't pass labels to wgpu-hal.
-        const DISCARD_HAL_LABELS = 1 << 2;
-        /// Whether wgpu should expose adapters that run on top of non-compliant adapters.
-        ///
-        /// Turning this on might mean that some of the functionality provided by the wgpu
-        /// adapter/device is not working or is broken. It could be that all the functionality
-        /// wgpu currently exposes works but we can't tell for sure since we have no additional
-        /// transparency into what is working and what is not on the underlying adapter.
-        ///
-        /// This mainly applies to a Vulkan driver's compliance version. If the major compliance version
-        /// is `0`, then the driver is ignored. This flag allows that driver to be enabled for testing.
-        const ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER = 1 << 3;
-        /// Enable GPU-based validation. Currently, this only changes behavior on the DX12
-        /// backend.
-        ///
-        /// Supported platforms:
-        ///
-        /// - D3D12; called ["GPU-based validation", or
-        ///   "GBV"](https://web.archive.org/web/20230206120404/https://learn.microsoft.com/en-us/windows/win32/direct3d12/using-d3d12-debug-layer-gpu-based-validation)
-        const GPU_BASED_VALIDATION = 1 << 4;
+        const DISCARD_HAL_LABELS = 1 << 1;
     }
 }
 
@@ -915,7 +895,7 @@ impl Default for InstanceFlags {
 impl InstanceFlags {
     /// Enable recommended debugging and validation flags.
     pub fn debugging() -> Self {
-        InstanceFlags::DEBUG | InstanceFlags::VALIDATION | InstanceFlags::GPU_BASED_VALIDATION
+        InstanceFlags::DEBUG
     }
 
     /// Infer good defaults from the build type
@@ -949,17 +929,8 @@ impl InstanceFlags {
             })
         }
 
-        if let Some(bit) = env("WGPU_VALIDATION") {
-            self.set(Self::VALIDATION, bit);
-        }
         if let Some(bit) = env("WGPU_DEBUG") {
             self.set(Self::DEBUG, bit);
-        }
-        if let Some(bit) = env("WGPU_ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER") {
-            self.set(Self::ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER, bit);
-        }
-        if let Some(bit) = env("WGPU_GPU_BASED_VALIDATION") {
-            self.set(Self::GPU_BASED_VALIDATION, bit);
         }
 
         self
@@ -6925,10 +6896,10 @@ pub struct InstanceDescriptor {
     pub backends: Backends,
     /// Flags to tune the behavior of the instance.
     pub flags: InstanceFlags,
-    /// Which DX12 shader compiler to use.
-    pub dx12_shader_compiler: Dx12Compiler,
-    /// Which OpenGL ES 3 minor version to request.
-    pub gles_minor_version: Gles3MinorVersion,
+    /// Backend specific configurations. It is expected
+    /// that you only set the configuration you need to change,
+    /// the rest are set by default.
+    pub configuration: BackendSpecificConfiguration,
 }
 
 impl Default for InstanceDescriptor {
@@ -6936,11 +6907,70 @@ impl Default for InstanceDescriptor {
         Self {
             backends: Backends::all(),
             flags: InstanceFlags::default(),
-            dx12_shader_compiler: Dx12Compiler::default(),
-            gles_minor_version: Gles3MinorVersion::default(),
+            configuration: BackendSpecificConfiguration::default(),
         }
     }
 }
+
+/// Configuring specific backend settings.
+#[derive(Debug, Default, Clone)]
+#[non_exhaustive]
+pub struct BackendSpecificConfiguration {
+    /// Vulkan backend configuration.
+    pub vulkan: BackendConfigurationVulkan,
+    /// Metal backend configuration.
+    pub metal: BackendConfigurationMetal,
+    /// DX12 backend configuration.
+    pub dx12: BackendConfigurationDx12,
+    /// OpenGL backend configuration.
+    pub gl: BackendConfigurationGl,
+    /// WebGPU backend configuration.
+    pub webgpu: BackendConfigurationWebGPU,
+}
+
+/// Configuration for the GL backend.
+#[derive(Debug, Default, Clone)]
+#[non_exhaustive]
+pub struct BackendConfigurationGl {
+}
+
+/// Configuration for the DX12 backend.
+#[derive(Debug, Default, Clone)]
+#[non_exhaustive]
+pub struct BackendConfigurationDx12 {
+    /// Enable ["GPU-based validation", or "GBV"][gbv]
+    ///
+    /// [gbv]: https://web.archive.org/web/20230206120404/https://learn.microsoft.com/en-us/windows/win32/direct3d12/using-d3d12-debug-layer-gpu-based-validation]
+    pub gpu_based_validation: bool,
+    /// Which DX12 shader compiler to use.
+    pub dx12_shader_compiler: Dx12Compiler,
+}
+
+/// Configuration for the Metal backend.
+#[derive(Debug, Default, Clone)]
+#[non_exhaustive]
+pub struct BackendConfigurationMetal {}
+
+/// Configuration for the Vulkan backend.
+#[derive(Debug, Default, Clone)]
+#[non_exhaustive]
+pub struct BackendConfigurationVulkan {
+    /// Whether wgpu should expose adapters that run on top of non-compliant adapters.
+    ///
+    /// Turning this on might mean that some of the functionality provided by the wgpu
+    /// adapter/device is not working or is broken. It could be that all the functionality
+    /// wgpu currently exposes works but we can't tell for sure since we have no additional
+    /// transparency into what is working and what is not on the underlying adapter.
+    ///
+    /// This mainly applies to a Vulkan driver's compliance version. If the major compliance version
+    /// is `0`, then the driver is ignored. This flag allows that driver to be enabled for testing.
+    pub allow_noncompliant_drivers: bool,
+}
+
+/// Configuration for the WebGPU backend.
+#[derive(Debug, Default, Clone)]
+#[non_exhaustive]
+pub struct BackendConfigurationWebGPU {}
 
 bitflags::bitflags!(
     /// Flags for acceleration structures

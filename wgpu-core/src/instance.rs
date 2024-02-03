@@ -80,8 +80,7 @@ impl Instance {
                 let hal_desc = hal::InstanceDescriptor {
                     name: "wgpu",
                     flags: instance_desc.flags,
-                    dx12_shader_compiler: instance_desc.dx12_shader_compiler.clone(),
-                    gles_minor_version: instance_desc.gles_minor_version,
+                    configuration: wgt::BackendSpecificConfiguration::default(),
                 };
                 match unsafe { hal::Instance::init(&hal_desc) } {
                     Ok(instance) => {
