@@ -2,7 +2,9 @@ use std::fmt::Write;
 
 use wgpu::{Backends, DownlevelFlags, Features, Limits};
 
-use crate::shader::{shader_input_output_test, InputStorageType, ShaderTest, MAX_BUFFER_SIZE};
+use crate::shader::{
+    shader_input_output_test, ComparisonValue, InputStorageType, ShaderTest, MAX_BUFFER_SIZE,
+};
 use wgpu_test::{gpu_test, FailureCase, GpuTestConfiguration, TestParameters};
 
 fn create_struct_layout_tests(storage_type: InputStorageType) -> Vec<ShaderTest> {
@@ -37,7 +39,9 @@ fn create_struct_layout_tests(storage_type: InputStorageType) -> Vec<ShaderTest>
                 input_members.clone(),
                 direct,
                 &input_values,
-                &(0..components as u32).collect::<Vec<_>>(),
+                vec![ComparisonValue::U32Array(
+                    (0..components as u32).collect::<Vec<_>>(),
+                )],
             ));
 
             tests.push(ShaderTest::new(
@@ -45,7 +49,9 @@ fn create_struct_layout_tests(storage_type: InputStorageType) -> Vec<ShaderTest>
                 input_members.clone(),
                 loaded,
                 &input_values,
-                &(0..components as u32).collect::<Vec<_>>(),
+                vec![ComparisonValue::U32Array(
+                    (0..components as u32).collect::<Vec<_>>(),
+                )],
             ));
         }
     }
@@ -112,7 +118,7 @@ fn create_struct_layout_tests(storage_type: InputStorageType) -> Vec<ShaderTest>
                     input_members.clone(),
                     direct,
                     &input_values,
-                    &output_values,
+                    vec![ComparisonValue::U32Array(output_values.clone())],
                 )
                 .failures(failures),
             );
@@ -123,7 +129,7 @@ fn create_struct_layout_tests(storage_type: InputStorageType) -> Vec<ShaderTest>
                     input_members.clone(),
                     vector_loaded,
                     &input_values,
-                    &output_values,
+                    vec![ComparisonValue::U32Array(output_values.clone())],
                 )
                 .failures(failures),
             );
@@ -134,7 +140,7 @@ fn create_struct_layout_tests(storage_type: InputStorageType) -> Vec<ShaderTest>
                     input_members.clone(),
                     fully_loaded,
                     &input_values,
-                    &output_values,
+                    vec![ComparisonValue::U32Array(output_values.clone())],
                 )
                 .failures(failures),
             );
@@ -151,7 +157,7 @@ fn create_struct_layout_tests(storage_type: InputStorageType) -> Vec<ShaderTest>
             members,
             direct,
             &input_values,
-            &[3],
+            vec![ComparisonValue::U32(3)],
         ));
     }
 
@@ -182,7 +188,9 @@ fn create_struct_layout_tests(storage_type: InputStorageType) -> Vec<ShaderTest>
                 members,
                 direct,
                 &input_values,
-                &[0, 1, 2, 3, 4, 8, 9, 10, 11, 12],
+                vec![ComparisonValue::U32Array(vec![
+                    0, 1, 2, 3, 4, 8, 9, 10, 11, 12,
+                ])],
             )
             .header(header)
             .failures(Backends::METAL),
@@ -200,7 +208,7 @@ fn create_struct_layout_tests(storage_type: InputStorageType) -> Vec<ShaderTest>
                 members,
                 direct,
                 &input_values,
-                &[columns * 4],
+                vec![ComparisonValue::U32(columns * 4)],
             ));
         }
     }
@@ -236,7 +244,7 @@ fn create_struct_layout_tests(storage_type: InputStorageType) -> Vec<ShaderTest>
                 members,
                 direct,
                 &input_values,
-                &[
+                vec![ComparisonValue::U32Array(vec![
                     0, // inner.scalar
                     4, 5, 6, // inner.member[0]
                     8, 9, 10, // inner.member[1]
@@ -244,7 +252,7 @@ fn create_struct_layout_tests(storage_type: InputStorageType) -> Vec<ShaderTest>
                     16, // scalar3
                     20, 21, 22, // vector
                     23, // scalar4
-                ],
+                ])],
             )
             .header(header),
         );

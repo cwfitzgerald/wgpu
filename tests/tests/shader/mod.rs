@@ -4,7 +4,7 @@
 //! shader is run on the input buffer which generates an output buffer. This
 //! buffer is then read and compared to a given output.
 
-use std::{borrow::Cow, fmt::Debug};
+use std::borrow::Cow;
 
 use wgpu::{
     Backends, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
@@ -36,6 +36,67 @@ impl InputStorageType {
     }
 }
 
+#[allow(dead_code)]
+enum ComparisonValue {
+    F32(f32),
+    F32Array(Vec<f32>),
+    U32(u32),
+    U32Array(Vec<u32>),
+    I32(i32),
+    I32Array(Vec<i32>),
+}
+
+impl ComparisonValue {
+    fn compare(&self, actual_values: &[u32]) -> Result<(), String> {
+        match self {
+            ComparisonValue::F32(expected) => {
+                let cast_actual: &[f32] = &bytemuck::cast_slice(actual_values)[..1];
+
+                if cast_actual[0] != *expected {
+                    return Err(format!("Expected {expected:?}, got {cast_actual:?}"));
+                }
+            }
+            ComparisonValue::F32Array(expected) => {
+                let cast_actual: &[f32] = &bytemuck::cast_slice(actual_values)[..expected.len()];
+
+                if cast_actual != expected {
+                    return Err(format!("Expected {expected:?}, got {cast_actual:?}"));
+                }
+            }
+            ComparisonValue::U32(expected) => {
+                let cast_actual: &[u32] = &bytemuck::cast_slice(actual_values)[..1];
+
+                if cast_actual[0] != *expected {
+                    return Err(format!("Expected {expected:?}, got {cast_actual:?}"));
+                }
+            }
+            ComparisonValue::U32Array(expected) => {
+                let cast_actual: &[u32] = &bytemuck::cast_slice(actual_values)[..expected.len()];
+
+                if cast_actual != expected {
+                    return Err(format!("Expected {expected:?}, got {cast_actual:?}"));
+                }
+            }
+            ComparisonValue::I32(expected) => {
+                let cast_actual: &[i32] = &bytemuck::cast_slice(actual_values)[..1];
+
+                if cast_actual[0] != *expected {
+                    return Err(format!("Expected {expected:?}, got {cast_actual:?}"));
+                }
+            }
+            ComparisonValue::I32Array(expected) => {
+                let cast_actual: &[i32] = &bytemuck::cast_slice(actual_values)[..expected.len()];
+
+                if cast_actual != expected {
+                    return Err(format!("Expected {expected:?}, got {cast_actual:?}"));
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
 /// Describes a single test of a shader.
 struct ShaderTest {
     /// Human readable name
@@ -59,12 +120,7 @@ struct ShaderTest {
     /// List of values will be written to the input buffer.
     input_values: Vec<u32>,
     /// List of lists of valid expected outputs from the shader.
-    output_values: Vec<Vec<u32>>,
-    /// Function which compares the output values to the resulting values and
-    /// prints a message on failure.
-    ///
-    /// Defaults [`Self::default_comparison_function`].
-    output_comparison_fn: fn(&str, &[u32], &[Vec<u32>]) -> bool,
+    output_values: Vec<ComparisonValue>,
     /// Value to pre-initialize the output buffer to. Often u32::MAX so
     /// that writing a 0 looks different than not writing a value at all.
     ///
@@ -77,60 +133,12 @@ struct ShaderTest {
     failures: Backends,
 }
 impl ShaderTest {
-    fn default_comparison_function<O: bytemuck::Pod + Debug + PartialEq>(
-        test_name: &str,
-        actual_values: &[u32],
-        expected_values: &[Vec<u32>],
-    ) -> bool {
-        let cast_actual = bytemuck::cast_slice::<u32, O>(actual_values);
-
-        // When printing the error message, we want to trim `cast_actual` to the length
-        // of the longest set of expected values. This tracks that value.
-        let mut max_relevant_value_count = 0;
-
-        for expected in expected_values {
-            let cast_expected = bytemuck::cast_slice::<u32, O>(expected);
-
-            // We shorten the actual to the length of the expected.
-            if &cast_actual[0..cast_expected.len()] == cast_expected {
-                return true;
-            }
-
-            max_relevant_value_count = max_relevant_value_count.max(cast_expected.len());
-        }
-
-        // We haven't found a match, lets print an error.
-
-        eprint!(
-            "Inner test failure. Actual {:?}. Expected",
-            &cast_actual[0..max_relevant_value_count]
-        );
-
-        if expected_values.len() != 1 {
-            eprint!(" one of: ");
-        } else {
-            eprint!(": ");
-        }
-
-        for (idx, expected) in expected_values.iter().enumerate() {
-            let cast_expected = bytemuck::cast_slice::<u32, O>(expected);
-            eprint!("{cast_expected:?}");
-            if idx + 1 != expected_values.len() {
-                eprint!(" ");
-            }
-        }
-
-        eprintln!(". Test {test_name}");
-
-        false
-    }
-
-    fn new<I: bytemuck::Pod, O: bytemuck::Pod + Debug + PartialEq>(
+    fn new<I: bytemuck::Pod>(
         name: String,
         custom_struct_members: String,
         body: String,
         input_values: &[I],
-        output_values: &[O],
+        output_values: Vec<ComparisonValue>,
     ) -> Self {
         Self {
             name,
@@ -140,8 +148,7 @@ impl ShaderTest {
             input_type: String::from("CustomStruct"),
             output_type: String::from("array<u32>"),
             input_values: bytemuck::cast_slice(input_values).to_vec(),
-            output_values: vec![bytemuck::cast_slice(output_values).to_vec()],
-            output_comparison_fn: Self::default_comparison_function::<O>,
+            output_values: output_values,
             output_initialization: u32::MAX,
             failures: Backends::empty(),
         }
@@ -149,20 +156,6 @@ impl ShaderTest {
 
     fn header(mut self, header: String) -> Self {
         self.header = header;
-
-        self
-    }
-
-    /// Add another set of possible outputs. If any of the given
-    /// output values are seen it's considered a success (i.e. this is OR, not AND).
-    ///
-    /// Assumes that this type O is the same as the O provided to new.
-    fn extra_output_values<O: bytemuck::Pod + Debug + PartialEq>(
-        mut self,
-        output_values: &[O],
-    ) -> Self {
-        self.output_values
-            .push(bytemuck::cast_slice(output_values).to_vec());
 
         self
     }
@@ -363,15 +356,27 @@ async fn shader_input_output_test(
 
         // -- Check results --
 
-        let failure = !(test.output_comparison_fn)(&test_name, typed, &test.output_values);
+        let mut inner_success = false;
+        for (index, output) in test.output_values.iter().enumerate() {
+            match output.compare(typed) {
+                Ok(()) => {
+                    eprintln!("Test {test_name} comparison {index} succeeded");
+                    inner_success |= true;
+                }
+                Err(err) => {
+                    eprintln!("Test {test_name} comparison {index} failed: {err}");
+                }
+            }
+        }
+        let inner_failure = !inner_success;
         // We don't immediately panic to let all tests execute
-        if failure
+        if inner_failure
             != test
                 .failures
                 .contains(ctx.adapter.get_info().backend.into())
         {
             fail |= true;
-            if !failure {
+            if !inner_failure {
                 eprintln!("Unexpected test success. Test {test_name}");
             }
         }
