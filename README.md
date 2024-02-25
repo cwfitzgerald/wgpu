@@ -161,25 +161,8 @@ We have multiple methods of testing, each of which tests different qualities abo
 
 ### Core Test Infrastructure
 
-We use a tool called [`cargo nextest`](https://github.com/nextest-rs/nextest) to run our tests.
-To install it, run `cargo install cargo-nextest`.
-
-To run the test suite:
-
-```
-cargo xtask test
-```
-
-To run the test suite on WebGL (currently incomplete):
-
-```
-cd wgpu
-wasm-pack test --headless --chrome --no-default-features --features webgl --workspace
-```
-
-This will automatically run the tests using a packaged browser. Remove `--headless` to run the tests with whatever browser you wish at `http://localhost:8000`.
-
-If you are a user and want a way to help contribute to wgpu, we always need more help writing test cases.
+See [docs/development-infrastructure.md](./docs/development-infrastructure.md) for how to run the testing infrastructure
+and any possible issues you may encounter.
 
 ### WebGPU Conformance Test Suite
 

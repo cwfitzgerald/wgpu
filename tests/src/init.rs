@@ -27,7 +27,11 @@ pub fn initialize_instance() -> Instance {
     } else {
         Backends::all()
     };
-    let dx12_shader_compiler = wgpu::util::dx12_shader_compiler_from_env().unwrap_or_default();
+    let dx12_shader_compiler =
+        wgpu::util::dx12_shader_compiler_from_env().unwrap_or(wgt::Dx12Compiler::Dxc {
+            dxil_path: None,
+            dxc_path: None,
+        });
     let gles_minor_version = wgpu::util::gles_minor_version_from_env().unwrap_or_default();
     Instance::new(wgpu::InstanceDescriptor {
         backends,

@@ -17,6 +17,7 @@ path = "tests/root.rs"
 harness = false
 
 [features]
+tracy = ["dep:tracy-client", "profiling/profile-with-tracy"]
 webgl = ["wgpu/webgl"]
 
 [dependencies]
@@ -39,6 +40,8 @@ serde.workspace = true
 wgpu-macros.workspace = true
 wgpu.workspace = true
 wgt = { workspace = true, features = ["serde"] }
+
+tracy-client = { version = "0.17", optional = true, features = ["enable"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger.workspace = true

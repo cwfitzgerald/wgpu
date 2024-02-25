@@ -1,5 +1,6 @@
 [alias]
-xtask = "run --manifest-path xtask/Cargo.toml"
+list-gpus = "run --bin wgpu-info -- -q"
+xtask = "run --manifest-path xtask/Cargo.toml --"
 
 [build]
 rustflags = [

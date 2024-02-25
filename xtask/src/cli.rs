@@ -12,6 +12,7 @@ Commands:
     --no-serve  Just build the generated files, don't serve them
   test
     --llvm-cov  Run tests with LLVM code coverage using the llvm-cov tool
+    <args>      Arguments to pass to cargo nextest
 
 Options:
   -h, --help  Print help

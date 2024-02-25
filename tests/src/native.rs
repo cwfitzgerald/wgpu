@@ -78,6 +78,9 @@ pub fn main() -> MainResult {
 
     use crate::report::GpuReport;
 
+    #[cfg(feature = "tracy")]
+    let client = tracy_client::Client::start();
+
     let config_text = {
         profiling::scope!("Reading .gpuconfig");
         &std::fs::read_to_string(format!("{}/../.gpuconfig", env!("CARGO_MANIFEST_DIR")))
