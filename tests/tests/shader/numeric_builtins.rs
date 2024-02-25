@@ -110,7 +110,7 @@ fn clamp() -> Vec<ShaderTest> {
         (  -10,  0,  10,  0),
         (    5,  0,  10,  5),
 
-        // integer clamps must use min/max
+        // integer clamps must use min/max, not med-of-three
         (    3,  2,  1,   1),
     ];
 
@@ -126,6 +126,104 @@ fn clamp() -> Vec<ShaderTest> {
         tests.push(test);
     }
 
+    #[rustfmt::skip]
+    let uint_clamp_values: &[(u32, u32, u32, u32)] = &[
+        (   20,  0,  10,  10),
+        (   10,  0,  10,  10),
+        (    5,  0,  10,  5),
+
+        // integer clamps must use min/max, not med-of-three
+        (    3,  2,  1,   1),
+    ];
+
+    for &(input, low, high, output) in uint_clamp_values {
+        let test = ShaderTest::new(
+            format!("clamp<u32>({input}, {low}, {high}) == {output})"),
+            String::from("value: u32, low: u32, high: u32"),
+            String::from("output[0] = clamp(input.value, input.low, input.high);"),
+            &[input, low, high],
+            vec![ComparisonValue::U32(output)],
+        );
+
+        tests.push(test);
+    }
+
+    tests
+}
+
+fn count_leading_zeros() -> Vec<ShaderTest> {
+    let mut tests = Vec::new();
+
+    let int_clz_values: &[i32] = &[i32::MAX, 20, 5, 0, -10, -1, i32::MIN];
+
+    for &input in int_clz_values {
+        let output = input.leading_zeros();
+
+        let test = ShaderTest::new(
+            format!("countLeadingZeros<i32>({input}) == {output})"),
+            String::from("value: i32"),
+            String::from("output[0] = bitcast<u32>(countLeadingZeros(input.value));"),
+            &[input],
+            vec![ComparisonValue::U32(output)],
+        );
+
+        tests.push(test);
+    }
+
+    let uint_clz_values: &[u32] = &[u32::MAX, 20, 10, 5, 0];
+
+    for &input in uint_clz_values {
+        let output = input.leading_zeros();
+
+        let test = ShaderTest::new(
+            format!("countLeadingZeros<u32>({input}) == {output})"),
+            String::from("value: u32"),
+            String::from("output[0] = countLeadingZeros(input.value);"),
+            &[input],
+            vec![ComparisonValue::U32(output)],
+        );
+
+        tests.push(test);
+    }
+
+    tests
+}
+
+fn count_one_bits() -> Vec<ShaderTest> {
+    let mut tests = Vec::new();
+
+    let int_cob_values: &[i32] = &[i32::MAX, 20, 5, 0, -10, -1, i32::MIN];
+
+    for &input in int_cob_values {
+        let output = input.count_ones();
+
+        let test = ShaderTest::new(
+            format!("countOneBits<i32>({input}) == {output})"),
+            String::from("value: i32"),
+            String::from("output[0] = bitcast<u32>(countOneBits(input.value));"),
+            &[input],
+            vec![ComparisonValue::U32(output)],
+        );
+
+        tests.push(test);
+    }
+
+    let uint_cob_values: &[u32] = &[u32::MAX, 20, 10, 5, 0];
+
+    for &input in uint_cob_values {
+        let output = input.count_ones();
+
+        let test = ShaderTest::new(
+            format!("countOneBits<u32>({input}) == {output})"),
+            String::from("value: u32"),
+            String::from("output[0] = countOneBits(input.value);"),
+            &[input],
+            vec![ComparisonValue::U32(output)],
+        );
+
+        tests.push(test);
+    }
+
     tests
 }
 
@@ -133,3 +231,7 @@ fn clamp() -> Vec<ShaderTest> {
 static ABS: GpuTestConfiguration = numeric_bulitin_test(abs);
 #[gpu_test]
 static CLAMP: GpuTestConfiguration = numeric_bulitin_test(clamp);
+#[gpu_test]
+static COUNT_LEADING_ZEROS: GpuTestConfiguration = numeric_bulitin_test(count_leading_zeros);
+#[gpu_test]
+static COUNT_ONE_BITS: GpuTestConfiguration = numeric_bulitin_test(count_one_bits);
