@@ -1305,6 +1305,10 @@ impl<'a, W: Write> Writer<'a, W> {
                             }
                         }
                     }
+                    crate::MathFunction::ExtractBits => {
+                        // Only argument 1 is re-used.
+                        self.need_bake_expressions.insert(arg1.unwrap());
+                    }
                     crate::MathFunction::CountLeadingZeros => {
                         if let Some(crate::ScalarKind::Sint) = inner.scalar_kind() {
                             self.need_bake_expressions.insert(arg);
@@ -3375,7 +3379,38 @@ impl<'a, W: Write> Writer<'a, W> {
                     }
                     Mf::CountOneBits => "bitCount",
                     Mf::ReverseBits => "bitfieldReverse",
-                    Mf::ExtractBits => "bitfieldExtract",
+                    Mf::ExtractBits => {
+                        // The behavior of ExtractBits is undefined when offset + count > bit_width. We need
+                        // to first sanitize the offset and count first. If we don't do this, AMD and Intel chips
+                        // will return out-of-spec values if the extracted range is not within the bit width.
+                        //
+                        // This encodes the exact formula specified by the wgsl spec, without temporary values:
+                        // https://gpuweb.github.io/gpuweb/wgsl/#extractBits-unsigned-builtin
+                        //
+                        // w = sizeof(x) * 8
+                        // o = min(offset, w)
+                        // c = min(count, w - o)
+                        //
+                        // bitfieldExtract(x, o, c)
+                        //
+                        // extract_bits(e, min(offset, w), min(count, w - min(offset, w))))
+                        let scalar_bits = ctx
+                            .resolve_type(arg, &self.module.types)
+                            .scalar_width()
+                            .unwrap();
+
+                        write!(self.out, "bitfieldExtract(")?;
+                        self.write_expr(arg, ctx)?;
+                        write!(self.out, ", int(min(")?;
+                        self.write_expr(arg1.unwrap(), ctx)?;
+                        write!(self.out, ", {scalar_bits}u)), int(min(",)?;
+                        self.write_expr(arg2.unwrap(), ctx)?;
+                        write!(self.out, ", {scalar_bits}u - min(")?;
+                        self.write_expr(arg1.unwrap(), ctx)?;
+                        write!(self.out, ", {scalar_bits}u))))")?;
+
+                        return Ok(());
+                    }
                     Mf::InsertBits => "bitfieldInsert",
                     Mf::FindLsb => "findLSB",
                     Mf::FindMsb => "findMSB",

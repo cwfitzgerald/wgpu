@@ -1,3 +1,83 @@
+int naga_extractBits(
+    int e,
+    uint offset,
+    uint count
+) {
+    uint w = 32;
+    uint o = min(offset, w);
+    uint c = min(count, w - o);
+    return (c == 0 ? 0 : (e << (w - c - o)) >> (w - c));
+}
+int2 naga_extractBits(
+    int2 e,
+    uint offset,
+    uint count
+) {
+    uint w = 32;
+    uint o = min(offset, w);
+    uint c = min(count, w - o);
+    return (c == 0 ? 0 : (e << (w - c - o)) >> (w - c));
+}
+int3 naga_extractBits(
+    int3 e,
+    uint offset,
+    uint count
+) {
+    uint w = 32;
+    uint o = min(offset, w);
+    uint c = min(count, w - o);
+    return (c == 0 ? 0 : (e << (w - c - o)) >> (w - c));
+}
+int4 naga_extractBits(
+    int4 e,
+    uint offset,
+    uint count
+) {
+    uint w = 32;
+    uint o = min(offset, w);
+    uint c = min(count, w - o);
+    return (c == 0 ? 0 : (e << (w - c - o)) >> (w - c));
+}
+uint naga_extractBits(
+    uint e,
+    uint offset,
+    uint count
+) {
+    uint w = 32;
+    uint o = min(offset, w);
+    uint c = min(count, w - o);
+    return (c == 0 ? 0 : (e << (w - c - o)) >> (w - c));
+}
+uint2 naga_extractBits(
+    uint2 e,
+    uint offset,
+    uint count
+) {
+    uint w = 32;
+    uint o = min(offset, w);
+    uint c = min(count, w - o);
+    return (c == 0 ? 0 : (e << (w - c - o)) >> (w - c));
+}
+uint3 naga_extractBits(
+    uint3 e,
+    uint offset,
+    uint count
+) {
+    uint w = 32;
+    uint o = min(offset, w);
+    uint c = min(count, w - o);
+    return (c == 0 ? 0 : (e << (w - c - o)) >> (w - c));
+}
+uint4 naga_extractBits(
+    uint4 e,
+    uint offset,
+    uint count
+) {
+    uint w = 32;
+    uint o = min(offset, w);
+    uint c = min(count, w - o);
+    return (c == 0 ? 0 : (e << (w - c - o)) >> (w - c));
+}
 [numthreads(1, 1, 1)]
 void main()
 {
@@ -57,21 +137,21 @@ void main()
     uint4 _expr84 = u4_;
     u4_ = (10u == 0 ? _expr83 : (_expr83 & ~((4294967295u >> (32u - 10u)) << 5u)) | ((_expr84 << 5u) & ((4294967295u >> (32u - 10u)) << 5u)));
     int _expr88 = i;
-    i = (10u == 0 ? 0 : (_expr88 << (32 - 10u - 5u)) >> (32 - 10u));
+    i = naga_extractBits(_expr88, 5u, 10u);
     int2 _expr92 = i2_;
-    i2_ = (10u == 0 ? 0 : (_expr92 << (32 - 10u - 5u)) >> (32 - 10u));
+    i2_ = naga_extractBits(_expr92, 5u, 10u);
     int3 _expr96 = i3_;
-    i3_ = (10u == 0 ? 0 : (_expr96 << (32 - 10u - 5u)) >> (32 - 10u));
+    i3_ = naga_extractBits(_expr96, 5u, 10u);
     int4 _expr100 = i4_;
-    i4_ = (10u == 0 ? 0 : (_expr100 << (32 - 10u - 5u)) >> (32 - 10u));
+    i4_ = naga_extractBits(_expr100, 5u, 10u);
     uint _expr104 = u;
-    u = (10u == 0 ? 0 : (_expr104 << (32 - 10u - 5u)) >> (32 - 10u));
+    u = naga_extractBits(_expr104, 5u, 10u);
     uint2 _expr108 = u2_;
-    u2_ = (10u == 0 ? 0 : (_expr108 << (32 - 10u - 5u)) >> (32 - 10u));
+    u2_ = naga_extractBits(_expr108, 5u, 10u);
     uint3 _expr112 = u3_;
-    u3_ = (10u == 0 ? 0 : (_expr112 << (32 - 10u - 5u)) >> (32 - 10u));
+    u3_ = naga_extractBits(_expr112, 5u, 10u);
     uint4 _expr116 = u4_;
-    u4_ = (10u == 0 ? 0 : (_expr116 << (32 - 10u - 5u)) >> (32 - 10u));
+    u4_ = naga_extractBits(_expr116, 5u, 10u);
     int _expr120 = i;
     i = asint(firstbitlow(_expr120));
     uint2 _expr122 = u2_;

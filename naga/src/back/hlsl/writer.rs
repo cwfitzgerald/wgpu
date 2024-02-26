@@ -19,6 +19,7 @@ const SPECIAL_OTHER: &str = "other";
 
 pub(crate) const MODF_FUNCTION: &str = "naga_modf";
 pub(crate) const FREXP_FUNCTION: &str = "naga_frexp";
+pub(crate) const EXTRACT_BITS_FUNCTION: &str = "naga_extractBits";
 
 struct EpStructMember {
     name: String,
@@ -2620,7 +2621,6 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
                 enum Function {
                     Asincosh { is_sin: bool },
                     Atanh,
-                    ExtractBits,
                     InsertBits,
                     Pack2x16float,
                     Pack2x16snorm,
@@ -2705,7 +2705,7 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
                     Mf::ReverseBits => Function::MissingIntOverload("reversebits"),
                     Mf::FindLsb => Function::MissingIntReturnType("firstbitlow"),
                     Mf::FindMsb => Function::MissingIntReturnType("firstbithigh"),
-                    Mf::ExtractBits => Function::ExtractBits,
+                    Mf::ExtractBits => Function::Regular(EXTRACT_BITS_FUNCTION),
                     Mf::InsertBits => Function::InsertBits,
                     // Data Packing
                     Mf::Pack2x16float => Function::Pack2x16float,
@@ -2741,28 +2741,6 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
                         write!(self.out, ") / (1.0 - ")?;
                         self.write_expr(module, arg, func_ctx)?;
                         write!(self.out, "))")?;
-                    }
-                    Function::ExtractBits => {
-                        // e: T,
-                        // offset: u32,
-                        // count: u32
-                        // T is u32 or i32 or vecN<u32> or vecN<i32>
-                        if let (Some(offset), Some(count)) = (arg1, arg2) {
-                            let scalar_width: u8 = 32;
-                            // Works for signed and unsigned
-                            // (count == 0 ? 0 : (e << (32 - count - offset)) >> (32 - count))
-                            write!(self.out, "(")?;
-                            self.write_expr(module, count, func_ctx)?;
-                            write!(self.out, " == 0 ? 0 : (")?;
-                            self.write_expr(module, arg, func_ctx)?;
-                            write!(self.out, " << ({scalar_width} - ")?;
-                            self.write_expr(module, count, func_ctx)?;
-                            write!(self.out, " - ")?;
-                            self.write_expr(module, offset, func_ctx)?;
-                            write!(self.out, ")) >> ({scalar_width} - ")?;
-                            self.write_expr(module, count, func_ctx)?;
-                            write!(self.out, "))")?;
-                        }
                     }
                     Function::InsertBits => {
                         // e: T,

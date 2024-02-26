@@ -1891,6 +1891,34 @@ impl<W: Write> Writer<W> {
                     write!(self.out, "as_type<uint>(half2(")?;
                     self.put_expression(arg, context, false)?;
                     write!(self.out, "))")?;
+                } else if fun == Mf::ExtractBits {
+                    // The behavior of ExtractBits is undefined when offset + count > bit_width. We need
+                    // to first sanitize the offset and count first. If we don't do this, Apple chips
+                    // will return out-of-spec values if the extracted range is not within the bit width.
+                    //
+                    // This encodes the exact formula specified by the wgsl spec, without temporary values:
+                    // https://gpuweb.github.io/gpuweb/wgsl/#extractBits-unsigned-builtin
+                    //
+                    // w = sizeof(x) * 8
+                    // o = min(offset, w)
+                    // tmp = w - o
+                    // c = min(count, tmp)
+                    //
+                    // bitfieldExtract(x, o, c)
+                    //
+                    // extract_bits(e, min(offset, w), min(count, w - min(offset, w))))
+
+                    let scalar_bits = context.resolve_type(arg).scalar_width().unwrap();
+
+                    write!(self.out, "{NAMESPACE}::extract_bits(")?;
+                    self.put_expression(arg, context, true)?;
+                    write!(self.out, ", {NAMESPACE}::min(")?;
+                    self.put_expression(arg1.unwrap(), context, true)?;
+                    write!(self.out, ", {scalar_bits}u), {NAMESPACE}::min(")?;
+                    self.put_expression(arg2.unwrap(), context, true)?;
+                    write!(self.out, ", {scalar_bits}u - {NAMESPACE}::min(")?;
+                    self.put_expression(arg1.unwrap(), context, true)?;
+                    write!(self.out, ", {scalar_bits}u)))")?;
                 } else if fun == Mf::Radians {
                     write!(self.out, "((")?;
                     self.put_expression(arg, context, false)?;
@@ -2513,6 +2541,10 @@ impl<W: Write> Writer<W> {
                     }
                     crate::MathFunction::FindMsb => {
                         self.need_bake_expressions.insert(arg);
+                    }
+                    crate::MathFunction::ExtractBits => {
+                        // Only argument 1 is re-used.
+                        self.need_bake_expressions.insert(arg1.unwrap());
                     }
                     crate::MathFunction::Sign => {
                         // WGSL's `sign` function works also on signed ints, but Metal's only
