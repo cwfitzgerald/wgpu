@@ -290,7 +290,6 @@ fn extract_bits_unsigned() -> Vec<ShaderTest> {
         (0xDE_AD_BE_EF, 8, 32, 0xDE_AD_BE),
         (0xDE_AD_BE_EF, 16, 32, 0xDE_AD),
         (0xDE_AD_BE_EF, 24, 32, 0xDE),
-
         // Try to catch overflows
         (0xDE_AD_BE_EF, u32::MAX, u32::MAX, 0),
     ];
@@ -302,6 +301,56 @@ fn extract_bits_unsigned() -> Vec<ShaderTest> {
             String::from("output[0] = extractBits(input.value, input.offset, input.bits);"),
             &[value, offset, bits],
             vec![ComparisonValue::U32(expected)],
+        );
+
+        tests.push(test);
+    }
+
+    tests
+}
+
+fn extract_bits_signed() -> Vec<ShaderTest> {
+    let mut tests = Vec::new();
+
+    #[allow(overflowing_literals)]
+    let int_extract_bits_values: &[(u32, u32, u32, i32)] = &[
+        // value, offset, bits, expected
+
+        // standard cases
+        (0x00_00_00_FF, 0, 8, 0xFF_FF_FF_FF),
+        (0x00_00_FF_00, 8, 8, 0xFF_FF_FF_FF),
+        (0x00_FF_00_00, 16, 8, 0xFF_FF_FF_FF),
+        (0xFF_00_00_00, 24, 8, 0xFF_FF_FF_FF),
+
+        // Correct sign extension behavior
+        (0x00_00_00_FF, 0, 9, 0x00_00_00_FF),
+        (0x00_00_00_80, 0, 8, 0xFF_FF_FF_80),
+
+        // offset out of bounds
+        (0x01_23_45_67, 32, 8, 0),
+        (0x01_23_45_67, 48, 8, 0),
+        (0x01_23_45_67, 64, 8, 0),
+
+        // size out of bounds
+        (0x01_23_45_67, 0, 32, 0x01_23_45_67),
+        (0x01_23_45_67, 8, 32, 0x01_23_45),
+        (0x01_23_45_67, 16, 32, 0x01_23),
+        (0x01_23_45_67, 24, 32, 0x01),
+
+        // size out of bounds, sign extended
+        (0x81_23_45_67, 0, 32, 0x81_23_45_67 as i32 >> 0),
+        (0x81_23_45_67, 8, 32, 0x81_23_45_67 as i32 >> 8),
+        (0x81_23_45_67, 16, 32, 0x81_23_45_67 as i32 >> 16),
+        (0x81_23_45_67, 24, 32, 0x81_23_45_67 as i32 >> 24),
+    ];
+
+    for &(value, offset, bits, expected) in int_extract_bits_values {
+        let test = ShaderTest::new(
+            format!("extractBits<i32>({value}, {offset}, {bits}) == {expected})"),
+            String::from("value: i32, offset: u32, bits: u32"),
+            String::from("output[0] = bitcast<u32>(extractBits(input.value, input.offset, input.bits));"),
+            &[value, offset, bits],
+            vec![ComparisonValue::I32(expected)],
         );
 
         tests.push(test);
@@ -322,3 +371,5 @@ static COUNT_ONE_BITS: GpuTestConfiguration = numeric_bulitin_test(count_one_bit
 static COUNT_TRAILING_ZEROS: GpuTestConfiguration = numeric_bulitin_test(count_trailing_zeros);
 #[gpu_test]
 static EXTRACT_BITS_UNSIGNED: GpuTestConfiguration = numeric_bulitin_test(extract_bits_unsigned);
+#[gpu_test]
+static EXTRACT_BITS_SIGNED: GpuTestConfiguration = numeric_bulitin_test(extract_bits_signed);
