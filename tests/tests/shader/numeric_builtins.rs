@@ -359,6 +359,52 @@ fn extract_bits_signed() -> Vec<ShaderTest> {
     tests
 }
 
+fn insert_bits() -> Vec<ShaderTest> {
+    let mut tests = Vec::new();
+
+    #[allow(overflowing_literals)]
+    let insert_bits_values: &[(u32, u32, u32, u32, u32)] = &[
+        // value, insert, offset, bits, expected
+
+        // standard cases
+        (0x00_00_00_FF, 0x00_00_00_FF, 0, 8, 0x00_00_00_FF),
+        (0x00_00_00_FF, 0x00_00_00_FF, 8, 8, 0x00_00_FF_FF),
+        (0x00_00_00_FF, 0x00_00_00_FF, 16, 8, 0x00_FF_00_FF),
+        (0x00_00_00_FF, 0x00_00_00_FF, 24, 8, 0xFF_00_00_FF),
+
+        // overwrite bits
+        (0xDE_AD_BE_EF, 0x00_00_00_FF, 0, 8, 0xDE_AD_BE_FF),
+        (0xDE_AD_BE_EF, 0x00_00_00_FF, 8, 8, 0xDE_AD_FF_EF),
+        (0xDE_AD_BE_EF, 0x00_00_00_FF, 16, 8, 0xDE_FF_BE_EF),
+        (0xDE_AD_BE_EF, 0x00_00_00_FF, 24, 8, 0xFF_AD_BE_EF),
+
+        // offset out of bounds
+        (0xDE_AD_BE_EF, 0x00_00_00_FF, 32, 8, 0xDE_AD_BE_EF),
+        (0xDE_AD_BE_EF, 0x00_00_00_FF, 48, 8, 0xDE_AD_BE_EF),
+        (0xDE_AD_BE_EF, 0x00_00_00_FF, 64, 8, 0xDE_AD_BE_EF),
+
+        // size out of bounds
+        (0xDE_AD_BE_EF, 0x00_00_00_FF, 0, 32, 0x00_00_00_FF),
+        (0xDE_AD_BE_EF, 0x00_00_00_FF, 8, 32, 0x00_00_FF_EF),
+        (0xDE_AD_BE_EF, 0x00_00_00_FF, 16, 32, 0x00_FF_BE_EF),
+        (0xDE_AD_BE_EF, 0x00_00_00_FF, 24, 32, 0xFF_AD_BE_EF),
+    ];
+
+    for &(value, insert, offset, bits, expected) in insert_bits_values {
+        let test = ShaderTest::new(
+            format!("insertBits<u32>({value}, {insert}, {offset}, {bits}) == {expected})"),
+            String::from("value: u32, insert: u32, offset: u32, bits: u32"),
+            String::from("output[0] = insertBits(input.value, input.insert, input.offset, input.bits);"),
+            &[value, insert, offset, bits],
+            vec![ComparisonValue::U32(expected)],
+        );
+
+        tests.push(test);
+    }
+    
+    tests
+}
+
 #[gpu_test]
 static ABS: GpuTestConfiguration = numeric_bulitin_test(abs);
 #[gpu_test]
@@ -373,3 +419,5 @@ static COUNT_TRAILING_ZEROS: GpuTestConfiguration = numeric_bulitin_test(count_t
 static EXTRACT_BITS_UNSIGNED: GpuTestConfiguration = numeric_bulitin_test(extract_bits_unsigned);
 #[gpu_test]
 static EXTRACT_BITS_SIGNED: GpuTestConfiguration = numeric_bulitin_test(extract_bits_signed);
+#[gpu_test]
+static INSERT_BITS: GpuTestConfiguration = numeric_bulitin_test(insert_bits);
