@@ -321,22 +321,18 @@ fn extract_bits_signed() -> Vec<ShaderTest> {
         (0x00_00_FF_00, 8, 8, 0xFF_FF_FF_FF),
         (0x00_FF_00_00, 16, 8, 0xFF_FF_FF_FF),
         (0xFF_00_00_00, 24, 8, 0xFF_FF_FF_FF),
-
         // Correct sign extension behavior
         (0x00_00_00_FF, 0, 9, 0x00_00_00_FF),
         (0x00_00_00_80, 0, 8, 0xFF_FF_FF_80),
-
         // offset out of bounds
         (0x01_23_45_67, 32, 8, 0),
         (0x01_23_45_67, 48, 8, 0),
         (0x01_23_45_67, 64, 8, 0),
-
         // size out of bounds
         (0x01_23_45_67, 0, 32, 0x01_23_45_67),
         (0x01_23_45_67, 8, 32, 0x01_23_45),
         (0x01_23_45_67, 16, 32, 0x01_23),
         (0x01_23_45_67, 24, 32, 0x01),
-
         // size out of bounds, sign extended
         (0x81_23_45_67, 0, 32, 0x81_23_45_67 as i32 >> 0),
         (0x81_23_45_67, 8, 32, 0x81_23_45_67 as i32 >> 8),
@@ -348,7 +344,9 @@ fn extract_bits_signed() -> Vec<ShaderTest> {
         let test = ShaderTest::new(
             format!("extractBits<i32>({value}, {offset}, {bits}) == {expected})"),
             String::from("value: i32, offset: u32, bits: u32"),
-            String::from("output[0] = bitcast<u32>(extractBits(input.value, input.offset, input.bits));"),
+            String::from(
+                "output[0] = bitcast<u32>(extractBits(input.value, input.offset, input.bits));",
+            ),
             &[value, offset, bits],
             vec![ComparisonValue::I32(expected)],
         );
@@ -371,18 +369,15 @@ fn insert_bits() -> Vec<ShaderTest> {
         (0x00_00_00_FF, 0x00_00_00_FF, 8, 8, 0x00_00_FF_FF),
         (0x00_00_00_FF, 0x00_00_00_FF, 16, 8, 0x00_FF_00_FF),
         (0x00_00_00_FF, 0x00_00_00_FF, 24, 8, 0xFF_00_00_FF),
-
         // overwrite bits
         (0xDE_AD_BE_EF, 0x00_00_00_FF, 0, 8, 0xDE_AD_BE_FF),
         (0xDE_AD_BE_EF, 0x00_00_00_FF, 8, 8, 0xDE_AD_FF_EF),
         (0xDE_AD_BE_EF, 0x00_00_00_FF, 16, 8, 0xDE_FF_BE_EF),
         (0xDE_AD_BE_EF, 0x00_00_00_FF, 24, 8, 0xFF_AD_BE_EF),
-
         // offset out of bounds
         (0xDE_AD_BE_EF, 0x00_00_00_FF, 32, 8, 0xDE_AD_BE_EF),
         (0xDE_AD_BE_EF, 0x00_00_00_FF, 48, 8, 0xDE_AD_BE_EF),
         (0xDE_AD_BE_EF, 0x00_00_00_FF, 64, 8, 0xDE_AD_BE_EF),
-
         // size out of bounds
         (0xDE_AD_BE_EF, 0x00_00_00_FF, 0, 32, 0x00_00_00_FF),
         (0xDE_AD_BE_EF, 0x00_00_00_FF, 8, 32, 0x00_00_FF_EF),
@@ -394,14 +389,16 @@ fn insert_bits() -> Vec<ShaderTest> {
         let test = ShaderTest::new(
             format!("insertBits<u32>({value}, {insert}, {offset}, {bits}) == {expected})"),
             String::from("value: u32, insert: u32, offset: u32, bits: u32"),
-            String::from("output[0] = insertBits(input.value, input.insert, input.offset, input.bits);"),
+            String::from(
+                "output[0] = insertBits(input.value, input.insert, input.offset, input.bits);",
+            ),
             &[value, insert, offset, bits],
             vec![ComparisonValue::U32(expected)],
         );
 
         tests.push(test);
     }
-    
+
     tests
 }
 

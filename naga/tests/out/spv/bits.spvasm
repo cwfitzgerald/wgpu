@@ -1,7 +1,7 @@
 ; SPIR-V
 ; Version: 1.1
 ; Generator: rspirv
-; Bound: 180
+; Bound: 204
 OpCapability Shader
 %1 = OpExtInstImport "GLSL.std.450"
 OpMemoryModel Logical GLSL450
@@ -43,7 +43,7 @@ OpExecutionMode %15 LocalSize 1 1 1
 %45 = OpTypePointer Function %10
 %47 = OpTypePointer Function %11
 %49 = OpTypePointer Function %13
-%97 = OpConstant  %7  32
+%74 = OpConstant  %7  32
 %15 = OpFunction  %2  None %16
 %14 = OpLabel
 %48 = OpVariable  %49  Function %27
@@ -90,149 +90,173 @@ OpStore %46 %68
 OpStore %46 %70
 %71 = OpLoad  %3  %30
 %72 = OpLoad  %3  %30
-%73 = OpBitFieldInsert  %3  %71 %72 %28 %29
+%75 = OpExtInst  %7  %1 UMin %28 %74
+%76 = OpISub  %7  %74 %75
+%77 = OpExtInst  %7  %1 UMin %29 %76
+%73 = OpBitFieldInsert  %3  %71 %72 %75 %77
 OpStore %30 %73
-%74 = OpLoad  %4  %32
-%75 = OpLoad  %4  %32
-%76 = OpBitFieldInsert  %4  %74 %75 %28 %29
-OpStore %32 %76
-%77 = OpLoad  %5  %34
-%78 = OpLoad  %5  %34
-%79 = OpBitFieldInsert  %5  %77 %78 %28 %29
-OpStore %34 %79
-%80 = OpLoad  %6  %36
-%81 = OpLoad  %6  %36
-%82 = OpBitFieldInsert  %6  %80 %81 %28 %29
-OpStore %36 %82
-%83 = OpLoad  %7  %38
-%84 = OpLoad  %7  %38
-%85 = OpBitFieldInsert  %7  %83 %84 %28 %29
-OpStore %38 %85
-%86 = OpLoad  %8  %40
-%87 = OpLoad  %8  %40
-%88 = OpBitFieldInsert  %8  %86 %87 %28 %29
-OpStore %40 %88
-%89 = OpLoad  %9  %42
-%90 = OpLoad  %9  %42
-%91 = OpBitFieldInsert  %9  %89 %90 %28 %29
-OpStore %42 %91
-%92 = OpLoad  %10  %44
-%93 = OpLoad  %10  %44
-%94 = OpBitFieldInsert  %10  %92 %93 %28 %29
-OpStore %44 %94
-%95 = OpLoad  %3  %30
-%98 = OpExtInst  %7  %1 UMin %28 %97
-%99 = OpISub  %7  %97 %98
-%100 = OpExtInst  %7  %1 UMin %29 %99
-%96 = OpBitFieldSExtract  %3  %95 %98 %100
-OpStore %30 %96
-%101 = OpLoad  %4  %32
-%103 = OpExtInst  %7  %1 UMin %28 %97
-%104 = OpISub  %7  %97 %103
-%105 = OpExtInst  %7  %1 UMin %29 %104
-%102 = OpBitFieldSExtract  %4  %101 %103 %105
-OpStore %32 %102
-%106 = OpLoad  %5  %34
-%108 = OpExtInst  %7  %1 UMin %28 %97
-%109 = OpISub  %7  %97 %108
-%110 = OpExtInst  %7  %1 UMin %29 %109
-%107 = OpBitFieldSExtract  %5  %106 %108 %110
-OpStore %34 %107
-%111 = OpLoad  %6  %36
-%113 = OpExtInst  %7  %1 UMin %28 %97
-%114 = OpISub  %7  %97 %113
-%115 = OpExtInst  %7  %1 UMin %29 %114
-%112 = OpBitFieldSExtract  %6  %111 %113 %115
-OpStore %36 %112
-%116 = OpLoad  %7  %38
-%118 = OpExtInst  %7  %1 UMin %28 %97
-%119 = OpISub  %7  %97 %118
-%120 = OpExtInst  %7  %1 UMin %29 %119
-%117 = OpBitFieldUExtract  %7  %116 %118 %120
-OpStore %38 %117
-%121 = OpLoad  %8  %40
-%123 = OpExtInst  %7  %1 UMin %28 %97
-%124 = OpISub  %7  %97 %123
-%125 = OpExtInst  %7  %1 UMin %29 %124
-%122 = OpBitFieldUExtract  %8  %121 %123 %125
-OpStore %40 %122
-%126 = OpLoad  %9  %42
-%128 = OpExtInst  %7  %1 UMin %28 %97
-%129 = OpISub  %7  %97 %128
-%130 = OpExtInst  %7  %1 UMin %29 %129
-%127 = OpBitFieldUExtract  %9  %126 %128 %130
-OpStore %42 %127
-%131 = OpLoad  %10  %44
-%133 = OpExtInst  %7  %1 UMin %28 %97
-%134 = OpISub  %7  %97 %133
-%135 = OpExtInst  %7  %1 UMin %29 %134
-%132 = OpBitFieldUExtract  %10  %131 %133 %135
-OpStore %44 %132
-%136 = OpLoad  %3  %30
-%137 = OpExtInst  %3  %1 FindILsb %136
-OpStore %30 %137
-%138 = OpLoad  %8  %40
-%139 = OpExtInst  %8  %1 FindILsb %138
-OpStore %40 %139
-%140 = OpLoad  %5  %34
-%141 = OpExtInst  %5  %1 FindSMsb %140
-OpStore %34 %141
-%142 = OpLoad  %9  %42
-%143 = OpExtInst  %9  %1 FindUMsb %142
-OpStore %42 %143
-%144 = OpLoad  %3  %30
-%145 = OpExtInst  %3  %1 FindSMsb %144
-OpStore %30 %145
-%146 = OpLoad  %7  %38
-%147 = OpExtInst  %7  %1 FindUMsb %146
-OpStore %38 %147
-%148 = OpLoad  %3  %30
-%149 = OpBitCount  %3  %148
-OpStore %30 %149
-%150 = OpLoad  %4  %32
-%151 = OpBitCount  %4  %150
-OpStore %32 %151
-%152 = OpLoad  %5  %34
-%153 = OpBitCount  %5  %152
-OpStore %34 %153
-%154 = OpLoad  %6  %36
-%155 = OpBitCount  %6  %154
-OpStore %36 %155
-%156 = OpLoad  %7  %38
-%157 = OpBitCount  %7  %156
-OpStore %38 %157
-%158 = OpLoad  %8  %40
-%159 = OpBitCount  %8  %158
-OpStore %40 %159
-%160 = OpLoad  %9  %42
-%161 = OpBitCount  %9  %160
-OpStore %42 %161
-%162 = OpLoad  %10  %44
-%163 = OpBitCount  %10  %162
-OpStore %44 %163
-%164 = OpLoad  %3  %30
-%165 = OpBitReverse  %3  %164
-OpStore %30 %165
-%166 = OpLoad  %4  %32
-%167 = OpBitReverse  %4  %166
-OpStore %32 %167
-%168 = OpLoad  %5  %34
-%169 = OpBitReverse  %5  %168
-OpStore %34 %169
-%170 = OpLoad  %6  %36
-%171 = OpBitReverse  %6  %170
-OpStore %36 %171
-%172 = OpLoad  %7  %38
-%173 = OpBitReverse  %7  %172
-OpStore %38 %173
-%174 = OpLoad  %8  %40
-%175 = OpBitReverse  %8  %174
-OpStore %40 %175
-%176 = OpLoad  %9  %42
-%177 = OpBitReverse  %9  %176
-OpStore %42 %177
-%178 = OpLoad  %10  %44
-%179 = OpBitReverse  %10  %178
-OpStore %44 %179
+%78 = OpLoad  %4  %32
+%79 = OpLoad  %4  %32
+%81 = OpExtInst  %7  %1 UMin %28 %74
+%82 = OpISub  %7  %74 %81
+%83 = OpExtInst  %7  %1 UMin %29 %82
+%80 = OpBitFieldInsert  %4  %78 %79 %81 %83
+OpStore %32 %80
+%84 = OpLoad  %5  %34
+%85 = OpLoad  %5  %34
+%87 = OpExtInst  %7  %1 UMin %28 %74
+%88 = OpISub  %7  %74 %87
+%89 = OpExtInst  %7  %1 UMin %29 %88
+%86 = OpBitFieldInsert  %5  %84 %85 %87 %89
+OpStore %34 %86
+%90 = OpLoad  %6  %36
+%91 = OpLoad  %6  %36
+%93 = OpExtInst  %7  %1 UMin %28 %74
+%94 = OpISub  %7  %74 %93
+%95 = OpExtInst  %7  %1 UMin %29 %94
+%92 = OpBitFieldInsert  %6  %90 %91 %93 %95
+OpStore %36 %92
+%96 = OpLoad  %7  %38
+%97 = OpLoad  %7  %38
+%99 = OpExtInst  %7  %1 UMin %28 %74
+%100 = OpISub  %7  %74 %99
+%101 = OpExtInst  %7  %1 UMin %29 %100
+%98 = OpBitFieldInsert  %7  %96 %97 %99 %101
+OpStore %38 %98
+%102 = OpLoad  %8  %40
+%103 = OpLoad  %8  %40
+%105 = OpExtInst  %7  %1 UMin %28 %74
+%106 = OpISub  %7  %74 %105
+%107 = OpExtInst  %7  %1 UMin %29 %106
+%104 = OpBitFieldInsert  %8  %102 %103 %105 %107
+OpStore %40 %104
+%108 = OpLoad  %9  %42
+%109 = OpLoad  %9  %42
+%111 = OpExtInst  %7  %1 UMin %28 %74
+%112 = OpISub  %7  %74 %111
+%113 = OpExtInst  %7  %1 UMin %29 %112
+%110 = OpBitFieldInsert  %9  %108 %109 %111 %113
+OpStore %42 %110
+%114 = OpLoad  %10  %44
+%115 = OpLoad  %10  %44
+%117 = OpExtInst  %7  %1 UMin %28 %74
+%118 = OpISub  %7  %74 %117
+%119 = OpExtInst  %7  %1 UMin %29 %118
+%116 = OpBitFieldInsert  %10  %114 %115 %117 %119
+OpStore %44 %116
+%120 = OpLoad  %3  %30
+%122 = OpExtInst  %7  %1 UMin %28 %74
+%123 = OpISub  %7  %74 %122
+%124 = OpExtInst  %7  %1 UMin %29 %123
+%121 = OpBitFieldSExtract  %3  %120 %122 %124
+OpStore %30 %121
+%125 = OpLoad  %4  %32
+%127 = OpExtInst  %7  %1 UMin %28 %74
+%128 = OpISub  %7  %74 %127
+%129 = OpExtInst  %7  %1 UMin %29 %128
+%126 = OpBitFieldSExtract  %4  %125 %127 %129
+OpStore %32 %126
+%130 = OpLoad  %5  %34
+%132 = OpExtInst  %7  %1 UMin %28 %74
+%133 = OpISub  %7  %74 %132
+%134 = OpExtInst  %7  %1 UMin %29 %133
+%131 = OpBitFieldSExtract  %5  %130 %132 %134
+OpStore %34 %131
+%135 = OpLoad  %6  %36
+%137 = OpExtInst  %7  %1 UMin %28 %74
+%138 = OpISub  %7  %74 %137
+%139 = OpExtInst  %7  %1 UMin %29 %138
+%136 = OpBitFieldSExtract  %6  %135 %137 %139
+OpStore %36 %136
+%140 = OpLoad  %7  %38
+%142 = OpExtInst  %7  %1 UMin %28 %74
+%143 = OpISub  %7  %74 %142
+%144 = OpExtInst  %7  %1 UMin %29 %143
+%141 = OpBitFieldUExtract  %7  %140 %142 %144
+OpStore %38 %141
+%145 = OpLoad  %8  %40
+%147 = OpExtInst  %7  %1 UMin %28 %74
+%148 = OpISub  %7  %74 %147
+%149 = OpExtInst  %7  %1 UMin %29 %148
+%146 = OpBitFieldUExtract  %8  %145 %147 %149
+OpStore %40 %146
+%150 = OpLoad  %9  %42
+%152 = OpExtInst  %7  %1 UMin %28 %74
+%153 = OpISub  %7  %74 %152
+%154 = OpExtInst  %7  %1 UMin %29 %153
+%151 = OpBitFieldUExtract  %9  %150 %152 %154
+OpStore %42 %151
+%155 = OpLoad  %10  %44
+%157 = OpExtInst  %7  %1 UMin %28 %74
+%158 = OpISub  %7  %74 %157
+%159 = OpExtInst  %7  %1 UMin %29 %158
+%156 = OpBitFieldUExtract  %10  %155 %157 %159
+OpStore %44 %156
+%160 = OpLoad  %3  %30
+%161 = OpExtInst  %3  %1 FindILsb %160
+OpStore %30 %161
+%162 = OpLoad  %8  %40
+%163 = OpExtInst  %8  %1 FindILsb %162
+OpStore %40 %163
+%164 = OpLoad  %5  %34
+%165 = OpExtInst  %5  %1 FindSMsb %164
+OpStore %34 %165
+%166 = OpLoad  %9  %42
+%167 = OpExtInst  %9  %1 FindUMsb %166
+OpStore %42 %167
+%168 = OpLoad  %3  %30
+%169 = OpExtInst  %3  %1 FindSMsb %168
+OpStore %30 %169
+%170 = OpLoad  %7  %38
+%171 = OpExtInst  %7  %1 FindUMsb %170
+OpStore %38 %171
+%172 = OpLoad  %3  %30
+%173 = OpBitCount  %3  %172
+OpStore %30 %173
+%174 = OpLoad  %4  %32
+%175 = OpBitCount  %4  %174
+OpStore %32 %175
+%176 = OpLoad  %5  %34
+%177 = OpBitCount  %5  %176
+OpStore %34 %177
+%178 = OpLoad  %6  %36
+%179 = OpBitCount  %6  %178
+OpStore %36 %179
+%180 = OpLoad  %7  %38
+%181 = OpBitCount  %7  %180
+OpStore %38 %181
+%182 = OpLoad  %8  %40
+%183 = OpBitCount  %8  %182
+OpStore %40 %183
+%184 = OpLoad  %9  %42
+%185 = OpBitCount  %9  %184
+OpStore %42 %185
+%186 = OpLoad  %10  %44
+%187 = OpBitCount  %10  %186
+OpStore %44 %187
+%188 = OpLoad  %3  %30
+%189 = OpBitReverse  %3  %188
+OpStore %30 %189
+%190 = OpLoad  %4  %32
+%191 = OpBitReverse  %4  %190
+OpStore %32 %191
+%192 = OpLoad  %5  %34
+%193 = OpBitReverse  %5  %192
+OpStore %34 %193
+%194 = OpLoad  %6  %36
+%195 = OpBitReverse  %6  %194
+OpStore %36 %195
+%196 = OpLoad  %7  %38
+%197 = OpBitReverse  %7  %196
+OpStore %38 %197
+%198 = OpLoad  %8  %40
+%199 = OpBitReverse  %8  %198
+OpStore %40 %199
+%200 = OpLoad  %9  %42
+%201 = OpBitReverse  %9  %200
+OpStore %42 %201
+%202 = OpLoad  %10  %44
+%203 = OpBitReverse  %10  %202
+OpStore %44 %203
 OpReturn
 OpFunctionEnd
