@@ -276,23 +276,23 @@ fn extract_bits_unsigned() -> Vec<ShaderTest> {
         (0xDE_AD_BE_EF, 8, 8, 0xBE),
         (0xDE_AD_BE_EF, 16, 8, 0xAD),
         (0xDE_AD_BE_EF, 24, 8, 0xDE),
-
         // 0 bits
         (0xDE_AD_BE_EF, 0, 0, 0),
         (0xDE_AD_BE_EF, 8, 0, 0),
         (0xDE_AD_BE_EF, 16, 0, 0),
         (0xDE_AD_BE_EF, 24, 0, 0),
-
         // offset out of bounds
         (0xDE_AD_BE_EF, 32, 8, 0),
         (0xDE_AD_BE_EF, 48, 8, 0),
         (0xDE_AD_BE_EF, 64, 8, 0),
-
         // size out of bounds
         (0xDE_AD_BE_EF, 0, 32, 0xDE_AD_BE_EF),
         (0xDE_AD_BE_EF, 8, 32, 0xDE_AD_BE),
         (0xDE_AD_BE_EF, 16, 32, 0xDE_AD),
         (0xDE_AD_BE_EF, 24, 32, 0xDE),
+
+        // Try to catch overflows
+        (0xDE_AD_BE_EF, u32::MAX, u32::MAX, 0),
     ];
 
     for &(value, offset, bits, expected) in uint_extract_bits_values {
