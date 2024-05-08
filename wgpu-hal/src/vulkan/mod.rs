@@ -29,17 +29,17 @@ mod adapter;
 mod command;
 mod conv;
 mod device;
+mod fence;
 mod instance;
+mod queue;
+mod surface;
 
 use std::{
     borrow::Borrow,
     ffi::CStr,
     fmt,
     num::NonZeroU32,
-    sync::{
-        atomic::{AtomicIsize, Ordering},
-        Arc,
-    },
+    sync::{atomic::AtomicIsize, Arc},
 };
 
 use arrayvec::ArrayVec;
@@ -48,6 +48,8 @@ use ash::{
     vk,
 };
 use parking_lot::{Mutex, RwLock};
+
+use fence::Fence;
 
 const MILLIS_TO_NANOS: u64 = 1_000_000;
 const MAX_TOTAL_ATTACHMENTS: usize = crate::MAX_COLOR_ATTACHMENTS * 2 + 1;
@@ -557,280 +559,6 @@ pub struct ComputePipeline {
 #[derive(Debug)]
 pub struct QuerySet {
     raw: vk::QueryPool,
-}
-
-/// The [`Api::Fence`] type for [`vulkan::Api`].
-///
-/// This is an `enum` because there are two possible implementations of
-/// `wgpu-hal` fences on Vulkan: Vulkan fences, which work on any version of
-/// Vulkan, and Vulkan timeline semaphores, which are easier and cheaper but
-/// require non-1.0 features.
-///
-/// [`Device::create_fence`] returns a [`TimelineSemaphore`] if
-/// [`VK_KHR_timeline_semaphore`] is available and enabled, and a [`FencePool`]
-/// otherwise.
-///
-/// [`Api::Fence`]: crate::Api::Fence
-/// [`vulkan::Api`]: Api
-/// [`Device::create_fence`]: crate::Device::create_fence
-/// [`TimelineSemaphore`]: Fence::TimelineSemaphore
-/// [`VK_KHR_timeline_semaphore`]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VK_KHR_timeline_semaphore
-/// [`FencePool`]: Fence::FencePool
-#[derive(Debug)]
-pub enum Fence {
-    /// A Vulkan [timeline semaphore].
-    ///
-    /// These are simpler to use than Vulkan fences, since timeline semaphores
-    /// work exactly the way [`wpgu_hal::Api::Fence`] is specified to work.
-    ///
-    /// [timeline semaphore]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#synchronization-semaphores
-    /// [`wpgu_hal::Api::Fence`]: crate::Api::Fence
-    TimelineSemaphore(vk::Semaphore),
-
-    /// A collection of Vulkan [fence]s, each associated with a [`FenceValue`].
-    ///
-    /// The effective [`FenceValue`] of this variant is the greater of
-    /// `last_completed` and the maximum value associated with a signalled fence
-    /// in `active`.
-    ///
-    /// Fences are available in all versions of Vulkan, but since they only have
-    /// two states, "signaled" and "unsignaled", we need to use a separate fence
-    /// for each queue submission we might want to wait for, and remember which
-    /// [`FenceValue`] each one represents.
-    ///
-    /// [fence]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#synchronization-fences
-    /// [`FenceValue`]: crate::FenceValue
-    FencePool {
-        last_completed: crate::FenceValue,
-        /// The pending fence values have to be ascending.
-        active: Vec<(crate::FenceValue, vk::Fence)>,
-        free: Vec<vk::Fence>,
-    },
-}
-
-impl Fence {
-    /// Return the highest [`FenceValue`] among the signalled fences in `active`.
-    ///
-    /// As an optimization, assume that we already know that the fence has
-    /// reached `last_completed`, and don't bother checking fences whose values
-    /// are less than that: those fences remain in the `active` array only
-    /// because we haven't called `maintain` yet to clean them up.
-    ///
-    /// [`FenceValue`]: crate::FenceValue
-    fn check_active(
-        device: &ash::Device,
-        mut last_completed: crate::FenceValue,
-        active: &[(crate::FenceValue, vk::Fence)],
-    ) -> Result<crate::FenceValue, crate::DeviceError> {
-        for &(value, raw) in active.iter() {
-            unsafe {
-                if value > last_completed && device.get_fence_status(raw)? {
-                    last_completed = value;
-                }
-            }
-        }
-        Ok(last_completed)
-    }
-
-    /// Return the highest signalled [`FenceValue`] for `self`.
-    ///
-    /// [`FenceValue`]: crate::FenceValue
-    fn get_latest(
-        &self,
-        device: &ash::Device,
-        extension: Option<&ExtensionFn<khr::TimelineSemaphore>>,
-    ) -> Result<crate::FenceValue, crate::DeviceError> {
-        match *self {
-            Self::TimelineSemaphore(raw) => unsafe {
-                Ok(match *extension.unwrap() {
-                    ExtensionFn::Extension(ref ext) => ext.get_semaphore_counter_value(raw)?,
-                    ExtensionFn::Promoted => device.get_semaphore_counter_value(raw)?,
-                })
-            },
-            Self::FencePool {
-                last_completed,
-                ref active,
-                free: _,
-            } => Self::check_active(device, last_completed, active),
-        }
-    }
-
-    /// Trim the internal state of this [`Fence`].
-    ///
-    /// This function has no externally visible effect, but you should call it
-    /// periodically to keep this fence's resource consumption under control.
-    ///
-    /// For fences using the [`FencePool`] implementation, this function
-    /// recycles fences that have been signaled. If you don't call this,
-    /// [`Queue::submit`] will just keep allocating a new Vulkan fence every
-    /// time it's called.
-    ///
-    /// [`FencePool`]: Fence::FencePool
-    /// [`Queue::submit`]: crate::Queue::submit
-    fn maintain(&mut self, device: &ash::Device) -> Result<(), crate::DeviceError> {
-        match *self {
-            Self::TimelineSemaphore(_) => {}
-            Self::FencePool {
-                ref mut last_completed,
-                ref mut active,
-                ref mut free,
-            } => {
-                let latest = Self::check_active(device, *last_completed, active)?;
-                let base_free = free.len();
-                for &(value, raw) in active.iter() {
-                    if value <= latest {
-                        free.push(raw);
-                    }
-                }
-                if free.len() != base_free {
-                    active.retain(|&(value, _)| value > latest);
-                    unsafe {
-                        device.reset_fences(&free[base_free..])?;
-                    }
-                }
-                *last_completed = latest;
-            }
-        }
-        Ok(())
-    }
-}
-
-impl crate::Queue for Queue {
-    type A = Api;
-
-    unsafe fn submit(
-        &self,
-        command_buffers: &[&CommandBuffer],
-        surface_textures: &[&SurfaceTexture],
-        signal_fence: Option<(&mut Fence, crate::FenceValue)>,
-    ) -> Result<(), crate::DeviceError> {
-        let mut fence_raw = vk::Fence::null();
-
-        let mut wait_stage_masks = Vec::new();
-        let mut wait_semaphores = Vec::new();
-        let mut signal_semaphores = ArrayVec::<_, 2>::new();
-        let mut signal_values = ArrayVec::<_, 2>::new();
-
-        for &surface_texture in surface_textures {
-            wait_stage_masks.push(vk::PipelineStageFlags::TOP_OF_PIPE);
-            wait_semaphores.push(surface_texture.wait_semaphore);
-        }
-
-        let old_index = self.relay_index.load(Ordering::Relaxed);
-
-        let sem_index = if old_index >= 0 {
-            wait_stage_masks.push(vk::PipelineStageFlags::TOP_OF_PIPE);
-            wait_semaphores.push(self.relay_semaphores[old_index as usize]);
-            (old_index as usize + 1) % self.relay_semaphores.len()
-        } else {
-            0
-        };
-
-        signal_semaphores.push(self.relay_semaphores[sem_index]);
-
-        self.relay_index
-            .store(sem_index as isize, Ordering::Relaxed);
-
-        if let Some((fence, value)) = signal_fence {
-            fence.maintain(&self.device.raw)?;
-            match *fence {
-                Fence::TimelineSemaphore(raw) => {
-                    signal_semaphores.push(raw);
-                    signal_values.push(!0);
-                    signal_values.push(value);
-                }
-                Fence::FencePool {
-                    ref mut active,
-                    ref mut free,
-                    ..
-                } => {
-                    fence_raw = match free.pop() {
-                        Some(raw) => raw,
-                        None => unsafe {
-                            self.device
-                                .raw
-                                .create_fence(&vk::FenceCreateInfo::builder(), None)?
-                        },
-                    };
-                    active.push((value, fence_raw));
-                }
-            }
-        }
-
-        let vk_cmd_buffers = command_buffers
-            .iter()
-            .map(|cmd| cmd.raw)
-            .collect::<Vec<_>>();
-
-        let mut vk_info = vk::SubmitInfo::builder().command_buffers(&vk_cmd_buffers);
-
-        vk_info = vk_info
-            .wait_semaphores(&wait_semaphores)
-            .wait_dst_stage_mask(&wait_stage_masks)
-            .signal_semaphores(&signal_semaphores);
-
-        let mut vk_timeline_info;
-
-        if !signal_values.is_empty() {
-            vk_timeline_info =
-                vk::TimelineSemaphoreSubmitInfo::builder().signal_semaphore_values(&signal_values);
-            vk_info = vk_info.push_next(&mut vk_timeline_info);
-        }
-
-        profiling::scope!("vkQueueSubmit");
-        unsafe {
-            self.device
-                .raw
-                .queue_submit(self.raw, &[vk_info.build()], fence_raw)?
-        };
-        Ok(())
-    }
-
-    unsafe fn present(
-        &self,
-        surface: &Surface,
-        texture: SurfaceTexture,
-    ) -> Result<(), crate::SurfaceError> {
-        let mut swapchain = surface.swapchain.write();
-        let ssc = swapchain.as_mut().unwrap();
-
-        let swapchains = [ssc.raw];
-        let image_indices = [texture.index];
-        let mut vk_info = vk::PresentInfoKHR::builder()
-            .swapchains(&swapchains)
-            .image_indices(&image_indices);
-
-        let old_index = self.relay_index.swap(-1, Ordering::Relaxed);
-        if old_index >= 0 {
-            vk_info = vk_info.wait_semaphores(
-                &self.relay_semaphores[old_index as usize..old_index as usize + 1],
-            );
-        }
-
-        let suboptimal = {
-            profiling::scope!("vkQueuePresentKHR");
-            unsafe { self.swapchain_fn.queue_present(self.raw, &vk_info) }.map_err(|error| {
-                match error {
-                    vk::Result::ERROR_OUT_OF_DATE_KHR => crate::SurfaceError::Outdated,
-                    vk::Result::ERROR_SURFACE_LOST_KHR => crate::SurfaceError::Lost,
-                    _ => crate::DeviceError::from(error).into(),
-                }
-            })?
-        };
-        if suboptimal {
-            // We treat `VK_SUBOPTIMAL_KHR` as `VK_SUCCESS` on Android.
-            // On Android 10+, libvulkan's `vkQueuePresentKHR` implementation returns `VK_SUBOPTIMAL_KHR` if not doing pre-rotation
-            // (i.e `VkSwapchainCreateInfoKHR::preTransform` not being equal to the current device orientation).
-            // This is always the case when the device orientation is anything other than the identity one, as we unconditionally use `VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR`.
-            #[cfg(not(target_os = "android"))]
-            log::warn!("Suboptimal present of frame {}", texture.index);
-        }
-        Ok(())
-    }
-
-    unsafe fn get_timestamp_period(&self) -> f32 {
-        self.device.timestamp_period
-    }
 }
 
 impl From<vk::Result> for crate::DeviceError {

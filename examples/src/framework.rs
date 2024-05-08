@@ -619,7 +619,7 @@ impl<E: Example + wgpu::WasmNotSendSync> From<ExampleTestParams<E>>
                 let bytes = dst_buffer_slice.get_mapped_range().to_vec();
 
                 wgpu_test::image::compare_image_output(
-                    dbg!(env!("CARGO_MANIFEST_DIR").to_string() + "/../" + params.image_path),
+                    env!("CARGO_MANIFEST_DIR").to_string() + "/../" + params.image_path,
                     &ctx.adapter_info,
                     params.width,
                     params.height,
