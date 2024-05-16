@@ -68,6 +68,7 @@ dx12 = [
     "winapi/d3d12",
     "winapi/d3d12shader",
     "winapi/d3d12sdklayers",
+    "winapi/dxgi",
     "winapi/dxgi1_6",
     "winapi/errhandlingapi",
 ]

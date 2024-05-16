@@ -491,6 +491,12 @@ pub trait Surface: WasmNotSendSync {
         timeout: Option<std::time::Duration>,
     ) -> Result<Option<AcquiredSurfaceTexture<Self::A>>, SurfaceError>;
     unsafe fn discard_texture(&self, texture: <Self::A as Api>::SurfaceTexture);
+
+    /// Returns a list of latest frame statistics, if available.
+    unsafe fn query_presentation_statistics(
+        &self,
+        device: &<Self::A as Api>::Device,
+    ) -> Vec<wgt::PresentationStatistics>;
 }
 
 pub trait Adapter: WasmNotSendSync {

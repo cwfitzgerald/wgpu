@@ -5337,6 +5337,20 @@ impl Surface<'_> {
             .ok_or(SurfaceError::Lost)
     }
 
+    ///
+    pub fn query_presentation_statistics(
+        &self,
+        device: &Device,
+    ) -> Vec<wgt::PresentationStatistics> {
+        DynContext::surface_query_presentation_statistics(
+            &*self.context,
+            &self.id,
+            self.surface_data.as_ref(),
+            &device.id,
+            device.data.as_ref(),
+        )
+    }
+
     /// Returns the inner hal Surface using a callback. The hal surface will be `None` if the
     /// backend type argument does not match with this wgpu Surface
     ///

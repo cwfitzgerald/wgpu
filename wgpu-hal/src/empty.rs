@@ -78,6 +78,13 @@ impl crate::Surface for Context {
         Ok(None)
     }
     unsafe fn discard_texture(&self, texture: Resource) {}
+
+    unsafe fn query_presentation_statistics(
+        &self,
+        _device: &<Self::A as crate::Api>::Device,
+    ) -> Vec<wgt::PresentationStatistics> {
+        Vec::new()
+    }
 }
 
 impl crate::Adapter for Context {

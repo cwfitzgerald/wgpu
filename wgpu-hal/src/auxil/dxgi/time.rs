@@ -7,6 +7,7 @@ use winapi::um::{
     winnt::LARGE_INTEGER,
 };
 
+#[derive(Copy, Clone)]
 pub enum PresentationTimer {
     /// DXGI uses QueryPerformanceCounter
     Dxgi {

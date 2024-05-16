@@ -822,4 +822,11 @@ impl crate::Surface for Surface {
         }))
     }
     unsafe fn discard_texture(&self, _texture: super::Texture) {}
+
+    unsafe fn query_presentation_statistics(
+        &self,
+        _device: &<Self::A as crate::Api>::Device,
+    ) -> Vec<wgt::PresentationStatistics> {
+        Vec::new()
+    }
 }

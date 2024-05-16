@@ -5407,6 +5407,15 @@ impl PresentationTimestamp {
     }
 }
 
+/// Information about a given presentation.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct PresentationStatistics {
+    /// Present number.
+    pub number: u64,
+    /// The timestamp of the presentation.
+    pub timestamp: PresentationTimestamp,
+}
+
 /// RGBA double precision color.
 ///
 /// This is not to be used as a generic color type, only for specific wgpu interfaces.

@@ -157,6 +157,13 @@ pub trait Context: Debug + WasmNotSendSync + Sized {
         adapter: &Self::AdapterId,
         adapter_data: &Self::AdapterData,
     ) -> wgt::SurfaceCapabilities;
+    fn surface_query_presentation_statistics(
+        &self,
+        surface: &Self::SurfaceId,
+        surface_data: &Self::SurfaceData,
+        device: &Self::DeviceId,
+        device_data: &Self::DeviceData,
+    ) -> Vec<wgt::PresentationStatistics>;
     fn surface_configure(
         &self,
         surface: &Self::SurfaceId,
@@ -1200,6 +1207,13 @@ pub(crate) trait DynContext: Debug + WasmNotSendSync {
         adapter: &ObjectId,
         adapter_data: &crate::Data,
     ) -> wgt::SurfaceCapabilities;
+    fn surface_query_presentation_statistics(
+        &self,
+        surface: &ObjectId,
+        surface_data: &crate::Data,
+        device: &ObjectId,
+        device_data: &crate::Data,
+    ) -> Vec<wgt::PresentationStatistics>;
     fn surface_configure(
         &self,
         surface: &ObjectId,
@@ -2128,6 +2142,26 @@ where
         let adapter = <T::AdapterId>::from(*adapter);
         let adapter_data = downcast_ref(adapter_data);
         Context::surface_get_capabilities(self, &surface, surface_data, &adapter, adapter_data)
+    }
+
+    fn surface_query_presentation_statistics(
+        &self,
+        surface: &ObjectId,
+        surface_data: &crate::Data,
+        device: &ObjectId,
+        device_data: &crate::Data,
+    ) -> Vec<wgt::PresentationStatistics> {
+        let surface = <T::SurfaceId>::from(*surface);
+        let surface_data = downcast_ref(surface_data);
+        let device = <T::DeviceId>::from(*device);
+        let device_data = downcast_ref(device_data);
+        Context::surface_query_presentation_statistics(
+            self,
+            &surface,
+            surface_data,
+            &device,
+            device_data,
+        )
     }
 
     fn surface_configure(

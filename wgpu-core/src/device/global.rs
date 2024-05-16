@@ -20,7 +20,7 @@ use crate::{
 };
 
 use arrayvec::ArrayVec;
-use hal::Device as _;
+use hal::{Device as _, Surface as _};
 
 use wgt::{BufferAddress, TextureFormat};
 
@@ -95,6 +95,30 @@ impl Global {
             .map_err(|_| instance::GetSurfaceSupportError::InvalidSurface)?;
 
         get_supported_callback(adapter, surface)
+    }
+
+    pub fn surface_query_presentation_statistics<A: HalApi>(
+        &self,
+        surface_id: SurfaceId,
+        device_id: DeviceId,
+    ) -> Result<Vec<wgt::PresentationStatistics>, instance::GetSurfaceSupportError> {
+        profiling::scope!("Surface::query_presentation_statistics");
+
+        let hub = A::hub(self);
+
+        let surface = self
+            .surfaces
+            .get(surface_id)
+            .map_err(|_| instance::GetSurfaceSupportError::InvalidSurface)?;
+        let device = hub
+            .devices
+            .get(device_id)
+            .map_err(|_| instance::GetSurfaceSupportError::InvalidAdapter)?;
+
+        let suf =
+            A::surface_as_hal(&surface).ok_or(instance::GetSurfaceSupportError::Unsupported)?;
+
+        Ok(unsafe { suf.query_presentation_statistics(device.raw()) })
     }
 
     pub fn device_features<A: HalApi>(

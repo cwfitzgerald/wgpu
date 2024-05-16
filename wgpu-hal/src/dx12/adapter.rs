@@ -503,6 +503,7 @@ impl crate::Adapter for super::Adapter {
             limits,
             self.private_caps,
             &self.library,
+            self.presentation_timer,
             self.dxc_container.clone(),
         )?;
         Ok(crate::OpenDevice {

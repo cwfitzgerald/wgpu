@@ -44,7 +44,10 @@ mod suballocation;
 mod types;
 mod view;
 
-use crate::auxil::{self, dxgi::result::HResult as _};
+use crate::auxil::{
+    self,
+    dxgi::{result::HResult as _, time::PresentationTimer},
+};
 
 use arrayvec::ArrayVec;
 use parking_lot::{Mutex, RwLock};
@@ -258,6 +261,7 @@ pub struct Device {
     #[cfg(feature = "renderdoc")]
     render_doc: auxil::renderdoc::RenderDoc,
     null_rtv_handle: descriptor::Handle,
+    presentation_timer: auxil::dxgi::time::PresentationTimer,
     mem_allocator: Option<Mutex<suballocation::GpuAllocatorWrapper>>,
     dxc_container: Option<Arc<shader_compilation::DxcContainer>>,
 }
@@ -884,6 +888,29 @@ impl crate::Surface for Surface {
         let mut swapchain = self.swap_chain.write();
         let sc = swapchain.as_mut().unwrap();
         sc.acquired_count -= 1;
+    }
+
+    unsafe fn query_presentation_statistics(
+        &self,
+        device: &Device,
+    ) -> Vec<wgt::PresentationStatistics> {
+        let swapchain_guard = self.swap_chain.read();
+        let swapchain = swapchain_guard.as_ref().unwrap();
+
+        let mut frame_statistics = winapi::shared::dxgi::DXGI_FRAME_STATISTICS::default();
+        unsafe { swapchain.raw.GetFrameStatistics(&mut frame_statistics) };
+
+        let PresentationTimer::Dxgi { frequency } = device.presentation_timer else {
+            unimplemented!()
+        };
+
+        vec![wgt::PresentationStatistics {
+            number: frame_statistics.PresentCount as u64,
+            timestamp: wgt::PresentationTimestamp(unsafe {
+                (*frame_statistics.SyncQPCTime.QuadPart() as u128 * 1_000_000_000)
+                    / frequency as u128
+            }),
+        }]
     }
 }
 

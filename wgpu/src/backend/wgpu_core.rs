@@ -754,6 +754,20 @@ impl crate::Context for ContextWgpuCore {
         }
     }
 
+    fn surface_query_presentation_statistics(
+        &self,
+        surface: &Self::SurfaceId,
+        _surface_data: &Self::SurfaceData,
+        device: &Self::DeviceId,
+        _device_data: &Self::DeviceData,
+    ) -> Vec<wgt::PresentationStatistics> {
+        match wgc::gfx_select!(device => self.0.surface_query_presentation_statistics(*surface, *device))
+        {
+            Ok(stats) => stats,
+            Err(err) => self.handle_error_fatal(err, "Surface::query_presentation_statistics"),
+        }
+    }
+
     fn surface_configure(
         &self,
         surface: &Self::SurfaceId,

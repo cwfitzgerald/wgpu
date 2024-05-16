@@ -30,6 +30,7 @@ impl super::Device {
         limits: &wgt::Limits,
         private_caps: super::PrivateCapabilities,
         library: &Arc<d3d12::D3D12Lib>,
+        presentation_timer: auxil::dxgi::time::PresentationTimer,
         dxc_container: Option<Arc<shader_compilation::DxcContainer>>,
     ) -> Result<Self, DeviceError> {
         let mem_allocator = if private_caps.suballocation_supported {
@@ -178,6 +179,7 @@ impl super::Device {
             library: Arc::clone(library),
             #[cfg(feature = "renderdoc")]
             render_doc: Default::default(),
+            presentation_timer,
             null_rtv_handle,
             mem_allocator,
             dxc_container,

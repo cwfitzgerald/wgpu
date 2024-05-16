@@ -186,6 +186,7 @@ impl SurfaceWrapper {
         let mut config = surface
             .get_default_config(&context.adapter, width, height)
             .expect("Surface isn't supported by the adapter.");
+        config.present_mode = wgpu::PresentMode::Fifo;
         if srgb {
             // Not all platforms (WebGPU) support sRGB swapchains, so we need to use view formats
             let view_format = config.format.add_srgb_suffix();
