@@ -1,4 +1,4 @@
-use std::{any::Any, fmt::Debug, future::Future, num::NonZeroU64, ops::Range, pin::Pin, sync::Arc};
+use std::{any::Any, fmt::Debug, future::Future, num::NonZeroU64, ops::{Deref, Range}, pin::Pin, sync::Arc};
 
 use wgt::{
     strict_assert, strict_assert_eq, AdapterInfo, BufferAddress, BufferSize, Color,
@@ -18,6 +18,345 @@ use crate::{
     ShaderModuleDescriptorSpirV, SurfaceTargetUnsafe, Texture, TextureDescriptor,
     TextureViewDescriptor, UncapturedErrorHandler,
 };
+
+#[cfg(all(wgpu_core, webgpu))]
+fn downcast<R, T>(value: &T) -> &R
+where
+    R: 'static,
+    T: Any + ?Sized,
+{
+    assert!(value.type_id() == std::any::TypeId::of::<R>());
+
+    return unsafe { &*(value as *const T as *const R) };
+}
+
+#[cfg(not(all(wgpu_core, webgpu)))]
+fn downcast<R, T>(value: &T) -> &R
+where
+    R: 'static,
+    T: Any + ?Sized,
+{
+    strict_assert!(value.type_id() == std::any::TypeId::of::<R>());
+
+    return unsafe { &*(value as *const T as *const R) };
+}
+
+#[cfg(all(wgpu_core, webgpu))]
+fn downcast_mut2<R, T>(value: &mut T) -> &mut R
+where
+    R: 'static,
+    T: Any + ?Sized,
+{
+    assert!((&*value).type_id() == std::any::TypeId::of::<R>());
+
+    return unsafe { &*(value as *mut T as *mut R) };
+}
+
+#[cfg(not(all(wgpu_core, webgpu)))]
+fn downcast_mut2<R, T>(value: &mut T) -> &mut R
+where
+    R: 'static,
+    T: Any + ?Sized,
+{
+    strict_assert!((&*value).type_id() == std::any::TypeId::of::<R>());
+
+    return unsafe { &mut *(value as *mut T as *mut R) };
+}
+
+pub trait AdapterInterface: Any + WasmNotSendSync {}
+pub trait DeviceInterface: Any + WasmNotSendSync {}
+pub trait QueueInterface: Any + WasmNotSendSync {}
+pub trait ShaderModuleInterface: Any + WasmNotSendSync {}
+pub trait BindGroupLayoutInterface: Any + WasmNotSendSync {}
+pub trait BindGroupInterface: Any + WasmNotSendSync {}
+pub trait TextureViewInterface: Any + WasmNotSendSync {}
+pub trait SamplerInterface: Any + WasmNotSendSync {}
+pub trait BufferInterface: Any + WasmNotSendSync {}
+pub trait TextureInterface: Any + WasmNotSendSync {}
+pub trait QuerySetInterface: Any + WasmNotSendSync {}
+pub trait PipelineLayoutInterface: Any + WasmNotSendSync {}
+pub trait RenderPipelineInterface: Any + WasmNotSendSync {}
+pub trait ComputePipelineInterface: Any + WasmNotSendSync {}
+pub trait PipelineCacheInterface: Any + WasmNotSendSync {}
+pub trait CommandEncoderInterface: Any + WasmNotSendSync {}
+pub trait ComputePassInterface: Any {}
+pub trait RenderPassInterface: Any {}
+pub trait CommandBufferInterface: Any + WasmNotSendSync {}
+pub trait RenderBundleEncoderInterface: Any + WasmNotSendSync {}
+pub trait RenderBundleInterface: Any + WasmNotSendSync {}
+pub trait SurfaceInterface: Any + WasmNotSendSync {}
+
+pub type OwnedErasedAdapter = Box<ErasedAdapterRef>;
+pub type OwnedErasedDevice = Box<ErasedDeviceRef>;
+pub type OwnedErasedQueue = Box<ErasedQueueRef>;
+pub type OwnedErasedShaderModule = Box<ErasedShaderModuleRef>;
+pub type OwnedErasedBindGroupLayout = Box<ErasedBindGroupLayoutRef>;
+pub type OwnedErasedBindGroup = Box<ErasedBindGroupRef>;
+pub type OwnedErasedTextureView = Box<ErasedTextureViewRef>;
+pub type OwnedErasedSampler = Box<ErasedSamplerRef>;
+pub type OwnedErasedBuffer = Box<ErasedBufferRef>;
+pub type OwnedErasedTexture = Box<ErasedTextureRef>;
+pub type OwnedErasedQuerySet = Box<ErasedQuerySetRef>;
+pub type OwnedErasedPipelineLayout = Box<ErasedPipelineLayoutRef>;
+pub type OwnedErasedRenderPipeline = Box<ErasedRenderPipelineRef>;
+pub type OwnedErasedComputePipeline = Box<ErasedComputePipelineRef>;
+pub type OwnedErasedPipelineCache = Box<ErasedPipelineCacheRef>;
+pub type OwnedErasedCommandEncoder = Box<ErasedCommandEncoderRef>;
+pub type OwnedErasedComputePass = Box<ErasedComputePassRef>;
+pub type OwnedErasedRenderPass = Box<ErasedRenderPassRef>;
+pub type OwnedErasedCommandBuffer = Box<ErasedCommandBufferRef>;
+pub type OwnedErasedRenderBundleEncoder = Box<ErasedRenderBundleEncoderRef>;
+pub type OwnedErasedRenderBundle = Box<ErasedRenderBundleRef>;
+pub type OwnedErasedSurface = Box<ErasedSurfaceRef>;
+
+enum InterfaceType<Core, WebGPU> {
+    Core(Core),
+    WebGPU(WebGPU),
+}
+
+impl<Core, WebGPU> InterfaceType {
+    fn as_core(&self) -> &Core {
+        match self {
+            InterfaceType::Core(value) => value,
+            _ => panic!("AdapterInterfaceType is not core"),
+        }
+    }
+
+    fn as_webgpu(&self) -> &WebGPU {
+        match self {
+            InterfaceType::WebGPU(value) => value,
+            _ => panic!("AdapterInterfaceType is not webgpu"),
+        }
+    };
+}
+
+impl<Core, WebGPU> Deref for InterfaceType<crate::wgpu_core::dapter, crate::webgpu::Adapter> {
+    type Target = dyn AdapterInterface;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            InterfaceType::Core(value) => value,
+            InterfaceType::WebGPU(value) => value,
+        }
+    }
+}
+
+pub type ErasedAdapterRef = dyn AdapterInterface;
+pub type ErasedDeviceRef = dyn DeviceInterface;
+pub type ErasedQueueRef = dyn QueueInterface;
+pub type ErasedShaderModuleRef = dyn ShaderModuleInterface;
+pub type ErasedBindGroupLayoutRef = dyn BindGroupLayoutInterface;
+pub type ErasedBindGroupRef = dyn BindGroupInterface;
+pub type ErasedTextureViewRef = dyn TextureViewInterface;
+pub type ErasedSamplerRef = dyn SamplerInterface;
+pub type ErasedBufferRef = dyn BufferInterface;
+pub type ErasedTextureRef = dyn TextureInterface;
+pub type ErasedQuerySetRef = dyn QuerySetInterface;
+pub type ErasedPipelineLayoutRef = dyn PipelineLayoutInterface;
+pub type ErasedRenderPipelineRef = dyn RenderPipelineInterface;
+pub type ErasedComputePipelineRef = dyn ComputePipelineInterface;
+pub type ErasedPipelineCacheRef = dyn PipelineCacheInterface;
+pub type ErasedCommandEncoderRef = dyn CommandEncoderInterface;
+pub type ErasedComputePassRef = dyn ComputePassInterface;
+pub type ErasedRenderPassRef = dyn RenderPassInterface;
+pub type ErasedCommandBufferRef = dyn CommandBufferInterface;
+pub type ErasedRenderBundleEncoderRef = dyn RenderBundleEncoderInterface;
+pub type ErasedRenderBundleRef = dyn RenderBundleInterface;
+pub type ErasedSurfaceRef = dyn SurfaceInterface;
+
+pub trait NewContextTypes {
+    type Adapter: AdapterInterface;
+    type Device: DeviceInterface;
+    type Queue: QueueInterface;
+    type ShaderModule: ShaderModuleInterface;
+    type BindGroupLayout: BindGroupLayoutInterface;
+    type BindGroup: BindGroupInterface;
+    type TextureView: TextureViewInterface;
+    type Sampler: SamplerInterface;
+    type Buffer: BufferInterface;
+    type Texture: TextureInterface;
+    type QuerySet: QuerySetInterface;
+    type PipelineLayout: PipelineLayoutInterface;
+    type RenderPipeline: RenderPipelineInterface;
+    type ComputePipeline: ComputePipelineInterface;
+    type PipelineCache: PipelineCacheInterface;
+    type CommandEncoder: CommandEncoderInterface;
+    type ComputePass: ComputePassInterface;
+    type RenderPass: RenderPassInterface;
+    type CommandBuffer: CommandBufferInterface;
+    type RenderBundleEncoder: RenderBundleEncoderInterface;
+    type RenderBundle: RenderBundleInterface;
+    type Surface: SurfaceInterface;
+
+    fn get_adapter(erased: &dyn AdapterInterface) -> &Self::Adapter {
+        downcast(erased)
+    }
+
+    fn get_device(erased: &dyn DeviceInterface) -> &Self::Device {
+        downcast(erased)
+    }
+
+    fn get_queue(erased: &dyn QueueInterface) -> &Self::Queue {
+        downcast(erased)
+    }
+
+    fn get_shader_module(erased: &dyn ShaderModuleInterface) -> &Self::ShaderModule {
+        downcast(erased)
+    }
+
+    fn get_bind_group_layout(erased: &dyn BindGroupLayoutInterface) -> &Self::BindGroupLayout {
+        downcast(erased)
+    }
+
+    fn get_bind_group(erased: &dyn BindGroupInterface) -> &Self::BindGroup {
+        downcast(erased)
+    }
+
+    fn get_texture_view(erased: &dyn TextureViewInterface) -> &Self::TextureView {
+        downcast(erased)
+    }
+
+    fn get_sampler(erased: &dyn SamplerInterface) -> &Self::Sampler {
+        downcast(erased)
+    }
+
+    fn get_buffer(erased: &dyn BufferInterface) -> &Self::Buffer {
+        downcast(erased)
+    }
+
+    fn get_texture(erased: &dyn TextureInterface) -> &Self::Texture {
+        downcast(erased)
+    }
+
+    fn get_query_set(erased: &dyn QuerySetInterface) -> &Self::QuerySet {
+        downcast(erased)
+    }
+
+    fn get_pipeline_layout(erased: &dyn PipelineLayoutInterface) -> &Self::PipelineLayout {
+        downcast(erased)
+    }
+
+    fn get_render_pipeline(erased: &dyn RenderPipelineInterface) -> &Self::RenderPipeline {
+        downcast(erased)
+    }
+
+    fn get_compute_pipeline(erased: &dyn ComputePipelineInterface) -> &Self::ComputePipeline {
+        downcast(erased)
+    }
+
+    fn get_pipeline_cache(erased: &dyn PipelineCacheInterface) -> &Self::PipelineCache {
+        downcast(erased)
+    }
+
+    fn get_command_encoder(erased: &dyn CommandEncoderInterface) -> &Self::CommandEncoder {
+        downcast(erased)
+    }
+
+    fn get_compute_pass(erased: &dyn ComputePassInterface) -> &Self::ComputePass {
+        downcast(erased)
+    }
+
+    fn get_compute_pass_mut(erased: &mut dyn ComputePassInterface) -> &mut Self::ComputePass {
+        downcast_mut2(erased)
+    }
+
+    fn get_render_pass(erased: &dyn RenderPassInterface) -> &Self::RenderPass {
+        downcast(erased)
+    }
+
+    fn get_render_pass_mut(erased: &mut dyn RenderPassInterface) -> &mut Self::RenderPass {
+        downcast_mut2(erased)
+    }
+
+    fn get_command_buffer(erased: &dyn CommandBufferInterface) -> &Self::CommandBuffer {
+        downcast(erased)
+    }
+
+    fn get_render_bundle_encoder(
+        erased: &dyn RenderBundleEncoderInterface,
+    ) -> &Self::RenderBundleEncoder {
+        downcast(erased)
+    }
+
+    fn get_render_bundle(erased: &dyn RenderBundleInterface) -> &Self::RenderBundle {
+        downcast(erased)
+    }
+
+    fn get_surface(erased: &dyn SurfaceInterface) -> &Self::Surface {
+        downcast(erased)
+    }
+}
+
+enum HoldMeAContext {
+    Core(crate::CoreContext),
+    WebGPU(crate::WebGPUContext),
+}
+
+pub trait NewContext {
+    fn init(instance_desc: wgt::InstanceDescriptor) -> Arc<Self>
+    where
+        Self: Sized;
+
+    unsafe fn instance_create_surface(
+        &self,
+        target: SurfaceTargetUnsafe,
+    ) -> Result<Box<dyn SurfaceInterface>, crate::CreateSurfaceError>;
+
+    fn instance_request_adapter(
+        &self,
+        options: &RequestAdapterOptions<'_, '_>,
+    ) -> Box<dyn Future<Output = Option<Box<dyn AdapterInterface>>>>;
+
+    fn adapter_request_device(
+        &self,
+        adapter: &dyn AdapterInterface,
+        desc: &DeviceDescriptor<'_>,
+        trace_dir: Option<&std::path::Path>,
+    ) -> Box<
+        dyn Future<
+            Output = Result<
+                (Box<dyn DeviceInterface>, Box<dyn QueueInterface>),
+                RequestDeviceError,
+            >,
+        >,
+    >;
+
+    
+
+    fn adapter_is_surface_supported(
+        &self,
+        adapter: &dyn AdapterInterface,
+        surface: &dyn SurfaceInterface,
+    ) -> bool;
+    fn adapter_features(
+        &self,
+        adapter: &Self::AdapterId,
+        adapter_data: &Self::AdapterData,
+    ) -> Features;
+    fn adapter_limits(&self, adapter: &Self::AdapterId, adapter_data: &Self::AdapterData)
+        -> Limits;
+    fn adapter_downlevel_capabilities(
+        &self,
+        adapter: &Self::AdapterId,
+        adapter_data: &Self::AdapterData,
+    ) -> DownlevelCapabilities;
+    fn adapter_get_info(
+        &self,
+        adapter: &Self::AdapterId,
+        adapter_data: &Self::AdapterData,
+    ) -> AdapterInfo;
+    fn adapter_get_texture_format_features(
+        &self,
+        adapter: &Self::AdapterId,
+        adapter_data: &Self::AdapterData,
+        format: TextureFormat,
+    ) -> TextureFormatFeatures;
+    fn adapter_get_presentation_timestamp(
+        &self,
+        adapter: &Self::AdapterId,
+        adapter_data: &Self::AdapterData,
+    ) -> wgt::PresentationTimestamp;
+}
 
 /// Meta trait for an id tracked by a context.
 ///

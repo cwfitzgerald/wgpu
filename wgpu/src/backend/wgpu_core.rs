@@ -1,5 +1,8 @@
 use crate::{
-    context::{ObjectId, Unused},
+    context::{
+        AdapterInterface, DeviceInterface, NewContextTypes, ObjectId, OwnedErasedAdapter,
+        OwnedErasedSurface, QueueInterface, Unused,
+    },
     AdapterInfo, BindGroupDescriptor, BindGroupLayoutDescriptor, BindingResource, BufferBinding,
     BufferDescriptor, CommandEncoderDescriptor, CompilationInfo, CompilationMessage,
     CompilationMessageType, ComputePassDescriptor, ComputePipelineDescriptor,
@@ -43,6 +46,182 @@ impl fmt::Debug for ContextWgpuCore {
         f.debug_struct("ContextWgpuCore")
             .field("type", &"Native")
             .finish()
+    }
+}
+
+impl crate::context::AdapterInterface for wgc::id::AdapterId {}
+impl crate::context::DeviceInterface for Device {}
+impl crate::context::QueueInterface for Queue {}
+impl crate::context::ShaderModuleInterface for ShaderModule {}
+impl crate::context::BindGroupLayoutInterface for wgc::id::BindGroupLayoutId {}
+impl crate::context::BindGroupInterface for wgc::id::BindGroupId {}
+impl crate::context::TextureViewInterface for wgc::id::TextureViewId {}
+impl crate::context::SamplerInterface for wgc::id::SamplerId {}
+impl crate::context::BufferInterface for Buffer {}
+impl crate::context::TextureInterface for Texture {}
+impl crate::context::QuerySetInterface for wgc::id::QuerySetId {}
+impl crate::context::PipelineLayoutInterface for wgc::id::PipelineLayoutId {}
+impl crate::context::RenderPipelineInterface for wgc::id::RenderPipelineId {}
+impl crate::context::ComputePipelineInterface for wgc::id::ComputePipelineId {}
+impl crate::context::PipelineCacheInterface for wgc::id::PipelineCacheId {}
+impl crate::context::CommandEncoderInterface for CommandEncoder {}
+impl crate::context::ComputePassInterface for ComputePass {}
+impl crate::context::RenderPassInterface for RenderPass {}
+impl crate::context::CommandBufferInterface for wgc::id::CommandBufferId {}
+impl crate::context::RenderBundleEncoderInterface for wgc::command::RenderBundleEncoder {}
+impl crate::context::RenderBundleInterface for wgc::id::RenderBundleId {}
+impl crate::context::SurfaceInterface for Surface {}
+
+impl crate::context::NewContextTypes for ContextWgpuCore {
+    type Adapter = wgc::id::AdapterId;
+    type Device = Device;
+    type Queue = Queue;
+    type ShaderModule = ShaderModule;
+    type BindGroupLayout = wgc::id::BindGroupLayoutId;
+    type BindGroup = wgc::id::BindGroupId;
+    type TextureView = wgc::id::TextureViewId;
+    type Sampler = wgc::id::SamplerId;
+    type Buffer = Buffer;
+    type Texture = Texture;
+    type QuerySet = wgc::id::QuerySetId;
+    type PipelineLayout = wgc::id::PipelineLayoutId;
+    type RenderPipeline = wgc::id::RenderPipelineId;
+    type ComputePipeline = wgc::id::ComputePipelineId;
+    type PipelineCache = wgc::id::PipelineCacheId;
+    type CommandEncoder = CommandEncoder;
+    type ComputePass = ComputePass;
+    type RenderPass = RenderPass;
+    type CommandBuffer = wgc::id::CommandBufferId;
+    type RenderBundleEncoder = wgc::command::RenderBundleEncoder;
+    type RenderBundle = wgc::id::RenderBundleId;
+    type Surface = Surface;
+}
+
+impl crate::context::NewContext for ContextWgpuCore {
+    fn init(instance_desc: wgt::InstanceDescriptor) -> Arc<Self>
+    where
+        Self: Sized,
+    {
+        Arc::new(Self(wgc::global::Global::new("wgpu", instance_desc)))
+    }
+
+    unsafe fn instance_create_surface(
+        &self,
+        target: SurfaceTargetUnsafe,
+    ) -> Result<Box<dyn crate::context::SurfaceInterface>, crate::CreateSurfaceError> {
+        let id = match target {
+            SurfaceTargetUnsafe::RawHandle {
+                raw_display_handle,
+                raw_window_handle,
+            } => unsafe {
+                self.0
+                    .instance_create_surface(raw_display_handle, raw_window_handle, None)
+            },
+
+            #[cfg(metal)]
+            SurfaceTargetUnsafe::CoreAnimationLayer(layer) => unsafe {
+                self.0.instance_create_surface_metal(layer, None)
+            },
+
+            #[cfg(dx12)]
+            SurfaceTargetUnsafe::CompositionVisual(visual) => unsafe {
+                self.0.instance_create_surface_from_visual(visual, None)
+            },
+
+            #[cfg(dx12)]
+            SurfaceTargetUnsafe::SurfaceHandle(surface_handle) => unsafe {
+                self.0
+                    .instance_create_surface_from_surface_handle(surface_handle, None)
+            },
+
+            #[cfg(dx12)]
+            SurfaceTargetUnsafe::SwapChainPanel(swap_chain_panel) => unsafe {
+                self.0
+                    .instance_create_surface_from_swap_chain_panel(swap_chain_panel, None)
+            },
+        }?;
+
+        Ok(Box::new(Surface {
+            id,
+            configured_device: Mutex::default(),
+        }))
+    }
+
+    fn instance_request_adapter(
+        &self,
+        options: &crate::RequestAdapterOptions<'_, '_>,
+    ) -> Box<dyn std::future::Future<Output = Option<OwnedErasedAdapter>>> {
+        let id = self.0.request_adapter(
+            &wgc::instance::RequestAdapterOptions {
+                power_preference: options.power_preference,
+                force_fallback_adapter: options.force_fallback_adapter,
+                compatible_surface: options.compatible_surface.map(|surface| surface.id.into()),
+            },
+            wgc::instance::AdapterInputs::Mask(wgt::Backends::all(), |_| None),
+        );
+        Box::new(ready(id.ok().map(|id| {
+            let adapter: OwnedErasedAdapter = Box::new(id);
+            adapter
+        })))
+    }
+
+    fn adapter_request_device(
+        &self,
+        adapter: &dyn crate::context::AdapterInterface,
+        desc: &crate::DeviceDescriptor<'_>,
+        trace_dir: Option<&std::path::Path>,
+    ) -> Box<
+        dyn std::future::Future<
+            Output = Result<
+                (
+                    Box<dyn crate::context::DeviceInterface>,
+                    Box<dyn crate::context::QueueInterface>,
+                ),
+                crate::RequestDeviceError,
+            >,
+        >,
+    > {
+        let adapter = Self::get_adapter(adapter);
+
+        if trace_dir.is_some() {
+            log::error!("Feature 'trace' has been removed temporarily, see https://github.com/gfx-rs/wgpu/issues/5974");
+        }
+        let (device_id, queue_id, error) = wgc::gfx_select!(*adapter => self.0.adapter_request_device(
+            *adapter,
+            &desc.map_label(|l| l.map(Borrowed)),
+            None,
+            None,
+            None
+        ));
+        if let Some(err) = error {
+            return Box::new(ready(Err(err.into())));
+        }
+        let error_sink = Arc::new(Mutex::new(ErrorSinkRaw::new()));
+        let device: Box<dyn DeviceInterface> = Box::new(Device {
+            id: device_id,
+            error_sink: error_sink.clone(),
+            features: desc.required_features,
+        });
+        let queue: Box<dyn QueueInterface> = Box::new(Queue {
+            id: queue_id,
+            error_sink,
+        });
+        Box::new(ready(Ok((device, queue))))
+    }
+
+    fn adapter_is_surface_supported(
+        &self,
+        adapter: &dyn AdapterInterface,
+        surface: &dyn crate::context::SurfaceInterface,
+    ) -> bool {
+        let adapter = Self::get_adapter(adapter);
+        let surface = Self::get_surface(surface);
+
+        match wgc::gfx_select!(adapter => self.0.adapter_is_surface_supported(*adapter, surface.id))
+        {
+            Ok(result) => result,
+            Err(err) => self.handle_error_fatal(err, "Adapter::is_surface_supported"),
+        }
     }
 }
 
