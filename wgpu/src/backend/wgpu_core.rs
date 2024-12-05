@@ -364,7 +364,7 @@ impl ContextWgpuCore {
 
 fn map_buffer_copy_view(view: crate::TexelCopyBufferInfo<'_>) -> wgc::command::TexelCopyBufferInfo {
     wgc::command::TexelCopyBufferInfo {
-        buffer: view.buffer.inner.as_core().id,
+        buffer: view.buffer.shared.inner.as_core().id,
         layout: view.layout,
     }
 }
@@ -373,7 +373,7 @@ fn map_texture_copy_view(
     view: crate::TexelCopyTextureInfo<'_>,
 ) -> wgc::command::TexelCopyTextureInfo {
     wgc::command::TexelCopyTextureInfo {
-        texture: view.texture.inner.as_core().id,
+        texture: view.texture.shared.inner.as_core().id,
         mip_level: view.mip_level,
         origin: view.origin,
         aspect: view.aspect,
@@ -388,7 +388,7 @@ fn map_texture_tagged_copy_view(
     view: wgt::CopyExternalImageDestInfo<&api::Texture>,
 ) -> wgc::command::CopyExternalImageDestInfo {
     wgc::command::CopyExternalImageDestInfo {
-        texture: view.texture.inner.as_core().id,
+        texture: view.texture.shared.inner.as_core().id,
         mip_level: view.mip_level,
         origin: view.origin,
         aspect: view.aspect,
@@ -823,11 +823,12 @@ impl dispatch::InstanceInterface for ContextWgpuCore {
             },
         }?;
 
-        Ok(dispatch::DispatchSurface::Core(CoreSurface {
+        Ok(CoreSurface {
             context: self.clone(),
             id,
             configured_device: Mutex::default(),
-        }))
+        }
+        .into())
     }
 
     fn request_adapter(
@@ -1117,7 +1118,7 @@ impl dispatch::DeviceInterface for CoreDevice {
             for entry in desc.entries.iter() {
                 if let BindingResource::BufferArray(array) = entry.resource {
                     arrayed_buffer_bindings.extend(array.iter().map(|binding| bm::BufferBinding {
-                        buffer_id: binding.buffer.inner.as_core().id,
+                        buffer_id: binding.buffer.shared.inner.as_core().id,
                         offset: binding.offset,
                         size: binding.size,
                     }));
@@ -1137,7 +1138,7 @@ impl dispatch::DeviceInterface for CoreDevice {
                         offset,
                         size,
                     }) => bm::BindingResource::Buffer(bm::BufferBinding {
-                        buffer_id: buffer.inner.as_core().id,
+                        buffer_id: buffer.shared.inner.as_core().id,
                         offset,
                         size,
                     }),
@@ -1166,7 +1167,7 @@ impl dispatch::DeviceInterface for CoreDevice {
                     }
                     BindingResource::AccelerationStructure(acceleration_structure) => {
                         bm::BindingResource::AccelerationStructure(
-                            acceleration_structure.inner.as_core().id,
+                            acceleration_structure.shared.inner.as_core().id,
                         )
                     }
                 },
@@ -2447,9 +2448,11 @@ impl dispatch::CommandEncoderInterface for CoreCommandEncoder {
                 crate::BlasGeometries::TriangleGeometries(ref triangle_geometries) => {
                     let iter = triangle_geometries.iter().map(|tg| {
                         wgc::ray_tracing::BlasTriangleGeometry {
-                            vertex_buffer: tg.vertex_buffer.inner.as_core().id,
-                            index_buffer: tg.index_buffer.map(|buf| buf.inner.as_core().id),
-                            transform_buffer: tg.transform_buffer.map(|buf| buf.inner.as_core().id),
+                            vertex_buffer: tg.vertex_buffer.shared.inner.as_core().id,
+                            index_buffer: tg.index_buffer.map(|buf| buf.shared.inner.as_core().id),
+                            transform_buffer: tg
+                                .transform_buffer
+                                .map(|buf| buf.shared.inner.as_core().id),
                             size: tg.size,
                             transform_buffer_offset: tg.transform_buffer_offset,
                             first_vertex: tg.first_vertex,
@@ -2461,15 +2464,15 @@ impl dispatch::CommandEncoderInterface for CoreCommandEncoder {
                 }
             };
             wgc::ray_tracing::BlasBuildEntry {
-                blas_id: e.blas.shared.inner.as_core().id,
+                blas_id: e.blas.inner.as_core().id,
                 geometries,
             }
         });
 
         let tlas = tlas.into_iter().map(|e: &crate::TlasBuildEntry<'a>| {
             wgc::ray_tracing::TlasBuildEntry {
-                tlas_id: e.tlas.inner.as_core().id,
-                instance_buffer_id: e.instance_buffer.inner.as_core().id,
+                tlas_id: e.tlas.shared.inner.as_core().id,
+                instance_buffer_id: e.instance_buffer.shared.inner.as_core().id,
                 instance_count: e.instance_count,
             }
         });
@@ -2497,9 +2500,11 @@ impl dispatch::CommandEncoderInterface for CoreCommandEncoder {
                 crate::BlasGeometries::TriangleGeometries(ref triangle_geometries) => {
                     let iter = triangle_geometries.iter().map(|tg| {
                         wgc::ray_tracing::BlasTriangleGeometry {
-                            vertex_buffer: tg.vertex_buffer.inner.as_core().id,
-                            index_buffer: tg.index_buffer.map(|buf| buf.inner.as_core().id),
-                            transform_buffer: tg.transform_buffer.map(|buf| buf.inner.as_core().id),
+                            vertex_buffer: tg.vertex_buffer.shared.inner.as_core().id,
+                            index_buffer: tg.index_buffer.map(|buf| buf.shared.inner.as_core().id),
+                            transform_buffer: tg
+                                .transform_buffer
+                                .map(|buf| buf.shared.inner.as_core().id),
                             size: tg.size,
                             transform_buffer_offset: tg.transform_buffer_offset,
                             first_vertex: tg.first_vertex,
@@ -2511,7 +2516,7 @@ impl dispatch::CommandEncoderInterface for CoreCommandEncoder {
                 }
             };
             wgc::ray_tracing::BlasBuildEntry {
-                blas_id: e.blas.shared.inner.as_core().id,
+                blas_id: e.blas.inner.as_core().id,
                 geometries,
             }
         });
@@ -2524,14 +2529,14 @@ impl dispatch::CommandEncoderInterface for CoreCommandEncoder {
                     instance
                         .as_ref()
                         .map(|instance| wgc::ray_tracing::TlasInstance {
-                            blas_id: instance.blas.inner.as_core().id,
+                            blas_id: instance.blas.as_core().id,
                             transform: &instance.transform,
                             custom_index: instance.custom_index,
                             mask: instance.mask,
                         })
                 });
             wgc::ray_tracing::TlasPackage {
-                tlas_id: e.tlas.inner.as_core().id,
+                tlas_id: e.tlas.shared.inner.as_core().id,
                 instances: Box::new(instances),
                 lowest_unmodified: e.lowest_unmodified,
             }

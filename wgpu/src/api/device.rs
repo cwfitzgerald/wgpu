@@ -2,7 +2,7 @@ use std::{error, fmt, future::Future, sync::Arc};
 
 use parking_lot::Mutex;
 
-use crate::api::blas::{Blas, BlasGeometrySizeDescriptors, BlasShared, CreateBlasDescriptor};
+use crate::api::blas::{Blas, BlasGeometrySizeDescriptors, CreateBlasDescriptor};
 use crate::api::tlas::{CreateTlasDescriptor, Tlas};
 use crate::*;
 
@@ -14,9 +14,9 @@ use crate::*;
 /// A device may be requested from an adapter with [`Adapter::request_device`].
 ///
 /// Corresponds to [WebGPU `GPUDevice`](https://gpuweb.github.io/gpuweb/#gpu-device).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Device {
-    pub(crate) inner: dispatch::DispatchDevice,
+    pub(crate) inner: Arc<dispatch::DispatchDevice>,
 }
 #[cfg(send_sync)]
 static_assertions::assert_impl_all!(Device: Send, Sync);
@@ -146,7 +146,9 @@ impl Device {
     #[must_use]
     pub fn create_bind_group(&self, desc: &BindGroupDescriptor<'_>) -> BindGroup {
         let group = self.inner.create_bind_group(desc);
-        BindGroup { inner: group }
+        BindGroup {
+            inner: Arc::new(group),
+        }
     }
 
     /// Creates a [`BindGroupLayout`].
@@ -156,28 +158,36 @@ impl Device {
         desc: &BindGroupLayoutDescriptor<'_>,
     ) -> BindGroupLayout {
         let layout = self.inner.create_bind_group_layout(desc);
-        BindGroupLayout { inner: layout }
+        BindGroupLayout {
+            inner: Arc::new(layout),
+        }
     }
 
     /// Creates a [`PipelineLayout`].
     #[must_use]
     pub fn create_pipeline_layout(&self, desc: &PipelineLayoutDescriptor<'_>) -> PipelineLayout {
         let layout = self.inner.create_pipeline_layout(desc);
-        PipelineLayout { inner: layout }
+        PipelineLayout {
+            inner: Arc::new(layout),
+        }
     }
 
     /// Creates a [`RenderPipeline`].
     #[must_use]
     pub fn create_render_pipeline(&self, desc: &RenderPipelineDescriptor<'_>) -> RenderPipeline {
         let pipeline = self.inner.create_render_pipeline(desc);
-        RenderPipeline { inner: pipeline }
+        RenderPipeline {
+            inner: Arc::new(pipeline),
+        }
     }
 
     /// Creates a [`ComputePipeline`].
     #[must_use]
     pub fn create_compute_pipeline(&self, desc: &ComputePipelineDescriptor<'_>) -> ComputePipeline {
         let pipeline = self.inner.create_compute_pipeline(desc);
-        ComputePipeline { inner: pipeline }
+        ComputePipeline {
+            inner: Arc::new(pipeline),
+        }
     }
 
     /// Creates a [`Buffer`].
@@ -191,10 +201,12 @@ impl Device {
         let buffer = self.inner.create_buffer(desc);
 
         Buffer {
-            inner: buffer,
-            map_context: Mutex::new(map_context),
-            size: desc.size,
-            usage: desc.usage,
+            shared: Arc::new(BufferShared {
+                inner: buffer,
+                map_context: Mutex::new(map_context),
+                size: desc.size,
+                usage: desc.usage,
+            }),
         }
     }
 
@@ -206,12 +218,14 @@ impl Device {
         let texture = self.inner.create_texture(desc);
 
         Texture {
-            inner: texture,
-            descriptor: TextureDescriptor {
-                label: None,
-                view_formats: &[],
-                ..desc.clone()
-            },
+            shared: Arc::new(TextureShared {
+                inner: texture,
+                descriptor: TextureDescriptor {
+                    label: None,
+                    view_formats: &[],
+                    ..desc.clone()
+                },
+            }),
         }
     }
 
@@ -236,12 +250,14 @@ impl Device {
                 .create_texture_from_hal::<A>(hal_texture, core_device, desc)
         };
         Texture {
-            inner: texture.into(),
-            descriptor: TextureDescriptor {
-                label: None,
-                view_formats: &[],
-                ..desc.clone()
-            },
+            shared: Arc::new(TextureShared {
+                inner: texture.into(),
+                descriptor: TextureDescriptor {
+                    label: None,
+                    view_formats: &[],
+                    ..desc.clone()
+                },
+            }),
         }
     }
 
@@ -272,10 +288,12 @@ impl Device {
         };
 
         Buffer {
-            inner: buffer.into(),
-            map_context: Mutex::new(map_context),
-            size: desc.size,
-            usage: desc.usage,
+            shared: Arc::new(BufferShared {
+                inner: buffer.into(),
+                map_context: Mutex::new(map_context),
+                size: desc.size,
+                usage: desc.usage,
+            }),
         }
     }
 
@@ -285,14 +303,18 @@ impl Device {
     #[must_use]
     pub fn create_sampler(&self, desc: &SamplerDescriptor<'_>) -> Sampler {
         let sampler = self.inner.create_sampler(desc);
-        Sampler { inner: sampler }
+        Sampler {
+            inner: Arc::new(sampler),
+        }
     }
 
     /// Creates a new [`QuerySet`].
     #[must_use]
     pub fn create_query_set(&self, desc: &QuerySetDescriptor<'_>) -> QuerySet {
         let query_set = self.inner.create_query_set(desc);
-        QuerySet { inner: query_set }
+        QuerySet {
+            inner: Arc::new(query_set),
+        }
     }
 
     /// Set a callback for errors that are not handled in error scopes.
@@ -432,7 +454,9 @@ impl Device {
         desc: &PipelineCacheDescriptor<'_>,
     ) -> PipelineCache {
         let cache = unsafe { self.inner.create_pipeline_cache(desc) };
-        PipelineCache { inner: cache }
+        PipelineCache {
+            inner: Arc::new(cache),
+        }
     }
 }
 
@@ -463,7 +487,7 @@ impl Device {
         let (handle, blas) = self.inner.create_blas(desc, sizes);
 
         Blas {
-            shared: Arc::new(BlasShared { inner: blas }),
+            inner: Arc::new(blas),
             handle,
         }
     }
@@ -482,8 +506,10 @@ impl Device {
         let tlas = self.inner.create_tlas(desc);
 
         Tlas {
-            inner: tlas,
-            max_instances: desc.max_instances,
+            shared: Arc::new(TlasShared {
+                inner: tlas,
+                max_instances: desc.max_instances,
+            }),
         }
     }
 }
