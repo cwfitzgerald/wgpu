@@ -18,7 +18,9 @@ static BINDING_ARRAY_UNIFORM_BUFFERS: GpuTestConfiguration = GpuTestConfiguratio
             // Naga bug on vulkan: https://github.com/gfx-rs/wgpu/issues/6733
             //
             // Causes varying errors on different devices, so we don't match more closely.
-            .expect_fail(FailureCase::backend(Backends::VULKAN)),
+            .expect_fail(FailureCase::backend(Backends::VULKAN))
+            // These issues cause a segfault on lavapipe
+            .skip(FailureCase::backend_adapter(Backends::VULKAN, "llvmpipe")),
     )
     .run_async(|ctx| async move { binding_array_buffers(ctx, BufferType::Uniform).await });
 
