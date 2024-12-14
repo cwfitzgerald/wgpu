@@ -36,7 +36,9 @@ static BINDING_ARRAY_STORAGE_BUFFERS: GpuTestConfiguration = GpuTestConfiguratio
             .limits(Limits {
                 max_storage_buffers_per_shader_stage: 17,
                 ..Limits::default()
-            }),
+            })
+            // See https://github.com/gfx-rs/wgpu/issues/6745.
+            .expect_fail(FailureCase::molten_vk()),
     )
     .run_async(|ctx| async move { binding_array_buffers(ctx, BufferType::Storage).await });
 
