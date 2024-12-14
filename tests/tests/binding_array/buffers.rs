@@ -99,6 +99,7 @@ async fn binding_array_buffers(ctx: TestingContext, buffer_type: BufferType) {
             mapped_at_creation: true,
         });
         buffer.slice(..).get_mapped_range_mut()[0..4].copy_from_slice(&data.0);
+        buffer.unmap();
         buffers.push(buffer);
     }
 
