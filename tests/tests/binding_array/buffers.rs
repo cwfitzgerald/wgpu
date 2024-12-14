@@ -1,10 +1,22 @@
 use std::num::{NonZeroU32, NonZeroU64};
 
-use wgpu::{
-    util::{BufferInitDescriptor, DeviceExt},
-    *,
-};
+use wgpu::*;
 use wgpu_test::{gpu_test, GpuTestConfiguration, TestParameters, TestingContext};
+
+#[gpu_test]
+static BINDING_ARRAY_UNIFORM_BUFFERS: GpuTestConfiguration = GpuTestConfiguration::new()
+    .parameters(
+        TestParameters::default()
+            .features(
+                Features::BUFFER_BINDING_ARRAY
+                    | Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING,
+            )
+            .limits(Limits {
+                max_uniform_buffers_per_shader_stage: 17,
+                ..Limits::default()
+            }),
+    )
+    .run_async(|ctx| async move { binding_array_buffers(ctx, BufferType::Uniform).await });
 
 #[gpu_test]
 static BINDING_ARRAY_STORAGE_BUFFERS: GpuTestConfiguration = GpuTestConfiguration::new()
@@ -20,21 +32,34 @@ static BINDING_ARRAY_STORAGE_BUFFERS: GpuTestConfiguration = GpuTestConfiguratio
                 ..Limits::default()
             }),
     )
-    .run_async(binding_array_storage_buffers);
+    .run_async(|ctx| async move { binding_array_buffers(ctx, BufferType::Storage).await });
+
+enum BufferType {
+    Storage,
+    Uniform,
+}
 
 /// Test to see how texture bindings array work and additionally making sure
 /// that non-uniform indexing is working correctly.
 ///
 /// If non-uniform indexing is not working correctly, AMD will produce the wrong
 /// output due to non-native support for non-uniform indexing within a WARP.
-async fn binding_array_storage_buffers(ctx: TestingContext) {
+async fn binding_array_buffers(ctx: TestingContext, buffer_type: BufferType) {
+    let storage_mode = match buffer_type {
+        BufferType::Storage => "storage",
+        BufferType::Uniform => "uniform",
+    };
+
     let shader = r#"
         struct ImAU32 {
             value: u32,
+            _padding: u32,
+            _padding2: u32,
+            _padding3: u32,
         };
 
         @group(0) @binding(0)
-        var<storage> buffers: binding_array<ImAU32>;
+        var<{storage_mode}> buffers: binding_array<ImAU32>;
 
         @group(0) @binding(1)
         var<storage, read_write> output_buffer: array<u32>;
@@ -45,6 +70,7 @@ async fn binding_array_storage_buffers(ctx: TestingContext) {
             output_buffer[id.x] = buffers[id.x].value;
         }
     "#;
+    let shader = shader.replace("{storage_mode}", storage_mode);
 
     let module = ctx
         .device
@@ -62,11 +88,17 @@ async fn binding_array_storage_buffers(ctx: TestingContext) {
     // Create one buffer for each pixel
     let mut buffers = Vec::with_capacity(64);
     for data in image.pixels() {
-        let buffer = ctx.device.create_buffer_init(&BufferInitDescriptor {
+        let buffer = ctx.device.create_buffer(&BufferDescriptor {
             label: None,
-            contents: bytemuck::cast_slice(&data.0),
-            usage: BufferUsages::STORAGE,
+            usage: match buffer_type {
+                BufferType::Storage => BufferUsages::STORAGE | BufferUsages::COPY_DST,
+                BufferType::Uniform => BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            },
+            // 16 to allow padding for uniform buffers
+            size: 16,
+            mapped_at_creation: true,
         });
+        buffer.slice(..).get_mapped_range_mut()[0..4].copy_from_slice(&data.0);
         buffers.push(buffer);
     }
 
@@ -86,9 +118,12 @@ async fn binding_array_storage_buffers(ctx: TestingContext) {
                     binding: 0,
                     visibility: ShaderStages::COMPUTE,
                     ty: BindingType::Buffer {
-                        ty: BufferBindingType::Storage { read_only: true },
+                        ty: match buffer_type {
+                            BufferType::Storage => BufferBindingType::Storage { read_only: true },
+                            BufferType::Uniform => BufferBindingType::Uniform,
+                        },
                         has_dynamic_offset: false,
-                        min_binding_size: Some(NonZeroU64::new(4).unwrap()),
+                        min_binding_size: Some(NonZeroU64::new(16).unwrap()),
                     },
                     count: Some(NonZeroU32::new(16).unwrap()),
                 },
@@ -167,10 +202,11 @@ async fn binding_array_storage_buffers(ctx: TestingContext) {
     encoder.copy_buffer_to_buffer(&output_buffer, 0, &readback_buffer, 0, 4 * 4 * 4);
 
     ctx.queue.submit(Some(encoder.finish()));
-    ctx.device.poll(Maintain::Wait);
 
     let slice = readback_buffer.slice(..);
     slice.map_async(MapMode::Read, |_| {});
+
+    ctx.device.poll(Maintain::Wait);
 
     let data = slice.get_mapped_range();
 
