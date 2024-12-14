@@ -14,18 +14,34 @@ static BINDING_ARRAY_SAMPLED_TEXTURES: GpuTestConfiguration = GpuTestConfigurati
                     | Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
             )
             .limits(Limits {
-                max_sampled_textures_per_shader_stage: 64,
+                max_sampled_textures_per_shader_stage: 16,
                 ..Limits::default()
             }),
     )
-    .run_async(binding_array_sampled_textures);
+    .run_async(|ctx| async move { binding_array_sampled_textures(ctx, false).await });
+
+#[gpu_test]
+static PARTIAL_BINDING_ARRAY_SAMPLED_TEXTURES: GpuTestConfiguration = GpuTestConfiguration::new()
+    .parameters(
+        TestParameters::default()
+            .features(
+                Features::TEXTURE_BINDING_ARRAY
+                    | Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING
+                    | Features::PARTIALLY_BOUND_BINDING_ARRAY,
+            )
+            .limits(Limits {
+                max_sampled_textures_per_shader_stage: 32,
+                ..Limits::default()
+            }),
+    )
+    .run_async(|ctx| async move { binding_array_sampled_textures(ctx, false).await });
 
 /// Test to see how texture bindings array work and additionally making sure
 /// that non-uniform indexing is working correctly.
 ///
 /// If non-uniform indexing is not working correctly, AMD will produce the wrong
 /// output due to non-native support for non-uniform indexing within a WARP.
-async fn binding_array_sampled_textures(ctx: TestingContext) {
+async fn binding_array_sampled_textures(ctx: TestingContext, partially_bound: bool) {
     let shader = r#"
         @group(0) @binding(0)
         var textures: binding_array<texture_2d<f32>>;
@@ -44,7 +60,7 @@ async fn binding_array_sampled_textures(ctx: TestingContext) {
         @fragment
         fn fragMain(@builtin(position) pos: vec4f) -> @location(0) vec4f {
             let pixel = vec2u(floor(pos.xy));
-            let index = pixel.y * 8 + pixel.x;
+            let index = pixel.y * 4 + pixel.x;
 
             return textureLoad(textures[index], vec2u(0), 0);
         }
@@ -58,9 +74,9 @@ async fn binding_array_sampled_textures(ctx: TestingContext) {
         });
 
     let image = image::load_from_memory(include_bytes!("../3x3_colors.png")).unwrap();
-    // Resize image to 8x8
+    // Resize image to 4x4
     let image = image
-        .resize_exact(8, 8, image::imageops::FilterType::Gaussian)
+        .resize_exact(4, 4, image::imageops::FilterType::Gaussian)
         .into_rgba8();
 
     // Create one texture for each pixel
@@ -107,8 +123,8 @@ async fn binding_array_sampled_textures(ctx: TestingContext) {
     let output_texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("Output Texture"),
         size: Extent3d {
-            width: 8,
-            height: 8,
+            width: 4,
+            height: 4,
             depth_or_array_layers: 1,
         },
         mip_level_count: 1,
@@ -120,6 +136,8 @@ async fn binding_array_sampled_textures(ctx: TestingContext) {
     });
 
     let output_view = output_texture.create_view(&TextureViewDescriptor::default());
+
+    let count = if partially_bound { 32 } else { 16 };
 
     let bind_group_layout = ctx
         .device
@@ -133,7 +151,7 @@ async fn binding_array_sampled_textures(ctx: TestingContext) {
                     view_dimension: TextureViewDimension::D2,
                     multisampled: false,
                 },
-                count: Some(NonZeroU32::new(8 * 8).unwrap()),
+                count: Some(NonZeroU32::new(count).unwrap()),
             }],
         });
 
