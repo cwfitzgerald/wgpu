@@ -202,9 +202,10 @@ async fn binding_array_textures(ctx: TestingContext) {
         render_pass.draw(0..3, 0..1);
     }
 
+    let readback_buffers = ReadbackBuffers::new(&ctx.device, &output_texture);
+    readback_buffers.copy_from(&ctx.device, &mut encoder, &output_texture);
+
     ctx.queue.submit(Some(encoder.finish()));
 
-    let readback_buffer = ReadbackBuffers::new(&ctx.device, &output_texture);
-
-    readback_buffer.assert_buffer_contents(&ctx, &image).await;
+    readback_buffers.assert_buffer_contents(&ctx, &image).await;
 }
