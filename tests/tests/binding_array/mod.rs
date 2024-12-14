@@ -1,2 +1,4 @@
 mod partially_bounded_arrays;
-mod textures;
+mod sampled_textures;
+mod storage_buffers;
+mod storage_textures;

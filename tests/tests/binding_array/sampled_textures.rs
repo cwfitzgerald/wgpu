@@ -6,7 +6,7 @@ use wgpu_test::{
 };
 
 #[gpu_test]
-static BINDING_ARRAY_TEXTURES: GpuTestConfiguration = GpuTestConfiguration::new()
+static BINDING_ARRAY_SAMPLED_TEXTURES: GpuTestConfiguration = GpuTestConfiguration::new()
     .parameters(
         TestParameters::default()
             .features(
@@ -18,9 +18,14 @@ static BINDING_ARRAY_TEXTURES: GpuTestConfiguration = GpuTestConfiguration::new(
                 ..Limits::default()
             }),
     )
-    .run_async(binding_array_textures);
+    .run_async(binding_array_sampled_textures);
 
-async fn binding_array_textures(ctx: TestingContext) {
+/// Test to see how texture bindings array work and additionally making sure
+/// that non-uniform indexing is working correctly.
+///
+/// If non-uniform indexing is not working correctly, AMD will produce the wrong
+/// output due to non-native support for non-uniform indexing within a WARP.
+async fn binding_array_sampled_textures(ctx: TestingContext) {
     let shader = r#"
         @group(0) @binding(0)
         var textures: binding_array<texture_2d<f32>>;
