@@ -53,7 +53,8 @@ static PARTIALLY_BOUNDED_ARRAY: GpuTestConfiguration = GpuTestConfiguration::new
             }],
         });
 
-        let cs_module = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
+        let cs_module =
+            device.create_shader_module(wgpu::include_wgsl!("partially_bounded_arrays.wgsl"));
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("main"),
