@@ -1,7 +1,7 @@
 use std::num::{NonZeroU32, NonZeroU64};
 
 use wgpu::*;
-use wgpu_test::{gpu_test, GpuTestConfiguration, TestParameters, TestingContext};
+use wgpu_test::{gpu_test, FailureCase, GpuTestConfiguration, TestParameters, TestingContext};
 
 #[gpu_test]
 static BINDING_ARRAY_UNIFORM_BUFFERS: GpuTestConfiguration = GpuTestConfiguration::new()
@@ -14,7 +14,11 @@ static BINDING_ARRAY_UNIFORM_BUFFERS: GpuTestConfiguration = GpuTestConfiguratio
             .limits(Limits {
                 max_uniform_buffers_per_shader_stage: 17,
                 ..Limits::default()
-            }),
+            })
+            // Naga bug on vulkan: https://github.com/gfx-rs/wgpu/issues/6733
+            //
+            // Causes varying errors on different devices, so we don't match more closely.
+            .expect_fail(FailureCase::backend(Backends::VULKAN)),
     )
     .run_async(|ctx| async move { binding_array_buffers(ctx, BufferType::Uniform).await });
 
