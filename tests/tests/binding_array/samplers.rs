@@ -16,14 +16,25 @@ static BINDING_ARRAY_SAMPLERS: GpuTestConfiguration = GpuTestConfiguration::new(
                 ..Limits::default()
             }),
     )
-    .run_async(binding_array_samplers);
+    .run_async(|ctx| async move { binding_array_samplers(ctx, false).await });
 
-/// Test to see how texture bindings array work and additionally making sure
-/// that non-uniform indexing is working correctly.
-///
-/// If non-uniform indexing is not working correctly, AMD will produce the wrong
-/// output due to non-native support for non-uniform indexing within a WARP.
-async fn binding_array_samplers(ctx: TestingContext) {
+#[gpu_test]
+static PARTIAL_BINDING_ARRAY_SAMPLERS: GpuTestConfiguration = GpuTestConfiguration::new()
+    .parameters(
+        TestParameters::default()
+            .features(
+                Features::TEXTURE_BINDING_ARRAY
+                    | Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING
+                    | Features::PARTIALLY_BOUND_BINDING_ARRAY,
+            )
+            .limits(Limits {
+                max_samplers_per_shader_stage: 4,
+                ..Limits::default()
+            }),
+    )
+    .run_async(|ctx| async move { binding_array_samplers(ctx, true).await });
+
+async fn binding_array_samplers(ctx: TestingContext, partially_bound: bool) {
     let shader = r#"
         @group(0) @binding(0)
         var samplers: binding_array<sampler>;
@@ -131,6 +142,8 @@ async fn binding_array_samplers(ctx: TestingContext) {
         mapped_at_creation: false,
     });
 
+    let multiplier = if partially_bound { 2 } else { 1 };
+
     let bind_group_layout = ctx
         .device
         .create_bind_group_layout(&BindGroupLayoutDescriptor {
@@ -140,7 +153,7 @@ async fn binding_array_samplers(ctx: TestingContext) {
                     binding: 0,
                     visibility: ShaderStages::COMPUTE,
                     ty: BindingType::Sampler(SamplerBindingType::Filtering),
-                    count: Some(NonZeroU32::new(2).unwrap()),
+                    count: Some(NonZeroU32::new(2 * multiplier).unwrap()),
                 },
                 BindGroupLayoutEntry {
                     binding: 1,

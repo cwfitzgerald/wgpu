@@ -12,7 +12,7 @@ static BINDING_ARRAY_UNIFORM_BUFFERS: GpuTestConfiguration = GpuTestConfiguratio
                     | Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING,
             )
             .limits(Limits {
-                max_uniform_buffers_per_shader_stage: 17,
+                max_uniform_buffers_per_shader_stage: 16,
                 ..Limits::default()
             })
             // Naga bug on vulkan: https://github.com/gfx-rs/wgpu/issues/6733
@@ -22,7 +22,29 @@ static BINDING_ARRAY_UNIFORM_BUFFERS: GpuTestConfiguration = GpuTestConfiguratio
             // These issues cause a segfault on lavapipe
             .skip(FailureCase::backend_adapter(Backends::VULKAN, "llvmpipe")),
     )
-    .run_async(|ctx| async move { binding_array_buffers(ctx, BufferType::Uniform).await });
+    .run_async(|ctx| async move { binding_array_buffers(ctx, BufferType::Uniform, false).await });
+
+#[gpu_test]
+static PARTIAL_BINDING_ARRAY_UNIFORM_BUFFERS: GpuTestConfiguration = GpuTestConfiguration::new()
+    .parameters(
+        TestParameters::default()
+            .features(
+                Features::BUFFER_BINDING_ARRAY
+                    | Features::PARTIALLY_BOUND_BINDING_ARRAY
+                    | Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING,
+            )
+            .limits(Limits {
+                max_uniform_buffers_per_shader_stage: 32,
+                ..Limits::default()
+            })
+            // Naga bug on vulkan: https://github.com/gfx-rs/wgpu/issues/6733
+            //
+            // Causes varying errors on different devices, so we don't match more closely.
+            .expect_fail(FailureCase::backend(Backends::VULKAN))
+            // These issues cause a segfault on lavapipe
+            .skip(FailureCase::backend_adapter(Backends::VULKAN, "llvmpipe")),
+    )
+    .run_async(|ctx| async move { binding_array_buffers(ctx, BufferType::Uniform, true).await });
 
 #[gpu_test]
 static BINDING_ARRAY_STORAGE_BUFFERS: GpuTestConfiguration = GpuTestConfiguration::new()
@@ -40,19 +62,37 @@ static BINDING_ARRAY_STORAGE_BUFFERS: GpuTestConfiguration = GpuTestConfiguratio
             // See https://github.com/gfx-rs/wgpu/issues/6745.
             .expect_fail(FailureCase::molten_vk()),
     )
-    .run_async(|ctx| async move { binding_array_buffers(ctx, BufferType::Storage).await });
+    .run_async(|ctx| async move { binding_array_buffers(ctx, BufferType::Storage, false).await });
+
+#[gpu_test]
+static PARTIAL_BINDING_ARRAY_STORAGE_BUFFERS: GpuTestConfiguration = GpuTestConfiguration::new()
+    .parameters(
+        TestParameters::default()
+            .features(
+                Features::BUFFER_BINDING_ARRAY
+                    | Features::PARTIALLY_BOUND_BINDING_ARRAY
+                    | Features::STORAGE_RESOURCE_BINDING_ARRAY
+                    | Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
+            )
+            .limits(Limits {
+                max_storage_buffers_per_shader_stage: 33,
+                ..Limits::default()
+            })
+            // See https://github.com/gfx-rs/wgpu/issues/6745.
+            .expect_fail(FailureCase::molten_vk()),
+    )
+    .run_async(|ctx| async move { binding_array_buffers(ctx, BufferType::Storage, true).await });
 
 enum BufferType {
     Storage,
     Uniform,
 }
 
-/// Test to see how texture bindings array work and additionally making sure
-/// that non-uniform indexing is working correctly.
-///
-/// If non-uniform indexing is not working correctly, AMD will produce the wrong
-/// output due to non-native support for non-uniform indexing within a WARP.
-async fn binding_array_buffers(ctx: TestingContext, buffer_type: BufferType) {
+async fn binding_array_buffers(
+    ctx: TestingContext,
+    buffer_type: BufferType,
+    partial_binding: bool,
+) {
     let storage_mode = match buffer_type {
         BufferType::Storage => "storage",
         BufferType::Uniform => "uniform",
@@ -118,6 +158,8 @@ async fn binding_array_buffers(ctx: TestingContext, buffer_type: BufferType) {
         mapped_at_creation: false,
     });
 
+    let multiplier = if partial_binding { 2 } else { 1 };
+
     let bind_group_layout = ctx
         .device
         .create_bind_group_layout(&BindGroupLayoutDescriptor {
@@ -134,7 +176,7 @@ async fn binding_array_buffers(ctx: TestingContext, buffer_type: BufferType) {
                         has_dynamic_offset: false,
                         min_binding_size: Some(NonZeroU64::new(16).unwrap()),
                     },
-                    count: Some(NonZeroU32::new(16).unwrap()),
+                    count: Some(NonZeroU32::new(16 * multiplier).unwrap()),
                 },
                 BindGroupLayoutEntry {
                     binding: 1,

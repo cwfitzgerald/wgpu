@@ -22,14 +22,28 @@ static BINDING_ARRAY_STORAGE_TEXTURES: GpuTestConfiguration = GpuTestConfigurati
             })
             .expect_fail(FailureCase::backend(Backends::METAL)),
     )
-    .run_async(binding_array_storage_textures);
+    .run_async(|ctx| async move { binding_array_storage_textures(ctx, false).await });
 
-/// Test to see how texture bindings array work and additionally making sure
-/// that non-uniform indexing is working correctly.
-///
-/// If non-uniform indexing is not working correctly, AMD will produce the wrong
-/// output due to non-native support for non-uniform indexing within a WARP.
-async fn binding_array_storage_textures(ctx: TestingContext) {
+#[gpu_test]
+static PARTIAL_BINDING_ARRAY_STORAGE_TEXTURES: GpuTestConfiguration = GpuTestConfiguration::new()
+    .parameters(
+        TestParameters::default()
+            .features(
+                Features::TEXTURE_BINDING_ARRAY
+                    | Features::PARTIALLY_BOUND_BINDING_ARRAY
+                    | Features::STORAGE_RESOURCE_BINDING_ARRAY
+                    | Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING
+                    | Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
+            )
+            .limits(Limits {
+                max_storage_textures_per_shader_stage: 33,
+                ..Limits::default()
+            })
+            .expect_fail(FailureCase::backend(Backends::METAL)),
+    )
+    .run_async(|ctx| async move { binding_array_storage_textures(ctx, true).await });
+
+async fn binding_array_storage_textures(ctx: TestingContext, partially_bound: bool) {
     let shader = r#"
         @group(0) @binding(0)
         var textures: binding_array<texture_storage_2d<rgba8unorm, read_write> >;
@@ -118,6 +132,8 @@ async fn binding_array_storage_textures(ctx: TestingContext) {
 
     let output_view = output_texture.create_view(&TextureViewDescriptor::default());
 
+    let multiplier = if partially_bound { 2 } else { 1 };
+
     let bind_group_layout = ctx
         .device
         .create_bind_group_layout(&BindGroupLayoutDescriptor {
@@ -130,7 +146,7 @@ async fn binding_array_storage_textures(ctx: TestingContext) {
                     format: TextureFormat::Rgba8Unorm,
                     view_dimension: TextureViewDimension::D2,
                 },
-                count: Some(NonZeroU32::new(4 * 4 + 1).unwrap()),
+                count: Some(NonZeroU32::new(4 * 4 * multiplier + 1).unwrap()),
             }],
         });
 
