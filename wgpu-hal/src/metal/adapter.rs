@@ -905,18 +905,10 @@ impl super::PrivateCapabilities {
         features.set(
             F::TEXTURE_BINDING_ARRAY
                 | F::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING
-                | F::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING,
-            self.msl_version >= MTLLanguageVersion::V2_0 && self.supports_arrays_of_textures,
+                | F::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING
+                | F::PARTIALLY_BOUND_BINDING_ARRAY,
+            self.msl_version >= MTLLanguageVersion::V3_0 && self.supports_arrays_of_textures,
         );
-        //// XXX: this is technically not true, as read-only storage images can be used in arrays
-        //// on precisely the same conditions that sampled textures can. But texel fetch from a
-        //// sampled texture is a thing; should we bother introducing another feature flag?
-        if self.msl_version >= MTLLanguageVersion::V2_2
-            && self.supports_arrays_of_textures
-            && self.supports_arrays_of_textures_write
-        {
-            features.insert(F::STORAGE_RESOURCE_BINDING_ARRAY);
-        }
         features.set(
             F::SHADER_INT64,
             self.int64 && self.msl_version >= MTLLanguageVersion::V2_3,
