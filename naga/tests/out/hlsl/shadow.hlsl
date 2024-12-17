@@ -28,7 +28,10 @@ cbuffer u_entity : register(b0, space1) { Entity u_entity; }
 ByteAddressBuffer s_lights : register(t1);
 cbuffer u_lights : register(b1) { Light u_lights[10]; }
 Texture2DArray<float> t_shadow : register(t2);
-SamplerComparisonState sampler_shadow : register(s3);
+static const uint sampler_shadow = 3;
+StructuredBuffer<uint> sampler_array : register(t0, space255);
+SamplerState nagaSamplerArray[2048]: register(s0, space0);
+SamplerComparisonState nagaComparisonSamplerArray[2048]: register(s0, space1);
 
 struct VertexOutput_vs_main {
     float3 world_normal : LOC0;
@@ -56,7 +59,7 @@ float fetch_shadow(uint light_id, float4 homogeneous_coords)
     float2 flip_correction = float2(0.5, -0.5);
     float proj_correction = (1.0 / homogeneous_coords.w);
     float2 light_local = (((homogeneous_coords.xy * flip_correction) * proj_correction) + float2(0.5, 0.5));
-    float _e24 = t_shadow.SampleCmpLevelZero(sampler_shadow, float3(light_local, int(light_id)), (homogeneous_coords.z * proj_correction));
+    float _e24 = t_shadow.SampleCmpLevelZero(nagaComparisonSamplerArray[sampler_shadow], float3(light_local, int(light_id)), (homogeneous_coords.z * proj_correction));
     return _e24;
 }
 

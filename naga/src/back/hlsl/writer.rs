@@ -24,6 +24,8 @@ pub(crate) const MODF_FUNCTION: &str = "naga_modf";
 pub(crate) const FREXP_FUNCTION: &str = "naga_frexp";
 pub(crate) const EXTRACT_BITS_FUNCTION: &str = "naga_extractBits";
 pub(crate) const INSERT_BITS_FUNCTION: &str = "naga_insertBits";
+pub(crate) const SAMPLER_BUFFER_VAR: &str = "nagaSamplerArray";
+pub(crate) const COMPARISON_SAMPLER_BUFFER_VAR: &str = "nagaComparisonSamplerArray";
 
 struct EpStructMember {
     name: String,
@@ -810,6 +812,18 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
             }
         }
 
+        let handle_ty = match *inner {
+            TypeInner::BindingArray { ref base, .. } => &module.types[*base].inner,
+            _ => inner,
+        };
+
+        let is_sampler = matches!(*handle_ty, crate::TypeInner::Sampler { .. });
+
+        if is_sampler {
+            self.write_sampler(handle, global)?;
+            return Ok(());
+        }
+
         // https://docs.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-variable-register
         let register_ty = match global.space {
             crate::AddressSpace::Function => unreachable!("Function address space"),
@@ -839,13 +853,7 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
                 register
             }
             crate::AddressSpace::Handle => {
-                let handle_ty = match *inner {
-                    TypeInner::BindingArray { ref base, .. } => &module.types[*base].inner,
-                    _ => inner,
-                };
-
                 let register = match *handle_ty {
-                    TypeInner::Sampler { .. } => "s",
                     // all storage textures are UAV, unconditionally
                     TypeInner::Image {
                         class: crate::ImageClass::Storage { .. },
@@ -948,6 +956,27 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
         } else {
             writeln!(self.out, ";")?;
         }
+
+        Ok(())
+    }
+
+    fn write_sampler(
+        &mut self,
+        handle: Handle<crate::GlobalVariable>,
+        global: &crate::GlobalVariable,
+    ) -> BackendResult {
+        let name = &self.names[&NameKey::GlobalVariable(handle)];
+
+        let binding = global.binding.as_ref().unwrap();
+
+        // this was already resolved earlier when we started evaluating an entry point.
+        let bt = self.options.resolve_resource_binding(binding).unwrap();
+
+        writeln!(self.out, "static const uint {name} = {};", bt.register)?;
+
+        self.write_wrapped_sampler_buffer(super::SamplerBufferKey {
+            group: binding.group,
+        })?;
 
         Ok(())
     }
@@ -2886,13 +2915,28 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
                     write!(self.out, ".x")?;
                 }
             }
-            Expression::GlobalVariable(handle) => match module.global_variables[handle].space {
-                crate::AddressSpace::Storage { .. } => {}
-                _ => {
+            Expression::GlobalVariable(handle) => {
+                let global_variable = &module.global_variables[handle];
+                let ty = &module.types[global_variable.ty].inner;
+
+                if let crate::TypeInner::Sampler { comparison } = *ty {
+                    let variable = if comparison {
+                        COMPARISON_SAMPLER_BUFFER_VAR
+                    } else {
+                        SAMPLER_BUFFER_VAR
+                    };
                     let name = &self.names[&NameKey::GlobalVariable(handle)];
-                    write!(self.out, "{name}")?;
+                    write!(self.out, "{variable}[{name}]")?;
+                } else {
+                    match global_variable.space {
+                        crate::AddressSpace::Storage { .. } => {}
+                        _ => {
+                            let name = &self.names[&NameKey::GlobalVariable(handle)];
+                            write!(self.out, "{name}")?;
+                        }
+                    }
                 }
-            },
+            }
             Expression::LocalVariable(handle) => {
                 write!(self.out, "{}", self.names[&func_ctx.name_key(handle)])?
             }

@@ -12,8 +12,11 @@ Texture2DArray<float4> texture_array_2darray[5] : register(t0, space2);
 Texture2DMS<float4> texture_array_multisampled[5] : register(t0, space3);
 Texture2D<float> texture_array_depth[5] : register(t0, space4);
 RWTexture2D<float4> texture_array_storage[5] : register(u0, space5);
-SamplerState samp[5] : register(s0, space6);
-SamplerComparisonState samp_comp[5] : register(s0, space7);
+static const uint samp = 0;
+StructuredBuffer<uint> sampler_array : register(t0, space255);
+SamplerState nagaSamplerArray[2048]: register(s0, space0);
+SamplerComparisonState nagaComparisonSamplerArray[2048]: register(s0, space1);
+static const uint samp_comp = 0;
 cbuffer uni : register(b0, space8) { UniformIndex uni; }
 
 struct FragmentInput_main {

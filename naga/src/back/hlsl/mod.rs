@@ -109,7 +109,7 @@ use thiserror::Error;
 
 use crate::{back, proc};
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 #[cfg_attr(feature = "deserialize", derive(serde::Deserialize))]
 pub struct BindTarget {
@@ -178,6 +178,39 @@ impl crate::ImageDimension {
     }
 }
 
+#[derive(Clone, Copy, Debug, Hash, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "deserialize", derive(serde::Deserialize))]
+pub struct SamplerBufferKey {
+    group: u32,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "deserialize", derive(serde::Deserialize))]
+#[cfg_attr(feature = "deserialize", serde(default))]
+pub struct SamplerBufferBindTargets {
+    sampler_array: BindTarget,
+    comparison_sampler_array: BindTarget,
+}
+
+impl Default for SamplerBufferBindTargets {
+    fn default() -> Self {
+        Self {
+            sampler_array: BindTarget {
+                space: 0,
+                register: 0,
+                binding_array_size: None,
+            },
+            comparison_sampler_array: BindTarget {
+                space: 1,
+                register: 0,
+                binding_array_size: None,
+            },
+        }
+    }
+}
+
 /// Shorthand result used internally by the backend
 type BackendResult = Result<(), Error>;
 
@@ -206,6 +239,10 @@ pub struct Options {
     pub special_constants_binding: Option<BindTarget>,
     /// Bind target of the push constant buffer
     pub push_constants_target: Option<BindTarget>,
+    /// Bind target of the sampler array.
+    pub sampler_array: SamplerBufferBindTargets,
+    /// Group index -> bind target for each sampler buffer's bind_location
+    pub sampler_index_arrays: std::collections::BTreeMap<SamplerBufferKey, BindTarget>,
     /// Should workgroup variables be zero initialized (by polyfilling)?
     pub zero_initialize_workgroup_memory: bool,
     /// Should we restrict indexing of vectors, matrices and arrays?
@@ -219,6 +256,8 @@ impl Default for Options {
             binding_map: BindingMap::default(),
             fake_missing_bindings: true,
             special_constants_binding: None,
+            sampler_array: SamplerBufferBindTargets::default(),
+            sampler_index_arrays: std::collections::BTreeMap::default(),
             push_constants_target: None,
             zero_initialize_workgroup_memory: true,
             restrict_indexing: true,
@@ -278,6 +317,8 @@ struct Wrapped {
     struct_matrix_access: crate::FastHashSet<help::WrappedStructMatrixAccess>,
     mat_cx2s: crate::FastHashSet<help::WrappedMatCx2>,
     math: crate::FastHashSet<help::WrappedMath>,
+    sampler_array: bool,
+    sampler_buffers: crate::FastHashMap<SamplerBufferKey, String>,
 }
 
 impl Wrapped {

@@ -1173,6 +1173,67 @@ impl<W: Write> super::Writer<'_, W> {
         Ok(())
     }
 
+    pub(super) fn write_sampler_arrays(&mut self) -> BackendResult {
+        if self.wrapped.sampler_array {
+            return Ok(());
+        }
+
+        writeln!(
+            self.out,
+            "SamplerState {}[2048]: register(s{}, space{});",
+            super::writer::SAMPLER_BUFFER_VAR,
+            self.options.sampler_array.sampler_array.register,
+            self.options.sampler_array.sampler_array.space
+        )?;
+        writeln!(
+            self.out,
+            "SamplerComparisonState {}[2048]: register(s{}, space{});",
+            super::writer::COMPARISON_SAMPLER_BUFFER_VAR,
+            self.options.sampler_array.comparison_sampler_array.register,
+            self.options.sampler_array.comparison_sampler_array.space
+        )?;
+
+        self.wrapped.sampler_array = true;
+
+        Ok(())
+    }
+
+    pub(super) fn write_wrapped_sampler_buffer(
+        &mut self,
+        key: super::SamplerBufferKey,
+    ) -> BackendResult {
+        let entry = self.wrapped.sampler_buffers.entry(key);
+        let std::collections::hash_map::Entry::Vacant(entry) = entry else {
+            return Ok(());
+        };
+
+        let sampler_array_name = self.namer.call("sampler_array");
+
+        let bind_target = match self.options.sampler_index_arrays.get(&key) {
+            Some(&bind_target) => bind_target,
+            None if self.options.fake_missing_bindings => super::BindTarget {
+                space: u8::MAX,
+                register: key.group,
+                binding_array_size: None,
+            },
+            None => {
+                unreachable!("Sampler buffer not bound to a register");
+            }
+        };
+
+        writeln!(
+            self.out,
+            "StructuredBuffer<uint> {sampler_array_name} : register(t{}, space{});",
+            bind_target.register, bind_target.space
+        )?;
+
+        entry.insert(sampler_array_name);
+
+        self.write_sampler_arrays()?;
+
+        Ok(())
+    }
+
     pub(super) fn write_texture_coordinates(
         &mut self,
         kind: &str,
