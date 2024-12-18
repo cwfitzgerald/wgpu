@@ -17,10 +17,10 @@ struct Data {
 
 cbuffer r_data : register(b0) { Data r_data; }
 TextureCube<float4> r_texture : register(t0);
-static const uint r_sampler = 0;
-StructuredBuffer<uint> sampler_array : register(t0, space2);
-SamplerState nagaSamplerArray[2048]: register(s0, space0);
-SamplerComparisonState nagaComparisonSamplerArray[2048]: register(s0, space1);
+SamplerState nagaSamplerHeap[2048]: register(s0, space0);
+SamplerComparisonState nagaComparisonSamplerHeap[2048]: register(s0, space1);
+StructuredBuffer<uint> nagaGroup0SamplerIndexArray : register(t0, space2);
+static const SamplerState r_sampler = nagaSamplerHeap[nagaGroup0SamplerIndexArray[0]];
 
 struct VertexOutput_vs_main {
     float3 uv : LOC0;
@@ -63,6 +63,6 @@ VertexOutput_vs_main vs_main(uint vertex_index : SV_VertexID)
 float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 {
     VertexOutput in_ = { fragmentinput_fs_main.position_1, fragmentinput_fs_main.uv_1 };
-    float4 _e4 = r_texture.Sample(nagaSamplerArray[r_sampler], in_.uv);
+    float4 _e4 = r_texture.Sample(r_sampler, in_.uv);
     return _e4;
 }

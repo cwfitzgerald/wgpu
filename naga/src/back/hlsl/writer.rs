@@ -24,8 +24,8 @@ pub(crate) const MODF_FUNCTION: &str = "naga_modf";
 pub(crate) const FREXP_FUNCTION: &str = "naga_frexp";
 pub(crate) const EXTRACT_BITS_FUNCTION: &str = "naga_extractBits";
 pub(crate) const INSERT_BITS_FUNCTION: &str = "naga_insertBits";
-pub(crate) const SAMPLER_BUFFER_VAR: &str = "nagaSamplerArray";
-pub(crate) const COMPARISON_SAMPLER_BUFFER_VAR: &str = "nagaComparisonSamplerArray";
+pub(crate) const SAMPLER_HEAP_VAR: &str = "nagaSamplerHeap";
+pub(crate) const COMPARISON_SAMPLER_HEAP_VAR: &str = "nagaComparisonSamplerHeap";
 
 struct EpStructMember {
     name: String,
@@ -141,11 +141,11 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
     ) {
         use crate::Expression;
         self.need_bake_expressions.clear();
-        for (fun_handle, expr) in func.expressions.iter() {
-            let expr_info = &info[fun_handle];
-            let min_ref_count = func.expressions[fun_handle].bake_ref_count();
+        for (exp_handle, expr) in func.expressions.iter() {
+            let expr_info = &info[exp_handle];
+            let min_ref_count = func.expressions[exp_handle].bake_ref_count();
             if min_ref_count <= expr_info.ref_count {
-                self.need_bake_expressions.insert(fun_handle);
+                self.need_bake_expressions.insert(exp_handle);
             }
 
             if let Expression::Math { fun, arg, .. } = *expr {
@@ -170,7 +170,7 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
                         self.need_bake_expressions.insert(arg);
                     }
                     crate::MathFunction::CountLeadingZeros => {
-                        let inner = info[fun_handle].ty.inner_with(&module.types);
+                        let inner = info[exp_handle].ty.inner_with(&module.types);
                         if let Some(ScalarKind::Sint) = inner.scalar_kind() {
                             self.need_bake_expressions.insert(arg);
                         }
@@ -183,6 +183,14 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
                 use crate::{DerivativeAxis as Axis, DerivativeControl as Ctrl};
                 if axis == Axis::Width && (ctrl == Ctrl::Coarse || ctrl == Ctrl::Fine) {
                     self.need_bake_expressions.insert(expr);
+                }
+            }
+
+            if let Expression::GlobalVariable(_) = *expr {
+                let inner = info[exp_handle].ty.inner_with(&module.types);
+
+                if let TypeInner::Sampler { .. } = *inner {
+                    self.need_bake_expressions.insert(exp_handle);
                 }
             }
         }
@@ -817,10 +825,10 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
             _ => inner,
         };
 
-        let is_sampler = matches!(*handle_ty, crate::TypeInner::Sampler { .. });
+        let is_sampler = matches!(*handle_ty, TypeInner::Sampler { .. });
 
         if is_sampler {
-            self.write_sampler(handle, global)?;
+            self.write_global_sampler(module, handle, global)?;
             return Ok(());
         }
 
@@ -960,23 +968,48 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
         Ok(())
     }
 
-    fn write_sampler(
+    fn write_global_sampler(
         &mut self,
+        module: &Module,
         handle: Handle<crate::GlobalVariable>,
         global: &crate::GlobalVariable,
     ) -> BackendResult {
-        let name = &self.names[&NameKey::GlobalVariable(handle)];
+        let binding = *global.binding.as_ref().unwrap();
 
-        let binding = global.binding.as_ref().unwrap();
+        let key = super::SamplerBufferKey {
+            group: binding.group,
+        };
+        self.write_wrapped_sampler_buffer(key)?;
 
         // this was already resolved earlier when we started evaluating an entry point.
-        let bt = self.options.resolve_resource_binding(binding).unwrap();
+        let bt = self.options.resolve_resource_binding(&binding).unwrap();
 
-        writeln!(self.out, "static const uint {name} = {};", bt.register)?;
+        let comparison = match module.types[global.ty].inner {
+            TypeInner::Sampler { comparison } => comparison,
+            TypeInner::BindingArray { .. } => {
+                // We don't emit anything for binding arrays immediately,
+                // as we need to do the index lookup just-in-time.
+                return Ok(());
+            }
+            _ => unreachable!(),
+        };
 
-        self.write_wrapped_sampler_buffer(super::SamplerBufferKey {
-            group: binding.group,
-        })?;
+        write!(self.out, "static const ")?;
+        self.write_type(module, global.ty)?;
+
+        let heap_var = if comparison {
+            COMPARISON_SAMPLER_HEAP_VAR
+        } else {
+            SAMPLER_HEAP_VAR
+        };
+
+        let index_buffer_name = &self.wrapped.sampler_buffers[&key];
+        let name = &self.names[&NameKey::GlobalVariable(handle)];
+        writeln!(
+            self.out,
+            " {name} = {heap_var}[{index_buffer_name}[{register}]];",
+            register = bt.register
+        )?;
 
         Ok(())
     }
@@ -2917,23 +2950,12 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
             }
             Expression::GlobalVariable(handle) => {
                 let global_variable = &module.global_variables[handle];
-                let ty = &module.types[global_variable.ty].inner;
 
-                if let crate::TypeInner::Sampler { comparison } = *ty {
-                    let variable = if comparison {
-                        COMPARISON_SAMPLER_BUFFER_VAR
-                    } else {
-                        SAMPLER_BUFFER_VAR
-                    };
-                    let name = &self.names[&NameKey::GlobalVariable(handle)];
-                    write!(self.out, "{variable}[{name}]")?;
-                } else {
-                    match global_variable.space {
-                        crate::AddressSpace::Storage { .. } => {}
-                        _ => {
-                            let name = &self.names[&NameKey::GlobalVariable(handle)];
-                            write!(self.out, "{name}")?;
-                        }
+                match global_variable.space {
+                    crate::AddressSpace::Storage { .. } => {}
+                    _ => {
+                        let name = &self.names[&NameKey::GlobalVariable(handle)];
+                        write!(self.out, "{name}")?;
                     }
                 }
             }

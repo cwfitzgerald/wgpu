@@ -6,10 +6,10 @@ struct VertexOutput {
 static const float c_scale = 1.2;
 
 Texture2D<float4> u_texture : register(t0);
-static const uint u_sampler = 1;
-StructuredBuffer<uint> sampler_array : register(t0, space255);
-SamplerState nagaSamplerArray[2048]: register(s0, space0);
-SamplerComparisonState nagaComparisonSamplerArray[2048]: register(s0, space1);
+SamplerState nagaSamplerHeap[2048]: register(s0, space0);
+SamplerComparisonState nagaComparisonSamplerHeap[2048]: register(s0, space1);
+StructuredBuffer<uint> nagaGroup0SamplerIndexArray : register(t0, space255);
+static const SamplerState u_sampler = nagaSamplerHeap[nagaGroup0SamplerIndexArray[1]];
 
 struct VertexOutput_vert_main {
     float2 uv_2 : LOC0;
@@ -37,7 +37,7 @@ VertexOutput_vert_main vert_main(float2 pos : LOC0, float2 uv : LOC1)
 float4 frag_main(FragmentInput_frag_main fragmentinput_frag_main) : SV_Target0
 {
     float2 uv_1 = fragmentinput_frag_main.uv_3;
-    float4 color = u_texture.Sample(nagaSamplerArray[u_sampler], uv_1);
+    float4 color = u_texture.Sample(u_sampler, uv_1);
     if ((color.w == 0.0)) {
         discard;
     }

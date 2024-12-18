@@ -5149,7 +5149,7 @@ template <typename A>
                             };
                             if !good {
                                 ep_error =
-                                    Some(super::EntryPointError::MissingBindTarget(br.clone()));
+                                    Some(super::EntryPointError::MissingBindTarget(*br));
                                 break;
                             }
                         }

@@ -1181,14 +1181,14 @@ impl<W: Write> super::Writer<'_, W> {
         writeln!(
             self.out,
             "SamplerState {}[2048]: register(s{}, space{});",
-            super::writer::SAMPLER_BUFFER_VAR,
+            super::writer::SAMPLER_HEAP_VAR,
             self.options.sampler_array.sampler_array.register,
             self.options.sampler_array.sampler_array.space
         )?;
         writeln!(
             self.out,
             "SamplerComparisonState {}[2048]: register(s{}, space{});",
-            super::writer::COMPARISON_SAMPLER_BUFFER_VAR,
+            super::writer::COMPARISON_SAMPLER_HEAP_VAR,
             self.options.sampler_array.comparison_sampler_array.register,
             self.options.sampler_array.comparison_sampler_array.space
         )?;
@@ -1202,12 +1202,15 @@ impl<W: Write> super::Writer<'_, W> {
         &mut self,
         key: super::SamplerBufferKey,
     ) -> BackendResult {
-        let entry = self.wrapped.sampler_buffers.entry(key);
-        let std::collections::hash_map::Entry::Vacant(entry) = entry else {
+        if self.wrapped.sampler_buffers.contains_key(&key) {
             return Ok(());
         };
 
-        let sampler_array_name = self.namer.call("sampler_array");
+        self.write_sampler_arrays()?;
+
+        let sampler_array_name = self
+            .namer
+            .call(&format!("nagaGroup{}SamplerIndexArray", key.group));
 
         let bind_target = match self.options.sampler_index_arrays.get(&key) {
             Some(&bind_target) => bind_target,
@@ -1227,9 +1230,7 @@ impl<W: Write> super::Writer<'_, W> {
             bind_target.register, bind_target.space
         )?;
 
-        entry.insert(sampler_array_name);
-
-        self.write_sampler_arrays()?;
+        self.wrapped.sampler_buffers.insert(key, sampler_array_name);
 
         Ok(())
     }

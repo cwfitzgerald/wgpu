@@ -271,13 +271,13 @@ impl Options {
         res_binding: &crate::ResourceBinding,
     ) -> Result<BindTarget, EntryPointError> {
         match self.binding_map.get(res_binding) {
-            Some(target) => Ok(target.clone()),
+            Some(target) => Ok(*target),
             None if self.fake_missing_bindings => Ok(BindTarget {
                 space: res_binding.group as u8,
                 register: res_binding.binding,
                 binding_array_size: None,
             }),
-            None => Err(EntryPointError::MissingBinding(res_binding.clone())),
+            None => Err(EntryPointError::MissingBinding(*res_binding)),
         }
     }
 }
