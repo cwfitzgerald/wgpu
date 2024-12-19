@@ -96,6 +96,13 @@ const fn is_subgroup_builtin_binding(binding: &Option<crate::Binding>) -> bool {
     )
 }
 
+// TODO: this clusterfuck
+struct BindingArraySamplerInfo {
+    sampler_heap_name: &'static str,
+    group_index_buffer_name: String,
+    global_name: String,
+}
+
 impl<'a, W: fmt::Write> super::Writer<'a, W> {
     pub fn new(out: W, options: &'a Options) -> Self {
         Self {
@@ -984,32 +991,35 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
         // this was already resolved earlier when we started evaluating an entry point.
         let bt = self.options.resolve_resource_binding(&binding).unwrap();
 
-        let comparison = match module.types[global.ty].inner {
-            TypeInner::Sampler { comparison } => comparison,
+        match module.types[global.ty].inner {
+            TypeInner::Sampler { comparison } => {
+                write!(self.out, "static const ")?;
+                self.write_type(module, global.ty)?;
+
+                let heap_var = if comparison {
+                    COMPARISON_SAMPLER_HEAP_VAR
+                } else {
+                    SAMPLER_HEAP_VAR
+                };
+
+                let index_buffer_name = &self.wrapped.sampler_buffers[&key];
+                let name = &self.names[&NameKey::GlobalVariable(handle)];
+                writeln!(
+                    self.out,
+                    " {name} = {heap_var}[{index_buffer_name}[{register}]];",
+                    register = bt.register
+                )?;
+            }
             TypeInner::BindingArray { .. } => {
-                // We don't emit anything for binding arrays immediately,
-                // as we need to do the index lookup just-in-time.
-                return Ok(());
+                let name = &self.names[&NameKey::GlobalVariable(handle)];
+                writeln!(
+                    self.out,
+                    "static const uint {name} = {register};",
+                    register = bt.register
+                )?;
             }
             _ => unreachable!(),
         };
-
-        write!(self.out, "static const ")?;
-        self.write_type(module, global.ty)?;
-
-        let heap_var = if comparison {
-            COMPARISON_SAMPLER_HEAP_VAR
-        } else {
-            SAMPLER_HEAP_VAR
-        };
-
-        let index_buffer_name = &self.wrapped.sampler_buffers[&key];
-        let name = &self.names[&NameKey::GlobalVariable(handle)];
-        writeln!(
-            self.out,
-            " {name} = {heap_var}[{index_buffer_name}[{register}]];",
-            register = bt.register
-        )?;
 
         Ok(())
     }
@@ -2660,7 +2670,16 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
                     };
 
                     self.write_expr(module, base, func_ctx)?;
-                    write!(self.out, "[")?;
+
+                    let array_sampler_info = self.sampler_binding_array_info_from_expression(
+                        module, func_ctx, base, resolved,
+                    );
+
+                    if let Some(ref info) = array_sampler_info {
+                        write!(self.out, "{}[", info.sampler_heap_name)?;
+                    } else {
+                        write!(self.out, "[")?;
+                    }
 
                     let needs_bound_check = self.options.restrict_indexing
                         && !indexing_binding_array
@@ -2705,7 +2724,17 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
                         if non_uniform_qualifier {
                             write!(self.out, "NonUniformResourceIndex(")?;
                         }
+                        if let Some(ref info) = array_sampler_info {
+                            write!(
+                                self.out,
+                                "{}[{} + ",
+                                info.group_index_buffer_name, info.global_name,
+                            )?;
+                        }
                         self.write_expr(module, index, func_ctx)?;
+                        if array_sampler_info.is_some() {
+                            write!(self.out, "]")?;
+                        }
                         if non_uniform_qualifier {
                             write!(self.out, ")")?;
                         }
@@ -2720,43 +2749,6 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
                 {
                     // do nothing, the chain is written on `Load`/`Store`
                 } else {
-                    fn write_access<W: fmt::Write>(
-                        writer: &mut super::Writer<'_, W>,
-                        resolved: &TypeInner,
-                        base_ty_handle: Option<Handle<crate::Type>>,
-                        index: u32,
-                    ) -> BackendResult {
-                        match *resolved {
-                            // We specifically lift the ValuePointer to this case. While `[0]` is valid
-                            // HLSL for any vector behind a value pointer, FXC completely miscompiles
-                            // it and generates completely nonsensical DXBC.
-                            //
-                            // See https://github.com/gfx-rs/naga/issues/2095 for more details.
-                            TypeInner::Vector { .. } | TypeInner::ValuePointer { .. } => {
-                                // Write vector access as a swizzle
-                                write!(writer.out, ".{}", back::COMPONENTS[index as usize])?
-                            }
-                            TypeInner::Matrix { .. }
-                            | TypeInner::Array { .. }
-                            | TypeInner::BindingArray { .. } => write!(writer.out, "[{index}]")?,
-                            TypeInner::Struct { .. } => {
-                                // This will never panic in case the type is a `Struct`, this is not true
-                                // for other types so we can only check while inside this match arm
-                                let ty = base_ty_handle.unwrap();
-
-                                write!(
-                                    writer.out,
-                                    ".{}",
-                                    &writer.names[&NameKey::StructMember(ty, index)]
-                                )?
-                            }
-                            ref other => {
-                                return Err(Error::Custom(format!("Cannot index {other:?}")))
-                            }
-                        }
-                        Ok(())
-                    }
-
                     // We write the matrix column access in a special way since
                     // the type of `base` is our special __matCx2 struct.
                     if let Some(MatrixType {
@@ -2806,8 +2798,56 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
                         }
                     }
 
+                    let array_sampler_info = self.sampler_binding_array_info_from_expression(
+                        module, func_ctx, base, resolved,
+                    );
+
+                    if let Some(ref info) = array_sampler_info {
+                        write!(
+                            self.out,
+                            "{}[{}",
+                            info.sampler_heap_name, info.group_index_buffer_name
+                        )?;
+                    }
+
                     self.write_expr(module, base, func_ctx)?;
-                    write_access(self, resolved, base_ty_handle, index)?;
+
+                    match *resolved {
+                        // We specifically lift the ValuePointer to this case. While `[0]` is valid
+                        // HLSL for any vector behind a value pointer, FXC completely miscompiles
+                        // it and generates completely nonsensical DXBC.
+                        //
+                        // See https://github.com/gfx-rs/naga/issues/2095 for more details.
+                        TypeInner::Vector { .. } | TypeInner::ValuePointer { .. } => {
+                            // Write vector access as a swizzle
+                            write!(self.out, ".{}", back::COMPONENTS[index as usize])?
+                        }
+                        TypeInner::Matrix { .. }
+                        | TypeInner::Array { .. }
+                        | TypeInner::BindingArray { .. } => {
+                            if let Some(ref info) = array_sampler_info {
+                                write!(self.out, "[{} + {index}]", info.global_name)?;
+                            } else {
+                                write!(self.out, "[{index}]")?;
+                            }
+                        }
+                        TypeInner::Struct { .. } => {
+                            // This will never panic in case the type is a `Struct`, this is not true
+                            // for other types so we can only check while inside this match arm
+                            let ty = base_ty_handle.unwrap();
+
+                            write!(
+                                self.out,
+                                ".{}",
+                                &self.names[&NameKey::StructMember(ty, index)]
+                            )?
+                        }
+                        ref other => return Err(Error::Custom(format!("Cannot index {other:?}"))),
+                    }
+
+                    if array_sampler_info.is_some() {
+                        write!(self.out, "]")?;
+                    }
                 }
             }
             Expression::FunctionArgument(pos) => {
@@ -2950,13 +2990,26 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
             }
             Expression::GlobalVariable(handle) => {
                 let global_variable = &module.global_variables[handle];
+                let ty = &module.types[global_variable.ty].inner;
 
-                match global_variable.space {
-                    crate::AddressSpace::Storage { .. } => {}
-                    _ => {
-                        let name = &self.names[&NameKey::GlobalVariable(handle)];
-                        write!(self.out, "{name}")?;
+                // In the case of binding arrays of samplers, we need to not write anything
+                // as the we are in the wrong position to fully write the expression.
+                //
+                // The entire writing is done by AccessIndex.
+                let is_binding_array_of_samplers = match *ty {
+                    TypeInner::BindingArray { base, .. } => {
+                        let base_ty = &module.types[base].inner;
+                        matches!(base_ty, TypeInner::Sampler { .. })
                     }
+                    _ => false,
+                };
+
+                let is_storage_space =
+                    matches!(global_variable.space, crate::AddressSpace::Storage { .. });
+
+                if !is_binding_array_of_samplers && !is_storage_space {
+                    let name = &self.names[&NameKey::GlobalVariable(handle)];
+                    write!(self.out, "{name}")?;
                 }
             }
             Expression::LocalVariable(handle) => {
@@ -3662,6 +3715,53 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
             write!(self.out, "{closing_bracket}")?;
         }
         Ok(())
+    }
+
+    fn sampler_binding_array_info_from_expression(
+        &mut self,
+        module: &Module,
+        func_ctx: &back::FunctionCtx<'_>,
+        base: Handle<crate::Expression>,
+        resolved: &TypeInner,
+    ) -> Option<BindingArraySamplerInfo> {
+        match *resolved {
+            TypeInner::BindingArray {
+                base: base_ty_handle,
+                ..
+            } => {
+                let base_ty = &module.types[base_ty_handle].inner;
+                if let TypeInner::Sampler { comparison, .. } = *base_ty {
+                    let base = &func_ctx.expressions[base];
+
+                    if let crate::Expression::GlobalVariable(handle) = *base {
+                        let variable = &module.global_variables[handle];
+
+                        let sampler_heap_name = match comparison {
+                            true => COMPARISON_SAMPLER_HEAP_VAR,
+                            false => SAMPLER_HEAP_VAR,
+                        };
+
+                        Some(BindingArraySamplerInfo {
+                            sampler_heap_name,
+                            group_index_buffer_name: self
+                                .wrapped
+                                .sampler_buffers
+                                .get(&super::SamplerBufferKey {
+                                    group: variable.binding.unwrap().group,
+                                })
+                                .unwrap()
+                                .clone(),
+                            global_name: self.names[&NameKey::GlobalVariable(handle)].clone(),
+                        })
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
     }
 
     fn write_named_expr(
