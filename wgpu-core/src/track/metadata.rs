@@ -1,7 +1,31 @@
 //! The `ResourceMetadata` type.
 
+use std::sync::Arc;
+
 use bit_vec::BitVec;
 use wgt::strict_assert;
+
+use crate::device::resource;
+
+#[derive(Debug, Clone)]
+enum PartiallyOwnedResource<T> {
+    None,
+    Arc(Arc<T>),
+    Raw(*const T),
+}
+
+impl<T> PartiallyOwnedResource<T> {
+    pub unsafe fn get(&self) -> Option<&T> {
+        match *self {
+            PartiallyOwnedResource::None => None,
+            PartiallyOwnedResource::Arc(ref arc) => Some(&*arc),
+            PartiallyOwnedResource::Raw(ptr) => Some(unsafe { &*ptr }),
+        }
+    }
+}
+
+unsafe impl<T: Send> Send for PartiallyOwnedResource<T> {}
+unsafe impl<T: Sync> Sync for PartiallyOwnedResource<T> {}
 
 /// A set of resources, holding a `Arc<T>` and epoch for each member.
 ///
@@ -11,12 +35,12 @@ use wgt::strict_assert;
 /// members, but a bit vector tracks occupancy, so iteration touches
 /// only occupied elements.
 #[derive(Debug)]
-pub(super) struct ResourceMetadata<T: Clone> {
+pub(super) struct ResourceMetadata<T> {
     /// If the resource with index `i` is a member, `owned[i]` is `true`.
     owned: BitVec<usize>,
 
     /// A vector holding clones of members' `T`s.
-    resources: Vec<Option<T>>,
+    resources: Vec<PartiallyOwnedResource<T>>,
 }
 
 impl<T: Clone> ResourceMetadata<T> {
@@ -88,10 +112,15 @@ impl<T: Clone> ResourceMetadata<T> {
     /// The given `index` must be in bounds for this `ResourceMetadata`'s
     /// existing tables. See `tracker_assert_in_bounds`.
     #[inline(always)]
-    pub(super) unsafe fn insert(&mut self, index: usize, resource: T) -> &T {
+    pub(super) unsafe fn insert(
+        &mut self,
+        index: usize,
+        metadata_provider: ResourceMetadataProvider<'_, T>,
+    ) {
         self.owned.set(index, true);
+        let resource = unsafe { metadata_provider.get(index) };
         let resource_dst = unsafe { self.resources.get_unchecked_mut(index) };
-        resource_dst.insert(resource)
+        resource_dst.insert(resource);
     }
 
     /// Get the resource with the given index.
@@ -107,6 +136,7 @@ impl<T: Clone> ResourceMetadata<T> {
                 .get_unchecked(index)
                 .as_ref()
                 .unwrap_unchecked()
+                .get()
         }
     }
 
@@ -117,7 +147,7 @@ impl<T: Clone> ResourceMetadata<T> {
         };
         iterate_bitvec_indices(&self.owned).map(move |index| {
             let resource = unsafe { self.resources.get_unchecked(index) };
-            resource.as_ref().unwrap()
+            unsafe { resource.as_ref().unwrap().get() }
         })
     }
 
@@ -142,9 +172,9 @@ impl<T: Clone> ResourceMetadata<T> {
 ///
 /// This is used to abstract over the various places
 /// trackers can get new resource metadata from.
-pub(super) enum ResourceMetadataProvider<'a, T: Clone> {
+pub(super) enum ResourceMetadataProvider<'a, T> {
     /// Comes directly from explicit values.
-    Direct { resource: &'a T },
+    Direct { resource: &'a Arc<T>, owned: bool },
     /// Comes from another metadata tracker.
     Indirect { metadata: &'a ResourceMetadata<T> },
 }
@@ -155,14 +185,21 @@ impl<T: Clone> ResourceMetadataProvider<'_, T> {
     ///
     /// - The index must be in bounds of the metadata tracker if this uses an indirect source.
     #[inline(always)]
-    pub(super) unsafe fn get(&self, index: usize) -> &T {
-        match self {
-            ResourceMetadataProvider::Direct { resource } => resource,
+    pub(super) unsafe fn get(&self, index: usize) -> PartiallyOwnedResource<T> {
+        match *self {
+            ResourceMetadataProvider::Direct {
+                resource,
+                owned: true,
+            } => PartiallyOwnedResource::Arc(resource.clone()),
+            ResourceMetadataProvider::Direct {
+                resource,
+                owned: false,
+            } => PartiallyOwnedResource::Raw(resource.as_ref()),
             ResourceMetadataProvider::Indirect { metadata } => {
                 metadata.tracker_assert_in_bounds(index);
                 {
-                    let resource = unsafe { metadata.resources.get_unchecked(index) }.as_ref();
-                    unsafe { resource.unwrap_unchecked() }
+                    let resource = unsafe { metadata.resources.get_unchecked(index) };
+                    unsafe { resource.unwrap_unchecked() }.clone()
                 }
             }
         }
