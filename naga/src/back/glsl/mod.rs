@@ -87,6 +87,7 @@ pub(crate) const MODF_FUNCTION: &str = "naga_modf";
 pub(crate) const FREXP_FUNCTION: &str = "naga_frexp";
 
 // Must match code in glsl_built_in
+pub const FIRST_VERTEX_BINDING: &str = "naga_vs_first_vertex";
 pub const FIRST_INSTANCE_BINDING: &str = "naga_vs_first_instance";
 
 #[cfg(any(feature = "serialize", feature = "deserialize"))]
@@ -743,10 +744,15 @@ impl<'a, W: Write> Writer<'a, W> {
                 .options
                 .writer_flags
                 .contains(WriterFlags::DRAW_PARAMETERS)
-            && self.features.contains(Features::INSTANCE_INDEX)
         {
-            writeln!(self.out, "uniform uint {FIRST_INSTANCE_BINDING};")?;
-            writeln!(self.out)?;
+            if self.features.contains(Features::INSTANCE_INDEX) {
+                writeln!(self.out, "uniform uint {FIRST_INSTANCE_BINDING};")?;
+                writeln!(self.out)?;
+            }
+            if self.features.contains(Features::BASE_VERTEX) {
+                writeln!(self.out, "uniform uint {FIRST_VERTEX_BINDING};")?;
+                writeln!(self.out)?;
+            }
         }
 
         // Enable early depth tests if needed
@@ -5116,8 +5122,22 @@ const fn glsl_built_in(built_in: crate::BuiltIn, options: VaryingOptions) -> &'s
         Bi::ViewIndex if options.targeting_webgl => "int(gl_ViewID_OVR)",
         Bi::ViewIndex => "gl_ViewIndex",
         // vertex
-        Bi::BaseInstance => "uint(gl_BaseInstance)",
-        Bi::BaseVertex => "uint(gl_BaseVertex)",
+        Bi::BaseInstance => {
+            if options.draw_parameters {
+                "uint(gl_BaseInstanceARB)"
+            } else {
+                // Must match FIRST_INSTANCE_BINDING
+                "naga_vs_first_instance"
+            }
+        }
+        Bi::BaseVertex => {
+            if options.draw_parameters {
+                "uint(gl_BaseVertexARB)"
+            } else {
+                // Must match FIRST_VERTEX_BINDING
+                "naga_vs_first_vertex"
+            }
+        }
         Bi::ClipDistance => "gl_ClipDistance",
         Bi::CullDistance => "gl_CullDistance",
         Bi::InstanceIndex => {

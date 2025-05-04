@@ -45,16 +45,18 @@ bitflags::bitflags! {
         const IMAGE_SIZE = 1 << 20;
         /// Dual source blending
         const DUAL_SOURCE_BLENDING = 1 << 21;
+        /// Vertex Index
+        const BASE_VERTEX = 1 << 22;
         /// Instance index
         ///
         /// We can always support this, either through the language or a polyfill
-        const INSTANCE_INDEX = 1 << 22;
+        const INSTANCE_INDEX = 1 << 23;
         /// Sample specific LODs of cube / array shadow textures
-        const TEXTURE_SHADOW_LOD = 1 << 23;
+        const TEXTURE_SHADOW_LOD = 1 << 24;
         /// Subgroup operations
-        const SUBGROUP_OPERATIONS = 1 << 24;
+        const SUBGROUP_OPERATIONS = 1 << 25;
         /// Image atomics
-        const TEXTURE_ATOMICS = 1 << 25;
+        const TEXTURE_ATOMICS = 1 << 26;
     }
 }
 
@@ -254,7 +256,10 @@ impl FeaturesManager {
             writeln!(out, "#extension GL_EXT_blend_func_extended : require")?;
         }
 
-        if self.0.contains(Features::INSTANCE_INDEX) {
+        if self
+            .0
+            .intersects(Features::INSTANCE_INDEX | Features::BASE_VERTEX)
+        {
             if options.writer_flags.contains(WriterFlags::DRAW_PARAMETERS) {
                 // https://registry.khronos.org/OpenGL/extensions/ARB/ARB_shader_draw_parameters.txt
                 writeln!(out, "#extension GL_ARB_shader_draw_parameters : require")?;
@@ -596,9 +601,12 @@ impl<W> Writer<'_, W> {
                         self.features.request(Features::SAMPLE_VARIABLES)
                     }
                     crate::BuiltIn::ViewIndex => self.features.request(Features::MULTI_VIEW),
-                    crate::BuiltIn::InstanceIndex | crate::BuiltIn::DrawID => {
-                        self.features.request(Features::INSTANCE_INDEX)
+                    crate::BuiltIn::BaseVertex => {
+                        self.features.request(Features::BASE_VERTEX);
                     }
+                    crate::BuiltIn::BaseInstance
+                    | crate::BuiltIn::InstanceIndex
+                    | crate::BuiltIn::DrawID => self.features.request(Features::INSTANCE_INDEX),
                     _ => {}
                 },
                 Binding::Location {
