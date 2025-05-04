@@ -23,9 +23,9 @@ use crate::{
 
 const LOCATION_SEMANTIC: &str = "LOC";
 const SPECIAL_CBUF_TYPE: &str = "NagaConstants";
-const SPECIAL_CBUF_VAR: &str = "_NagaConstants";
-const SPECIAL_FIRST_VERTEX: &str = "first_vertex";
-const SPECIAL_FIRST_INSTANCE: &str = "first_instance";
+pub(crate) const SPECIAL_CBUF_VAR: &str = "_NagaConstants";
+pub(crate) const SPECIAL_FIRST_VERTEX: &str = "first_vertex";
+pub(crate) const SPECIAL_FIRST_INSTANCE: &str = "first_instance";
 const SPECIAL_OTHER: &str = "other";
 
 pub(crate) const MODF_FUNCTION: &str = "naga_modf";
@@ -99,7 +99,7 @@ enum Io {
     Output,
 }
 
-const fn is_subgroup_builtin_binding(binding: &Option<crate::Binding>) -> bool {
+const fn is_non_system_variable_builtin(binding: &Option<crate::Binding>) -> bool {
     let &Some(crate::Binding::BuiltIn(builtin)) = binding else {
         return false;
     };
@@ -109,6 +109,8 @@ const fn is_subgroup_builtin_binding(binding: &Option<crate::Binding>) -> bool {
             | crate::BuiltIn::SubgroupInvocationId
             | crate::BuiltIn::NumSubgroups
             | crate::BuiltIn::SubgroupId
+            | crate::BuiltIn::BaseVertex
+            | crate::BuiltIn::BaseInstance
     )
 }
 
@@ -543,7 +545,7 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
         stage: Option<(ShaderStage, Io)>,
     ) -> BackendResult {
         match *binding {
-            Some(crate::Binding::BuiltIn(builtin)) if !is_subgroup_builtin_binding(binding) => {
+            Some(crate::Binding::BuiltIn(builtin)) if !is_non_system_variable_builtin(binding) => {
                 let builtin_str = builtin.to_hlsl_str()?;
                 write!(self.out, " : {builtin_str}")?;
             }
@@ -584,7 +586,7 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
             // location. Also see note about nesting in `write_ep_input_struct`.
             debug_assert!(m.binding.is_some());
 
-            if is_subgroup_builtin_binding(&m.binding) {
+            if is_non_system_variable_builtin(&m.binding) {
                 continue;
             }
             write!(self.out, "{}", back::INDENT)?;
@@ -769,7 +771,7 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
                     || func
                         .arguments
                         .iter()
-                        .any(|arg| is_subgroup_builtin_binding(&arg.binding)))
+                        .any(|arg| is_non_system_variable_builtin(&arg.binding)))
             {
                 Some(self.write_ep_input_struct(module, func, stage, ep_name)?)
             } else {
@@ -808,6 +810,12 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
                     "{}.__local_invocation_index / WaveGetLaneCount()",
                     ep_input.arg_name
                 )?;
+            }
+            Some(crate::Binding::BuiltIn(crate::BuiltIn::BaseVertex)) => {
+                write!(self.out, "{SPECIAL_CBUF_VAR}.{SPECIAL_FIRST_VERTEX}")?;
+            }
+            Some(crate::Binding::BuiltIn(crate::BuiltIn::BaseInstance)) => {
+                write!(self.out, "{SPECIAL_CBUF_VAR}.{SPECIAL_FIRST_INSTANCE}")?;
             }
             _ => {
                 write!(self.out, "{}.{}", ep_input.arg_name, fake_member.name)?;

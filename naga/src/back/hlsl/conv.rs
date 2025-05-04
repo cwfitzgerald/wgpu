@@ -149,8 +149,8 @@ impl crate::StorageFormat {
 }
 
 impl crate::BuiltIn {
-    pub(super) fn to_hlsl_str(self) -> Result<&'static str, Error> {
-        Ok(match self {
+    pub(super) fn to_hlsl_str(self) -> Result<Cow<'static, str>, Error> {
+        Ok(Cow::Borrowed(match self {
             Self::Position { .. } => "SV_Position",
             // vertex
             Self::ClipDistance => "SV_ClipDistance",
@@ -177,13 +177,13 @@ impl crate::BuiltIn {
             | Self::SubgroupInvocationId
             | Self::NumSubgroups
             | Self::SubgroupId => unreachable!(),
-            Self::BaseInstance | Self::BaseVertex | Self::WorkGroupSize => {
-                return Err(Error::Unimplemented(format!("builtin {self:?}")))
-            }
+            // These builtins map to access to special uniforms
+            Self::BaseInstance | Self::BaseVertex => unimplemented!(),
+            Self::WorkGroupSize => return Err(Error::Unimplemented(format!("builtin {self:?}"))),
             Self::PointSize | Self::ViewIndex | Self::PointCoord | Self::DrawID => {
                 return Err(Error::Custom(format!("Unsupported builtin {self:?}")))
             }
-        })
+        }))
     }
 }
 
