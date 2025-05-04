@@ -32,6 +32,7 @@ pub(super) struct State {
     instance_vbuf_mask: usize,
     dirty_vbuf_mask: usize,
     active_first_instance: u32,
+    first_vertex_location: Option<glow::UniformLocation>,
     first_instance_location: Option<glow::UniformLocation>,
     push_constant_descs: ArrayVec<super::PushConstantDesc, { super::MAX_PUSH_CONSTANT_COMMANDS }>,
     // The current state of the push constant data block.
@@ -61,6 +62,7 @@ impl Default for State {
             instance_vbuf_mask: Default::default(),
             dirty_vbuf_mask: Default::default(),
             active_first_instance: Default::default(),
+            first_vertex_location: Default::default(),
             first_instance_location: Default::default(),
             push_constant_descs: Default::default(),
             current_push_constant_data: [0; super::MAX_PUSH_CONSTANTS],
@@ -229,6 +231,9 @@ impl super::CommandEncoder {
     fn set_pipeline_inner(&mut self, inner: &super::PipelineInner) {
         self.cmd_buffer.commands.push(C::SetProgram(inner.program));
 
+        self.state
+            .first_vertex_location
+            .clone_from(&inner.first_vertex_location);
         self.state
             .first_instance_location
             .clone_from(&inner.first_instance_location);
@@ -1047,6 +1052,7 @@ impl crate::CommandEncoder for super::CommandEncoder {
             vertex_count,
             first_instance,
             instance_count,
+            first_vertex_location: self.state.first_vertex_location.clone(),
             first_instance_location: self.state.first_instance_location.clone(),
         });
     }
@@ -1073,6 +1079,7 @@ impl crate::CommandEncoder for super::CommandEncoder {
             base_vertex,
             first_instance,
             instance_count,
+            first_vertex_location: self.state.first_vertex_location.clone(),
             first_instance_location: self.state.first_instance_location.clone(),
         });
     }
@@ -1099,6 +1106,7 @@ impl crate::CommandEncoder for super::CommandEncoder {
                 topology: self.state.topology,
                 indirect_buf: buffer.raw.unwrap(),
                 indirect_offset,
+                first_vertex_location: self.state.first_vertex_location.clone(),
                 first_instance_location: self.state.first_instance_location.clone(),
             });
         }
@@ -1123,6 +1131,7 @@ impl crate::CommandEncoder for super::CommandEncoder {
                 index_type,
                 indirect_buf: buffer.raw.unwrap(),
                 indirect_offset,
+                first_vertex_location: self.state.first_vertex_location.clone(),
                 first_instance_location: self.state.first_instance_location.clone(),
             });
         }

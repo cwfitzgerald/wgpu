@@ -483,6 +483,13 @@ impl super::Device {
             }
         }
 
+        let first_vertex_location = if has_stages.contains(wgt::ShaderStages::VERTEX) {
+            // If this returns none (the uniform isn't active), that's fine, we just won't set it.
+            unsafe { gl.get_uniform_location(program, naga::back::glsl::FIRST_VERTEX_BINDING) }
+        } else {
+            None
+        };
+
         let first_instance_location = if has_stages.contains(wgt::ShaderStages::VERTEX) {
             // If this returns none (the uniform isn't active), that's fine, we just won't set it.
             unsafe { gl.get_uniform_location(program, naga::back::glsl::FIRST_INSTANCE_BINDING) }
@@ -493,6 +500,7 @@ impl super::Device {
         Ok(Arc::new(super::PipelineInner {
             program,
             sampler_map,
+            first_vertex_location,
             first_instance_location,
             push_constant_descs: uniforms,
         }))

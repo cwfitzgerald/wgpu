@@ -175,6 +175,7 @@ impl super::Queue {
                 vertex_count,
                 instance_count,
                 first_instance,
+                ref first_vertex_location,
                 ref first_instance_location,
             } => {
                 let supports_full_instancing = self
@@ -194,6 +195,7 @@ impl super::Queue {
                     }
                 } else {
                     unsafe {
+                        gl.uniform_1_u32(first_vertex_location.as_ref(), first_vertex);
                         gl.uniform_1_u32(first_instance_location.as_ref(), first_instance);
                     }
 
@@ -218,6 +220,7 @@ impl super::Queue {
                 base_vertex,
                 first_instance,
                 instance_count,
+                ref first_vertex_location,
                 ref first_instance_location,
             } => {
                 let supports_full_instancing = self
@@ -238,7 +241,10 @@ impl super::Queue {
                         )
                     }
                 } else {
-                    unsafe { gl.uniform_1_u32(first_instance_location.as_ref(), first_instance) };
+                    unsafe {
+                        gl.uniform_1_u32(first_vertex_location.as_ref(), 0);
+                        gl.uniform_1_u32(first_instance_location.as_ref(), first_instance);
+                    }
 
                     if base_vertex == 0 {
                         unsafe {
@@ -272,8 +278,10 @@ impl super::Queue {
                 topology,
                 indirect_buf,
                 indirect_offset,
+                ref first_vertex_location,
                 ref first_instance_location,
             } => {
+                unsafe { gl.uniform_1_u32(first_vertex_location.as_ref(), 0) };
                 unsafe { gl.uniform_1_u32(first_instance_location.as_ref(), 0) };
 
                 unsafe { gl.bind_buffer(glow::DRAW_INDIRECT_BUFFER, Some(indirect_buf)) };
@@ -284,8 +292,10 @@ impl super::Queue {
                 index_type,
                 indirect_buf,
                 indirect_offset,
+                ref first_vertex_location,
                 ref first_instance_location,
             } => {
+                unsafe { gl.uniform_1_u32(first_vertex_location.as_ref(), 0) };
                 unsafe { gl.uniform_1_u32(first_instance_location.as_ref(), 0) };
 
                 unsafe { gl.bind_buffer(glow::DRAW_INDIRECT_BUFFER, Some(indirect_buf)) };

@@ -653,6 +653,7 @@ type SamplerBindMap = [Option<u8>; MAX_TEXTURE_SLOTS];
 struct PipelineInner {
     program: glow::Program,
     sampler_map: SamplerBindMap,
+    first_vertex_location: Option<glow::UniformLocation>,
     first_instance_location: Option<glow::UniformLocation>,
     push_constant_descs: ArrayVec<PushConstantDesc, MAX_PUSH_CONSTANT_COMMANDS>,
 }
@@ -810,6 +811,7 @@ enum Command {
         vertex_count: u32,
         first_instance: u32,
         instance_count: u32,
+        first_vertex_location: Option<glow::UniformLocation>,
         first_instance_location: Option<glow::UniformLocation>,
     },
     DrawIndexed {
@@ -820,12 +822,14 @@ enum Command {
         base_vertex: i32,
         first_instance: u32,
         instance_count: u32,
+        first_vertex_location: Option<glow::UniformLocation>,
         first_instance_location: Option<glow::UniformLocation>,
     },
     DrawIndirect {
         topology: u32,
         indirect_buf: glow::Buffer,
         indirect_offset: wgt::BufferAddress,
+        first_vertex_location: Option<glow::UniformLocation>,
         first_instance_location: Option<glow::UniformLocation>,
     },
     DrawIndexedIndirect {
@@ -833,6 +837,7 @@ enum Command {
         index_type: u32,
         indirect_buf: glow::Buffer,
         indirect_offset: wgt::BufferAddress,
+        first_vertex_location: Option<glow::UniformLocation>,
         first_instance_location: Option<glow::UniformLocation>,
     },
     Dispatch([u32; 3]),
