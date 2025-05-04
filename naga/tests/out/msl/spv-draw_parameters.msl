@@ -1,0 +1,45 @@
+// language: metal1.2
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using metal::uint;
+
+struct type_3 {
+    float inner[1];
+};
+struct gl_PerVertex {
+    metal::float4 gl_Position;
+    float gl_PointSize;
+    type_3 gl_ClipDistance;
+    type_3 gl_CullDistance;
+};
+
+void main_1(
+    thread gl_PerVertex& unnamed,
+    thread int& gl_BaseVertex_1,
+    thread int& gl_BaseInstance_1
+) {
+    int _e5 = gl_BaseVertex_1;
+    int _e7 = gl_BaseInstance_1;
+    unnamed.gl_Position = metal::float4(static_cast<float>(_e5), static_cast<float>(_e7), 0.0, 1.0);
+    return;
+}
+
+struct main_Input {
+};
+struct main_Output {
+    metal::float4 member [[position]];
+};
+vertex main_Output main_(
+  uint gl_BaseVertex [[base_vertex]]
+, uint gl_BaseInstance [[base_instance]]
+) {
+    gl_PerVertex unnamed = gl_PerVertex {metal::float4(0.0, 0.0, 0.0, 1.0), 1.0, type_3 {}, type_3 {}};
+    int gl_BaseVertex_1 = {};
+    int gl_BaseInstance_1 = {};
+    gl_BaseVertex_1 = static_cast<int>(gl_BaseVertex);
+    gl_BaseInstance_1 = static_cast<int>(gl_BaseInstance);
+    main_1(unnamed, gl_BaseVertex_1, gl_BaseInstance_1);
+    metal::float4 _e8 = unnamed.gl_Position;
+    return main_Output { _e8 };
+}

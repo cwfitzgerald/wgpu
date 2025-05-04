@@ -1,0 +1,10 @@
+# WGSL doesn't support this currently.
+targets = "SPIRV | METAL | GLSL | HLSL"
+
+[msl]
+lang_version = [1, 2]
+
+[hlsl]
+special_constants_binding = { space = 0, register = 0 }
+
+[glsl]

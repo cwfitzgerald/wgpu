@@ -1,0 +1,59 @@
+; SPIR-V
+; Version: 1.0
+; Generator: Google Shaderc over Glslang; 11
+; Bound: 28
+; Schema: 0
+               OpCapability Shader
+               OpCapability DrawParameters
+               OpExtension "SPV_KHR_shader_draw_parameters"
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Vertex %main "main" %_ %gl_BaseVertex %gl_BaseInstance
+               OpSource GLSL 460
+               OpSourceExtension "GL_GOOGLE_cpp_style_line_directive"
+               OpSourceExtension "GL_GOOGLE_include_directive"
+               OpName %main "main"
+               OpName %gl_PerVertex "gl_PerVertex"
+               OpMemberName %gl_PerVertex 0 "gl_Position"
+               OpMemberName %gl_PerVertex 1 "gl_PointSize"
+               OpMemberName %gl_PerVertex 2 "gl_ClipDistance"
+               OpMemberName %gl_PerVertex 3 "gl_CullDistance"
+               OpName %_ ""
+               OpName %gl_BaseVertex "gl_BaseVertex"
+               OpName %gl_BaseInstance "gl_BaseInstance"
+               OpDecorate %gl_PerVertex Block
+               OpMemberDecorate %gl_PerVertex 0 BuiltIn Position
+               OpMemberDecorate %gl_PerVertex 1 BuiltIn PointSize
+               OpMemberDecorate %gl_PerVertex 2 BuiltIn ClipDistance
+               OpMemberDecorate %gl_PerVertex 3 BuiltIn CullDistance
+               OpDecorate %gl_BaseVertex BuiltIn BaseVertex
+               OpDecorate %gl_BaseInstance BuiltIn BaseInstance
+       %void = OpTypeVoid
+          %3 = OpTypeFunction %void
+      %float = OpTypeFloat 32
+    %v4float = OpTypeVector %float 4
+       %uint = OpTypeInt 32 0
+     %uint_1 = OpConstant %uint 1
+%_arr_float_uint_1 = OpTypeArray %float %uint_1
+%gl_PerVertex = OpTypeStruct %v4float %float %_arr_float_uint_1 %_arr_float_uint_1
+%_ptr_Output_gl_PerVertex = OpTypePointer Output %gl_PerVertex
+          %_ = OpVariable %_ptr_Output_gl_PerVertex Output
+        %int = OpTypeInt 32 1
+      %int_0 = OpConstant %int 0
+%_ptr_Input_int = OpTypePointer Input %int
+%gl_BaseVertex = OpVariable %_ptr_Input_int Input
+%gl_BaseInstance = OpVariable %_ptr_Input_int Input
+    %float_0 = OpConstant %float 0
+    %float_1 = OpConstant %float 1
+%_ptr_Output_v4float = OpTypePointer Output %v4float
+       %main = OpFunction %void None %3
+          %5 = OpLabel
+         %18 = OpLoad %int %gl_BaseVertex
+         %19 = OpConvertSToF %float %18
+         %21 = OpLoad %int %gl_BaseInstance
+         %22 = OpConvertSToF %float %21
+         %25 = OpCompositeConstruct %v4float %19 %22 %float_0 %float_1
+         %27 = OpAccessChain %_ptr_Output_v4float %_ %int_0
+               OpStore %27 %25
+               OpReturn
+               OpFunctionEnd
