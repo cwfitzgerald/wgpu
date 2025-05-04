@@ -56,6 +56,7 @@ pub const SUPPORTED_CAPABILITIES: &[spirv::Capability] = &[
     spirv::Capability::VulkanMemoryModel,
     spirv::Capability::ClipDistance,
     spirv::Capability::CullDistance,
+    spirv::Capability::DrawParameters,
     spirv::Capability::SampleRateShading,
     spirv::Capability::DerivativeControl,
     spirv::Capability::Matrix,
@@ -91,6 +92,7 @@ pub const SUPPORTED_EXTENSIONS: &[&str] = &[
     "SPV_KHR_vulkan_memory_model",
     "SPV_KHR_multiview",
     "SPV_EXT_shader_atomic_float_add",
+    "SPV_KHR_shader_draw_parameters",
     "SPV_KHR_16bit_storage",
 ];
 pub const SUPPORTED_EXT_SETS: &[&str] = &["GLSL.std.450"];
