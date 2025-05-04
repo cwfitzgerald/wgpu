@@ -1939,8 +1939,22 @@ impl Writer {
                         BuiltIn::ViewIndex
                     }
                     // vertex
-                    Bi::BaseInstance => BuiltIn::BaseInstance,
-                    Bi::BaseVertex => BuiltIn::BaseVertex,
+                    Bi::BaseInstance => {
+                        self.use_extension("SPV_KHR_shader_draw_parameters");
+                        self.require_any(
+                            "`base_instance` built-in",
+                            &[spirv::Capability::DrawParameters],
+                        )?;
+                        BuiltIn::BaseInstance
+                    }
+                    Bi::BaseVertex => {
+                        self.use_extension("SPV_KHR_shader_draw_parameters");
+                        self.require_any(
+                            "`base_vertex` built-in",
+                            &[spirv::Capability::DrawParameters],
+                        )?;
+                        BuiltIn::BaseVertex
+                    }
                     Bi::ClipDistance => {
                         self.require_any(
                             "`clip_distance` built-in",
