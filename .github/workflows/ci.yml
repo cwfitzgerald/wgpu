@@ -25,6 +25,8 @@ env:
   # These Mesa version definition is duplicated in the install-mesa action.
   MESA_VERSION: "24.3.4"
 
+  # This is the toolchain used for miri tests.
+  MIRI_TOOLCHAIN: "nightly-2025-07-09"
   # This is the MSRV used by `wgpu` itself and all surrounding infrastructure.
   REPO_MSRV: "1.88"
   # This is the MSRV used by the `wgpu-core`, `wgpu-hal`, and `wgpu-types` crates,
@@ -516,7 +518,7 @@ jobs:
 
       - name: Install repo MSRV toolchain
         run: |
-          rustup toolchain install ${{ env.REPO_MSRV }} --no-self-update --profile=minimal -c llvm-tools
+          rustup toolchain install ${{ env.MIRI_TOOLCHAIN }} --no-self-update --profile=minimal -c llvm-tools
           cargo -V
 
       - name: Install `cargo-nextest` and `cargo-llvm-cov`
@@ -666,6 +668,58 @@ jobs:
         with:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
+
+  miri-test:
+    # runtime is normally 10 minutes
+    timeout-minutes: 30
+
+    name: Miri Test
+    runs-on: ubuntu-latest
+
+    env:
+      # We are using the nightly toolchain for miri tests, so we disable
+      # -D warnings to avoid warnings failing the build.
+      RUSTFLAGS:
+      RUSTDOCFLAGS:
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install repo MSRV toolchain
+        run: |
+          rustup toolchain install ${{ env.MIRI_TOOLCHAIN }} --no-self-update --profile=minimal --component miri --target x86_64-unknown-linux-gnu
+          rustup override set ${{ env.MIRI_TOOLCHAIN }}
+          cargo -V
+
+      - name: Install `cargo-nextest`
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: Debug symbols to line-tables-only
+        shell: bash
+        run: |
+          mkdir -p .cargo
+
+          cat <<EOF >> .cargo/config.toml
+            [profile.dev]
+            debug = "line-tables-only"
+          EOF
+
+      - name: Caching
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: miri-${{ env.CACHE_SUFFIX }}
+          workspaces: |
+            . -> target
+
+      - name: Run tests
+        shell: bash
+        run: |
+          set -e
+
+          cargo xtask miri --toolchain ${{ env.MIRI_TOOLCHAIN }}
 
   doctest:
     # runtime is normally 2 minutes
