@@ -892,8 +892,8 @@ impl Global {
                     BindingResource::BufferArray(ref buffers) => {
                         let buffers = buffers
                             .iter()
-                            .map(resolve_buffer)
-                            .collect::<Result<Vec<_>, _>>()?;
+                            .map(|(idx, bb)| Ok((*idx, resolve_buffer(bb)?)))
+                            .collect::<Result<Vec<_>, binding_model::CreateBindGroupError>>()?;
                         ResolvedBindingResource::BufferArray(Cow::Owned(buffers))
                     }
                     BindingResource::Sampler(ref sampler) => {
@@ -902,8 +902,8 @@ impl Global {
                     BindingResource::SamplerArray(ref samplers) => {
                         let samplers = samplers
                             .iter()
-                            .map(resolve_sampler)
-                            .collect::<Result<Vec<_>, _>>()?;
+                            .map(|(idx, sampler)| Ok((*idx, resolve_sampler(sampler)?)))
+                            .collect::<Result<Vec<_>, binding_model::CreateBindGroupError>>()?;
                         ResolvedBindingResource::SamplerArray(Cow::Owned(samplers))
                     }
                     BindingResource::TextureView(ref view) => {
@@ -912,8 +912,8 @@ impl Global {
                     BindingResource::TextureViewArray(ref views) => {
                         let views = views
                             .iter()
-                            .map(resolve_view)
-                            .collect::<Result<Vec<_>, _>>()?;
+                            .map(|(idx, view)| Ok((*idx, resolve_view(view)?)))
+                            .collect::<Result<Vec<_>, binding_model::CreateBindGroupError>>()?;
                         ResolvedBindingResource::TextureViewArray(Cow::Owned(views))
                     }
                     BindingResource::AccelerationStructure(ref tlas) => {

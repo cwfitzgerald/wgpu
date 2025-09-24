@@ -45,7 +45,7 @@ pub enum BindingResource<'a> {
     ///
     /// Corresponds to [`wgt::BufferBindingType::Uniform`] and [`wgt::BufferBindingType::Storage`]
     /// with [`BindGroupLayoutEntry::count`] set to Some.
-    BufferArray(&'a [BufferBinding<'a>]),
+    BufferArray(&'a [(u32, BufferBinding<'a>)]),
     /// Binding is a sampler.
     ///
     /// Corresponds to [`wgt::BindingType::Sampler`] with [`BindGroupLayoutEntry::count`] set to None.
@@ -56,7 +56,7 @@ pub enum BindingResource<'a> {
     ///
     /// Corresponds to [`wgt::BindingType::Sampler`] with [`BindGroupLayoutEntry::count`] set
     /// to Some.
-    SamplerArray(&'a [&'a Sampler]),
+    SamplerArray(&'a [(u32, &'a Sampler)]),
     /// Binding is backed by a texture.
     ///
     /// Corresponds to [`wgt::BindingType::Texture`] and [`wgt::BindingType::StorageTexture`] with
@@ -68,7 +68,7 @@ pub enum BindingResource<'a> {
     ///
     /// Corresponds to [`wgt::BindingType::Texture`] and [`wgt::BindingType::StorageTexture`] with
     /// [`BindGroupLayoutEntry::count`] set to Some.
-    TextureViewArray(&'a [&'a TextureView]),
+    TextureViewArray(&'a [(u32, &'a TextureView)]),
     /// Binding is backed by a top level acceleration structure
     ///
     /// Corresponds to [`wgt::BindingType::AccelerationStructure`] with [`BindGroupLayoutEntry::count`] set to None.

@@ -2158,7 +2158,7 @@ impl<'a, B: DynBuffer + ?Sized, T: DynTextureView + ?Sized> Clone
 pub struct BindGroupEntry {
     pub binding: u32,
     pub resource_index: u32,
-    pub count: u32,
+    pub array_indexes: Option<Vec<u32>>,
 }
 
 /// BindGroup descriptor.

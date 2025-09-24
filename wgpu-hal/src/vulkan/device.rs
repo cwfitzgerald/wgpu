@@ -1770,10 +1770,31 @@ impl crate::Device for super::Device {
             }
         }
 
+        let mut total_buffer_count = 0_u32;
+        let mut total_image_count = 0_u32;
+
+        for entry in desc.entries {
+            let (ty, size) = desc.layout.types[entry.binding as usize];
+            match ty {
+                vk::DescriptorType::SAMPLER
+                | vk::DescriptorType::SAMPLED_IMAGE
+                | vk::DescriptorType::STORAGE_IMAGE => {
+                    total_image_count += size;
+                }
+                vk::DescriptorType::UNIFORM_BUFFER
+                | vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
+                | vk::DescriptorType::STORAGE_BUFFER
+                | vk::DescriptorType::STORAGE_BUFFER_DYNAMIC => {
+                    total_buffer_count += size;
+                }
+                _ => {}
+            }
+        }
+
         let mut writes = Vec::with_capacity(desc.entries.len());
-        let mut buffer_infos = Vec::with_capacity(desc.buffers.len());
+        let mut buffer_infos = Vec::with_capacity(total_buffer_count as usize);
         let mut buffer_infos = ExtendStack::from_vec_capacity(&mut buffer_infos);
-        let mut image_infos = Vec::with_capacity(desc.samplers.len() + desc.textures.len());
+        let mut image_infos = Vec::with_capacity(total_image_count as usize);
         let mut image_infos = ExtendStack::from_vec_capacity(&mut image_infos);
         // TODO: This length could be reduced to just the number of top-level acceleration
         // structure bindings, where multiple consecutive TLAS bindings that are set via

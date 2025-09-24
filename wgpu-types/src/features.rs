@@ -1231,6 +1231,14 @@ bitflags_array! {
         ///
         /// [`Device::create_shader_module_passthrough`]: https://docs.rs/wgpu/latest/wgpu/struct.Device.html#method.create_shader_module_passthrough
         const EXPERIMENTAL_PASSTHROUGH_SHADERS = 1 << 52;
+
+        /// Enables bind groups to be partially populated, added to, and removed from.
+        ///
+        /// Potential Platforms:
+        /// - Vulkan
+        /// - Metal
+        /// - DX12
+        const EXPERIMENTAL_MUTABLE_BIND_GROUPS = 1 << 53;
     }
 
     /// Features that are not guaranteed to be supported.
@@ -1510,7 +1518,8 @@ impl Features {
                 | FeaturesWGPU::EXPERIMENTAL_MESH_SHADER_MULTIVIEW.bits()
                 | FeaturesWGPU::EXPERIMENTAL_RAY_QUERY.bits()
                 | FeaturesWGPU::EXPERIMENTAL_RAY_HIT_VERTEX_RETURN.bits()
-                | FeaturesWGPU::EXPERIMENTAL_PASSTHROUGH_SHADERS.bits(),
+                | FeaturesWGPU::EXPERIMENTAL_PASSTHROUGH_SHADERS.bits()
+                | FeaturesWGPU::EXPERIMENTAL_MUTABLE_BIND_GROUPS.bits(),
             FeaturesWebGPU::empty().bits(),
         ]))
     }

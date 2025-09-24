@@ -605,12 +605,12 @@ pub struct BindGroupEntry<
     TLAS = TlasId,
     ET = ExternalTextureId,
 > where
-    [BufferBinding<B>]: ToOwned,
-    [S]: ToOwned,
-    [TV]: ToOwned,
-    <[BufferBinding<B>] as ToOwned>::Owned: fmt::Debug,
-    <[S] as ToOwned>::Owned: fmt::Debug,
-    <[TV] as ToOwned>::Owned: fmt::Debug,
+    [(u32, BufferBinding<B>)]: ToOwned,
+    [(u32, S)]: ToOwned,
+    [(u32, TV)]: ToOwned,
+    <[(u32, BufferBinding<B>)] as ToOwned>::Owned: fmt::Debug,
+    <[(u32, S)] as ToOwned>::Owned: fmt::Debug,
+    <[(u32, TV)] as ToOwned>::Owned: fmt::Debug,
 {
     /// Slot for which binding provides resource. Corresponds to an entry of the same
     /// binding index in the [`BindGroupLayoutDescriptor`].
@@ -645,12 +645,12 @@ pub struct BindGroupDescriptor<
     TLAS = TlasId,
     ET = ExternalTextureId,
 > where
-    [BufferBinding<B>]: ToOwned,
-    [S]: ToOwned,
-    [TV]: ToOwned,
-    <[BufferBinding<B>] as ToOwned>::Owned: fmt::Debug,
-    <[S] as ToOwned>::Owned: fmt::Debug,
-    <[TV] as ToOwned>::Owned: fmt::Debug,
+    [(u32, BufferBinding<B>)]: ToOwned,
+    [(u32, S)]: ToOwned,
+    [(u32, TV)]: ToOwned,
+    <[(u32, BufferBinding<B>)] as ToOwned>::Owned: fmt::Debug,
+    <[(u32, S)] as ToOwned>::Owned: fmt::Debug,
+    <[(u32, TV)] as ToOwned>::Owned: fmt::Debug,
     [BindGroupEntry<'a, B, S, TV, TLAS, ET>]: ToOwned,
     <[BindGroupEntry<'a, B, S, TV, TLAS, ET>] as ToOwned>::Owned: fmt::Debug,
 {
@@ -1031,31 +1031,33 @@ pub enum BindingResource<
     TLAS = TlasId,
     ET = ExternalTextureId,
 > where
-    [BufferBinding<B>]: ToOwned,
-    [S]: ToOwned,
-    [TV]: ToOwned,
-    <[BufferBinding<B>] as ToOwned>::Owned: fmt::Debug,
-    <[S] as ToOwned>::Owned: fmt::Debug,
-    <[TV] as ToOwned>::Owned: fmt::Debug,
+    [(u32, BufferBinding<B>)]: ToOwned,
+    [(u32, S)]: ToOwned,
+    [(u32, TV)]: ToOwned,
+    <[(u32, BufferBinding<B>)] as ToOwned>::Owned: fmt::Debug,
+    <[(u32, S)] as ToOwned>::Owned: fmt::Debug,
+    <[(u32, TV)] as ToOwned>::Owned: fmt::Debug,
 {
     Buffer(BufferBinding<B>),
     #[cfg_attr(
         feature = "serde",
-        serde(bound(deserialize = "<[BufferBinding<B>] as ToOwned>::Owned: Deserialize<'de>"))
+        serde(bound(
+            deserialize = "<[(u32, BufferBinding<B>)] as ToOwned>::Owned: Deserialize<'de>"
+        ))
     )]
-    BufferArray(Cow<'a, [BufferBinding<B>]>),
+    BufferArray(Cow<'a, [(u32, BufferBinding<B>)]>),
     Sampler(S),
     #[cfg_attr(
         feature = "serde",
-        serde(bound(deserialize = "<[S] as ToOwned>::Owned: Deserialize<'de>"))
+        serde(bound(deserialize = "<[(u32, S)] as ToOwned>::Owned: Deserialize<'de>"))
     )]
-    SamplerArray(Cow<'a, [S]>),
+    SamplerArray(Cow<'a, [(u32, S)]>),
     TextureView(TV),
     #[cfg_attr(
         feature = "serde",
-        serde(bound(deserialize = "<[TV] as ToOwned>::Owned: Deserialize<'de>"))
+        serde(bound(deserialize = "<[(u32, TV)] as ToOwned>::Owned: Deserialize<'de>"))
     )]
-    TextureViewArray(Cow<'a, [TV]>),
+    TextureViewArray(Cow<'a, [(u32, TV)]>),
     AccelerationStructure(TLAS),
     ExternalTexture(ET),
 }
