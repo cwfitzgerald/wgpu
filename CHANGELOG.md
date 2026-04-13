@@ -112,6 +112,10 @@ Bottom level categories:
 - Fix typo in `naga::back::msl::Error::UnsupportedWritable*` variant names. By @ErichDonGubler in [#9376](https://github.com/gfx-rs/wgpu/pull/9376).
 - Added support for `enable wgpu_binding_array;`. By @39ali in [#9298](https://github.com/gfx-rs/wgpu/pull/9298).
 
+#### GLES / OpenGL
+
+- Add angle as OpenGL backend on Windows. By @csmoe in [#9422](https://github.com/gfx-rs/wgpu/pull/9422).
+
 #### Vulkan
 
 - Fixed validation errors when frames take longer than the specified swapchain acquire timeout. By @atlv24 in [#9405](https://github.com/gfx-rs/wgpu/pull/9405).
