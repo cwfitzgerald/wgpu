@@ -1,5 +1,5 @@
 [package]
-name = "wgpu-core-deps-windows-linux-android"
+name = "wgpu-core-deps-windows"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -18,7 +18,7 @@ rust-version = "1.76"
 
 [features]
 gles = ["wgpu-hal/gles"]
-angle = ["wgpu-hal/gles", "wgpu-hal/angle"]
+angle = ["wgpu-hal/gles-with-angle"]
 vulkan = ["wgpu-hal/vulkan"]
 dx12 = ["wgpu-hal/dx12"]
 renderdoc = ["wgpu-hal/renderdoc"]
@@ -27,5 +27,5 @@ renderdoc = ["wgpu-hal/renderdoc"]
 drm = ["wgpu-hal/drm"]
 
 # Depend on wgpu-hal conditionally, so that the above features only apply to wgpu-hal on this set of platforms.
-[target.'cfg(any(windows, target_os = "linux", target_os = "android", target_os = "freebsd", target_os = "netbsd"))'.dependencies]
+[target.'cfg(windows)'.dependencies]
 wgpu-hal.workspace = true
