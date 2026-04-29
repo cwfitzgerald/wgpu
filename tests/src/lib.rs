@@ -121,7 +121,10 @@ pub fn did_oom<T>(device: &wgpu::Device, callback: impl FnOnce() -> T) -> (bool,
 #[macro_export]
 macro_rules! gpu_test_main {
     ($tests: expr) => {
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(all(
+            target_arch = "wasm32",
+            any(target_os = "emscripten", feature = "webgl")
+        ))]
         #[wasm_bindgen::prelude::wasm_bindgen]
         pub fn run_test(test_name: String) {
             $crate::wasm::main($tests, test_name);
@@ -135,7 +138,7 @@ macro_rules! gpu_test_main {
 
         #[cfg(not(target_arch = "wasm32"))]
         fn main() -> $crate::native::MainResult {
-            if std::env::var("TEST_WASM") == Ok("true".to_string()) {
+            if cfg!(wasm_test) {
                 $crate::wasm_manager::run_wasm_browser_tests($tests)
             } else {
                 $crate::native::main($tests)
