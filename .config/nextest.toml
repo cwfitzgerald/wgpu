@@ -6,6 +6,12 @@ slow-timeout = { period = "45s", terminate-after = 2 }
 fail-fast = false
 retries = 0
 
+[profile.wasm]
+default-filter = "test([wasm])"
+slow-timeout = { period = "45s", terminate-after = 2 }
+fail-fast = false
+retries = 0
+
 [profile.default-miri]
 # Miri is very very slow, so give it a much longer timeout.
 slow-timeout = { period = "120s", terminate-after = 4 }
