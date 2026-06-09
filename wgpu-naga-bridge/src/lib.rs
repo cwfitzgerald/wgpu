@@ -72,9 +72,27 @@ pub fn features_to_naga_capabilities(
         Caps::ACCELERATION_STRUCTURE_BINDING_ARRAY,
         features.contains(wgt::Features::ACCELERATION_STRUCTURE_BINDING_ARRAY),
     );
+    // TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES unlocks both tier
+    // capabilities: with it, format/access support is determined by the
+    // adapter's capabilities at bind group layout / pipeline creation time,
+    // so shader-module validation must not get in the way.
     caps.set(
-        Caps::STORAGE_TEXTURE_16BIT_NORM_FORMATS,
-        features.contains(wgt::Features::TEXTURE_FORMAT_16BIT_NORM),
+        Caps::TEXTURE_FORMATS_TIER1,
+        features.intersects(
+            wgt::Features::TEXTURE_FORMATS_TIER1
+                | wgt::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+                // Transitional, until TEXTURE_FORMAT_16BIT_NORM is removed:
+                // it grants storage access on the norm16 formats, which
+                // TEXTURE_FORMATS_TIER1 now gates in naga.
+                | wgt::Features::TEXTURE_FORMAT_16BIT_NORM,
+        ),
+    );
+    caps.set(
+        Caps::TEXTURE_FORMATS_TIER2,
+        features.intersects(
+            wgt::Features::TEXTURE_FORMATS_TIER2
+                | wgt::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
+        ),
     );
     caps.set(Caps::MULTIVIEW, features.contains(wgt::Features::MULTIVIEW));
     caps.set(

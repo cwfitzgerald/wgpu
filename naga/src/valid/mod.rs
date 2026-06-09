@@ -112,8 +112,8 @@ bitflags::bitflags! {
         ///
         /// [`BuiltIn::CullDistance`]: crate::BuiltIn::CullDistance
         const CULL_DISTANCE = 1 << 8;
-        /// Support for 16-bit normalized storage texture formats.
-        const STORAGE_TEXTURE_16BIT_NORM_FORMATS = 1 << 9;
+        // 1 << 9 unused (was STORAGE_TEXTURE_16BIT_NORM_FORMATS, replaced by
+        // TEXTURE_FORMATS_TIER1)
         /// Support for [`BuiltIn::ViewIndex`].
         ///
         /// [`BuiltIn::ViewIndex`]: crate::BuiltIn::ViewIndex
@@ -218,6 +218,21 @@ bitflags::bitflags! {
         const MEMORY_DECORATION_VOLATILE = 1 << 42;
         /// Support for 16-bit integer types.
         const SHADER_INT16 = 1 << 43;
+        /// Support for the storage texel formats gated by the WebGPU
+        /// `texture-formats-tier1` feature: the 8- and 16-bit one- and
+        /// two-component formats, `rgb10a2uint`, `rgb10a2unorm`,
+        /// `rg11b10ufloat`, and the 16-bit normalized formats.
+        const TEXTURE_FORMATS_TIER1 = 1 << 44;
+        /// Support for `read_write` access on storage texel formats other
+        /// than `r32uint`, `r32sint`, `r32float`, and `r64uint`.
+        ///
+        /// Note that this is deliberately looser than the WebGPU
+        /// `texture-formats-tier2` feature, which allows `read_write` access
+        /// only on a specific list of formats: users of wgpu's
+        /// `TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES` may use `read_write`
+        /// access on any format the adapter supports it on. Enforcement of
+        /// the exact WebGPU list is left to bind group layout validation.
+        const TEXTURE_FORMATS_TIER2 = 1 << 45;
     }
 }
 

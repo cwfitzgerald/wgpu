@@ -897,7 +897,8 @@ pub fn supported_capabilities() -> crate::valid::Capabilities {
         | Caps::STORAGE_BUFFER_BINDING_ARRAY
         | Caps::CLIP_DISTANCES
         // No CULL_DISTANCE
-        | Caps::STORAGE_TEXTURE_16BIT_NORM_FORMATS
+        | Caps::TEXTURE_FORMATS_TIER1
+        | Caps::TEXTURE_FORMATS_TIER2
         | Caps::MULTIVIEW
         // No EARLY_DEPTH_TEST
         | Caps::MULTISAMPLED_SHADING

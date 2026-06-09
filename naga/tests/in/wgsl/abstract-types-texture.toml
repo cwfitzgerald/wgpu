@@ -1,3 +1,4 @@
+capabilities = "TEXTURE_FORMATS_TIER2"
 targets = "METAL"
 
 [msl]

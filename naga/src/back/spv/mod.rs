@@ -1188,7 +1188,8 @@ pub fn supported_capabilities() -> crate::valid::Capabilities {
         | Caps::ACCELERATION_STRUCTURE_BINDING_ARRAY
         | Caps::CLIP_DISTANCES
         // No cull distance
-        | Caps::STORAGE_TEXTURE_16BIT_NORM_FORMATS
+        | Caps::TEXTURE_FORMATS_TIER1
+        | Caps::TEXTURE_FORMATS_TIER2
         | Caps::MULTIVIEW
         | Caps::EARLY_DEPTH_TEST
         | Caps::MULTISAMPLED_SHADING

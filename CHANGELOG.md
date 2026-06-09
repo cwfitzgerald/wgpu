@@ -204,6 +204,7 @@ By @beholdnec in [#8505](https://github.com/gfx-rs/wgpu/pull/8505).
 #### naga
 
 - Switched from using an `intersector` to using an `intersection_query` on metal so AABBs and non-opaque triangles can be handled. By @Vecvec in [#9304](https://github.com/gfx-rs/wgpu/pull/9304).
+- Replaced `Capabilities::STORAGE_TEXTURE_16BIT_NORM_FORMATS` with `Capabilities::TEXTURE_FORMATS_TIER1` and `Capabilities::TEXTURE_FORMATS_TIER2`, matching the WebGPU `texture-formats-tier1`/`texture-formats-tier2` features. `TEXTURE_FORMATS_TIER1` gates the tier1 storage texel formats (including the 16-bit normalized formats); `TEXTURE_FORMATS_TIER2` gates `read_write` access on all formats other than `r32uint`/`r32sint`/`r32float`/`r64uint`. Shader modules declaring gated formats or access now fail validation without the corresponding capability. By @cwfitzgerald in [#99999](https://github.com/gfx-rs/wgpu/pull/99999).
 
 ### Bug Fixes
 

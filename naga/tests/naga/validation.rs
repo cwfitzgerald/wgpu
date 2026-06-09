@@ -1751,3 +1751,50 @@ fn memory_decorations_require_storage_address_space() {
         }
     ));
 }
+
+/// Storage texel formats and access modes gated by
+/// [`Capabilities::TEXTURE_FORMATS_TIER1`] and
+/// [`Capabilities::TEXTURE_FORMATS_TIER2`].
+#[test]
+fn texture_formats_tier_capabilities() {
+    #[track_caller]
+    fn validate(source: &str, capabilities: Capabilities) -> Result<(), Capabilities> {
+        let module = naga::front::wgsl::parse_str(source).expect("module should parse");
+        match valid::Validator::new(ValidationFlags::default(), capabilities).validate(&module) {
+            Ok(_) => Ok(()),
+            Err(err) => match err.into_inner() {
+                valid::ValidationError::GlobalVariable {
+                    source: valid::GlobalVariableError::UnsupportedCapability(cap),
+                    ..
+                } => Err(cap),
+                other => panic!("unexpected validation error: {other:?}"),
+            },
+        }
+    }
+
+    let tier1_format = "@group(0) @binding(0) var t: texture_storage_2d<r8unorm, write>;";
+    let norm16_format = "@group(0) @binding(0) var t: texture_storage_2d<rgba16unorm, read>;";
+    let rw_gated = "@group(0) @binding(0) var t: texture_storage_2d<rgba8unorm, read_write>;";
+    let rw_tier1_format = "@group(0) @binding(0) var t: texture_storage_2d<r16float, read_write>;";
+    let rw_always = "@group(0) @binding(0) var t: texture_storage_2d<r32float, read_write>;";
+    let ungated = "@group(0) @binding(0) var t: texture_storage_2d<rgba8unorm, write>;";
+
+    let tier1 = Capabilities::TEXTURE_FORMATS_TIER1;
+    let tier2 = Capabilities::TEXTURE_FORMATS_TIER2;
+
+    assert_eq!(validate(tier1_format, Capabilities::empty()), Err(tier1));
+    assert_eq!(validate(tier1_format, tier1), Ok(()));
+
+    assert_eq!(validate(norm16_format, Capabilities::empty()), Err(tier1));
+    assert_eq!(validate(norm16_format, tier1), Ok(()));
+
+    assert_eq!(validate(rw_gated, Capabilities::empty()), Err(tier2));
+    assert_eq!(validate(rw_gated, tier2), Ok(()));
+
+    assert_eq!(validate(rw_tier1_format, tier1), Err(tier2));
+    assert_eq!(validate(rw_tier1_format, tier2), Err(tier1));
+    assert_eq!(validate(rw_tier1_format, tier1 | tier2), Ok(()));
+
+    assert_eq!(validate(rw_always, Capabilities::empty()), Ok(()));
+    assert_eq!(validate(ungated, Capabilities::empty()), Ok(()));
+}

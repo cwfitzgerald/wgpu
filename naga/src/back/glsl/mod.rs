@@ -652,5 +652,6 @@ pub fn supported_capabilities() -> valid::Capabilities {
         | Caps::DRAW_INDEX
         | Caps::MEMORY_DECORATION_COHERENT
         | Caps::MEMORY_DECORATION_VOLATILE
-        | Caps::STORAGE_TEXTURE_16BIT_NORM_FORMATS
+        | Caps::TEXTURE_FORMATS_TIER1
+        | Caps::TEXTURE_FORMATS_TIER2
 }

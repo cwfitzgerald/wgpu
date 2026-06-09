@@ -1038,28 +1038,70 @@ impl super::Validator {
             }
             crate::AddressSpace::Handle => {
                 match gctx.types[inner_ty].inner {
-                    crate::TypeInner::Image { class, .. } => match class {
-                        crate::ImageClass::Storage {
-                            format:
-                                crate::StorageFormat::R16Unorm
-                                | crate::StorageFormat::R16Snorm
-                                | crate::StorageFormat::Rg16Unorm
-                                | crate::StorageFormat::Rg16Snorm
-                                | crate::StorageFormat::Rgba16Unorm
-                                | crate::StorageFormat::Rgba16Snorm,
-                            ..
-                        } => {
-                            if !self
-                                .capabilities
-                                .contains(Capabilities::STORAGE_TEXTURE_16BIT_NORM_FORMATS)
-                            {
-                                return Err(GlobalVariableError::UnsupportedCapability(
-                                    Capabilities::STORAGE_TEXTURE_16BIT_NORM_FORMATS,
-                                ));
+                    crate::TypeInner::Image {
+                        class: crate::ImageClass::Storage { format, access },
+                        ..
+                    } => {
+                        match format {
+                            // Storage texel formats gated by the WebGPU
+                            // `texture-formats-tier1` feature.
+                            crate::StorageFormat::R8Unorm
+                            | crate::StorageFormat::R8Snorm
+                            | crate::StorageFormat::R8Uint
+                            | crate::StorageFormat::R8Sint
+                            | crate::StorageFormat::Rg8Unorm
+                            | crate::StorageFormat::Rg8Snorm
+                            | crate::StorageFormat::Rg8Uint
+                            | crate::StorageFormat::Rg8Sint
+                            | crate::StorageFormat::R16Uint
+                            | crate::StorageFormat::R16Sint
+                            | crate::StorageFormat::R16Float
+                            | crate::StorageFormat::Rg16Uint
+                            | crate::StorageFormat::Rg16Sint
+                            | crate::StorageFormat::Rg16Float
+                            | crate::StorageFormat::Rgb10a2Uint
+                            | crate::StorageFormat::Rgb10a2Unorm
+                            | crate::StorageFormat::Rg11b10Ufloat
+                            | crate::StorageFormat::R16Unorm
+                            | crate::StorageFormat::R16Snorm
+                            | crate::StorageFormat::Rg16Unorm
+                            | crate::StorageFormat::Rg16Snorm
+                            | crate::StorageFormat::Rgba16Unorm
+                            | crate::StorageFormat::Rgba16Snorm => {
+                                if !self
+                                    .capabilities
+                                    .contains(Capabilities::TEXTURE_FORMATS_TIER1)
+                                {
+                                    return Err(GlobalVariableError::UnsupportedCapability(
+                                        Capabilities::TEXTURE_FORMATS_TIER1,
+                                    ));
+                                }
                             }
+                            _ => {}
                         }
-                        _ => {}
-                    },
+
+                        // `read_write` access requires the
+                        // `texture-formats-tier2` capability on all but a few
+                        // formats. See the capability's documentation for how
+                        // this deliberately differs from WGSL.
+                        if access.contains(crate::StorageAccess::LOAD | crate::StorageAccess::STORE)
+                            && !matches!(
+                                format,
+                                crate::StorageFormat::R32Uint
+                                    | crate::StorageFormat::R32Sint
+                                    | crate::StorageFormat::R32Float
+                                    | crate::StorageFormat::R64Uint
+                            )
+                            && !self
+                                .capabilities
+                                .contains(Capabilities::TEXTURE_FORMATS_TIER2)
+                        {
+                            return Err(GlobalVariableError::UnsupportedCapability(
+                                Capabilities::TEXTURE_FORMATS_TIER2,
+                            ));
+                        }
+                    }
+                    crate::TypeInner::Image { .. } => {}
                     crate::TypeInner::Sampler { .. }
                     | crate::TypeInner::AccelerationStructure { .. }
                     | crate::TypeInner::RayQuery { .. } => {}
