@@ -1588,9 +1588,15 @@ impl Device {
                 for plane in 0..planes {
                     let aspect = wgt::TextureAspect::from_plane(plane).unwrap();
                     let format = desc.format.aspect_specific_format(aspect).unwrap();
-                    let format_features = self
-                        .describe_format_features(format)
-                        .map_err(|error| CreateTextureError::MissingFeatures(desc.format, error))?;
+                    // The parent format's required features were checked
+                    // above. Plane formats are validated against the
+                    // adapter's actual capabilities instead of the guaranteed
+                    // table, so that planes whose formats are feature-gated
+                    // as standalone formats (e.g. P010's `R16Unorm` /
+                    // `Rg16Unorm` planes) don't require those features.
+                    // Backends only advertise multi-planar formats when the
+                    // plane formats are fully supported.
+                    let format_features = self.get_texture_format_features(format);
 
                     planes_usages &= format_features.allowed_usages;
                 }
@@ -1796,7 +1802,18 @@ impl Device {
             }
         };
 
-        let format_features = self.describe_format_features(resolved_format)?;
+        // Views of a single plane of a multi-planar texture resolve to the
+        // plane's format (enforced by the `aspect_specific_format` check
+        // below). Like in `create_texture`, plane formats are validated
+        // against the adapter's actual capabilities so they don't require
+        // the features gating them as standalone formats.
+        let is_multi_planar_plane = texture.desc.format.is_multi_planar_format()
+            && desc.range.aspect.to_plane().is_some();
+        let format_features = if is_multi_planar_plane {
+            self.get_texture_format_features(resolved_format)
+        } else {
+            self.describe_format_features(resolved_format)?
+        };
         let allowed_format_usages = format_features.allowed_usages;
         if resolved_usage.contains(wgt::TextureUsages::RENDER_ATTACHMENT)
             && !allowed_format_usages.contains(wgt::TextureUsages::RENDER_ATTACHMENT)

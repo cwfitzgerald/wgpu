@@ -490,7 +490,7 @@ static WRITE_TEXTURE_PLANE0_LEAVES_PLANE1_UNINIT_P010: GpuTestConfiguration =
     GpuTestConfiguration::new()
         .parameters(
             TestParameters::default()
-                .features(Features::TEXTURE_FORMAT_P010 | Features::TEXTURE_FORMAT_16BIT_NORM)
+                .features(Features::TEXTURE_FORMAT_P010)
                 .limits(Limits::downlevel_defaults()),
         )
         .run_async(|ctx| async move {
@@ -510,7 +510,7 @@ static WRITE_TEXTURE_PLANE1_LEAVES_PLANE0_UNINIT_P010: GpuTestConfiguration =
     GpuTestConfiguration::new()
         .parameters(
             TestParameters::default()
-                .features(Features::TEXTURE_FORMAT_P010 | Features::TEXTURE_FORMAT_16BIT_NORM)
+                .features(Features::TEXTURE_FORMAT_P010)
                 .limits(Limits::downlevel_defaults()),
         )
         .run_async(|ctx| async move {

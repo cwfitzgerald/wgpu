@@ -265,9 +265,7 @@ static NV12_TEXTURE_CREATION_SAMPLING: GpuTestConfiguration = GpuTestConfigurati
 static P010_TEXTURE_CREATION_SAMPLING: GpuTestConfiguration = GpuTestConfiguration::new()
     .parameters(
         TestParameters::default()
-            .features(
-                wgpu::Features::TEXTURE_FORMAT_P010 | wgpu::Features::TEXTURE_FORMAT_16BIT_NORM,
-            )
+            .features(wgpu::Features::TEXTURE_FORMAT_P010)
             .enable_noop(),
     )
     .run_sync(|ctx| {
@@ -587,9 +585,7 @@ static NV12_PLANE_TO_SINGLE_PLANE_COPY: GpuTestConfiguration = GpuTestConfigurat
 static P010_TEXTURE_COPYING: GpuTestConfiguration = GpuTestConfiguration::new()
     .parameters(
         TestParameters::default()
-            .features(
-                wgpu::Features::TEXTURE_FORMAT_P010 | wgpu::Features::TEXTURE_FORMAT_16BIT_NORM,
-            )
+            .features(wgpu::Features::TEXTURE_FORMAT_P010)
             .enable_noop(),
     )
     .run_sync(|ctx| {

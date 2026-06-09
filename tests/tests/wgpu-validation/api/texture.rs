@@ -61,9 +61,8 @@ fn destroyed_texture() {
 /// texture works as expected.
 #[test]
 fn planar_texture_view_plane() {
-    let required_features = wgpu::Features::TEXTURE_FORMAT_NV12
-        | wgpu::Features::TEXTURE_FORMAT_P010
-        | wgpu::Features::TEXTURE_FORMAT_16BIT_NORM;
+    let required_features =
+        wgpu::Features::TEXTURE_FORMAT_NV12 | wgpu::Features::TEXTURE_FORMAT_P010;
     let device_desc = wgpu::DeviceDescriptor {
         required_features,
         ..Default::default()
@@ -153,9 +152,8 @@ fn non_planar_texture_view_plane() {
 /// planar texture fails validation.
 #[test]
 fn planar_texture_view_plane_out_of_bounds() {
-    let required_features = wgpu::Features::TEXTURE_FORMAT_NV12
-        | wgpu::Features::TEXTURE_FORMAT_P010
-        | wgpu::Features::TEXTURE_FORMAT_16BIT_NORM;
+    let required_features =
+        wgpu::Features::TEXTURE_FORMAT_NV12 | wgpu::Features::TEXTURE_FORMAT_P010;
     let device_desc = wgpu::DeviceDescriptor {
         required_features,
         ..Default::default()
@@ -209,9 +207,8 @@ fn planar_texture_view_plane_out_of_bounds() {
 /// planar texture with an invalid format fails validation.
 #[test]
 fn planar_texture_bad_view_format() {
-    let required_features = wgpu::Features::TEXTURE_FORMAT_NV12
-        | wgpu::Features::TEXTURE_FORMAT_P010
-        | wgpu::Features::TEXTURE_FORMAT_16BIT_NORM;
+    let required_features =
+        wgpu::Features::TEXTURE_FORMAT_NV12 | wgpu::Features::TEXTURE_FORMAT_P010;
     let device_desc = wgpu::DeviceDescriptor {
         required_features,
         ..Default::default()
@@ -336,12 +333,44 @@ fn planar_texture_render_attachment() {
     }
 }
 
-/// Ensures that creating a planar textures with `RENDER_ATTACHMENT`
-/// for non renderable planar formats fails validation.
+/// Ensures that the usages allowed on a planar texture follow the adapter's
+/// capabilities for the plane formats. The noop backend reports support for
+/// everything, so `RENDER_ATTACHMENT` is allowed; on adapters whose plane
+/// formats aren't renderable, the same descriptor fails validation.
 #[test]
-fn planar_texture_render_attachment_unsupported() {
-    let required_features =
-        wgpu::Features::TEXTURE_FORMAT_P010 | wgpu::Features::TEXTURE_FORMAT_16BIT_NORM;
+fn planar_texture_usages_follow_adapter_plane_caps() {
+    let required_features = wgpu::Features::TEXTURE_FORMAT_P010;
+    let device_desc = wgpu::DeviceDescriptor {
+        required_features,
+        ..Default::default()
+    };
+    let (device, _queue) = wgpu::Device::noop(&device_desc);
+    let size = wgpu::Extent3d {
+        width: 256,
+        height: 256,
+        depth_or_array_layers: 1,
+    };
+
+    valid(&device, || {
+        let _ = device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            dimension: wgpu::TextureDimension::D2,
+            size,
+            format: wgpu::TextureFormat::P010,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            mip_level_count: 1,
+            sample_count: 1,
+            view_formats: &[],
+        });
+    });
+}
+
+/// Ensures that the plane-format exemption for multi-planar textures does not
+/// extend to standalone textures of the plane formats: a device with only
+/// `TEXTURE_FORMAT_P010` still can't create an `R16Unorm` texture.
+#[test]
+fn planar_texture_plane_format_still_gated_standalone() {
+    let required_features = wgpu::Features::TEXTURE_FORMAT_P010;
     let device_desc = wgpu::DeviceDescriptor {
         required_features,
         ..Default::default()
@@ -360,14 +389,14 @@ fn planar_texture_render_attachment_unsupported() {
                 label: None,
                 dimension: wgpu::TextureDimension::D2,
                 size,
-                format: wgpu::TextureFormat::P010,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                format: wgpu::TextureFormat::R16Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING,
                 mip_level_count: 1,
                 sample_count: 1,
                 view_formats: &[],
             });
         },
-        Some("Texture usages TextureUsages(RENDER_ATTACHMENT) are not allowed on a texture of type P010"),
+        Some("Texture format R16Unorm can't be used due to missing features"),
     );
 }
 
