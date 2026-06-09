@@ -89,6 +89,12 @@ mod webgpu_impl {
 
     #[doc(hidden)]
     pub const WEBGPU_FEATURE_PRIMITIVE_INDEX: u64 = 1 << 17;
+
+    #[doc(hidden)]
+    pub const WEBGPU_FEATURE_TEXTURE_FORMATS_TIER1: u64 = 1 << 18;
+
+    #[doc(hidden)]
+    pub const WEBGPU_FEATURE_TEXTURE_FORMATS_TIER2: u64 = 1 << 19;
 }
 
 macro_rules! bitflags_array_impl {
@@ -1824,6 +1830,149 @@ bitflags_array! {
         /// remain compatible with previous wgpu behavior.
         #[name("primitive-index", "shader-primitive-index")]
         const PRIMITIVE_INDEX = WEBGPU_FEATURE_PRIMITIVE_INDEX;
+
+        /// Expands the set of texture format capabilities guaranteed by the
+        /// WebGPU specification.
+        ///
+        /// Requesting this feature also enables
+        /// [`Features::RG11B10UFLOAT_RENDERABLE`], which it implies per the
+        /// WebGPU specification.
+        ///
+        /// Makes the following formats available, with sample type
+        /// `unfilterable-float`, [`TextureUsages::RENDER_ATTACHMENT`],
+        /// blending, multisampling (count 4, without resolve), and read-only /
+        /// write-only [`TextureUsages::STORAGE_BINDING`]:
+        ///
+        /// - [`TextureFormat::R16Unorm`]
+        /// - [`TextureFormat::R16Snorm`]
+        /// - [`TextureFormat::Rg16Unorm`]
+        /// - [`TextureFormat::Rg16Snorm`]
+        /// - [`TextureFormat::Rgba16Unorm`]
+        /// - [`TextureFormat::Rgba16Snorm`]
+        ///
+        /// Adds [`TextureUsages::RENDER_ATTACHMENT`], blending, multisampling
+        /// (count 4), and resolve support to:
+        ///
+        /// - [`TextureFormat::R8Snorm`]
+        /// - [`TextureFormat::Rg8Snorm`]
+        /// - [`TextureFormat::Rgba8Snorm`]
+        ///
+        /// Adds read-only / write-only [`TextureUsages::STORAGE_BINDING`]
+        /// (and the corresponding WGSL `texture_storage_*` texel formats) to:
+        ///
+        /// - [`TextureFormat::R8Unorm`]
+        /// - [`TextureFormat::R8Snorm`]
+        /// - [`TextureFormat::R8Uint`]
+        /// - [`TextureFormat::R8Sint`]
+        /// - [`TextureFormat::Rg8Unorm`]
+        /// - [`TextureFormat::Rg8Snorm`]
+        /// - [`TextureFormat::Rg8Uint`]
+        /// - [`TextureFormat::Rg8Sint`]
+        /// - [`TextureFormat::R16Uint`]
+        /// - [`TextureFormat::R16Sint`]
+        /// - [`TextureFormat::R16Float`]
+        /// - [`TextureFormat::Rg16Uint`]
+        /// - [`TextureFormat::Rg16Sint`]
+        /// - [`TextureFormat::Rg16Float`]
+        /// - [`TextureFormat::Rgb10a2Uint`]
+        /// - [`TextureFormat::Rgb10a2Unorm`]
+        /// - [`TextureFormat::Rg11b10Ufloat`]
+        ///
+        /// This feature replaces the native-only `TEXTURE_FORMAT_16BIT_NORM`
+        /// feature. Note that unlike with that feature, the 16-bit normalized
+        /// formats are *not* filterable with only this feature enabled. On
+        /// adapters that support filtering them,
+        /// [`Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES`] can be used
+        /// to regain filterability.
+        ///
+        /// Supported platforms:
+        /// - Vulkan
+        /// - DX12
+        /// - Metal
+        /// - WebGPU
+        ///
+        /// This is a web and native feature.
+        ///
+        /// [`TextureFormat::R16Unorm`]: super::TextureFormat::R16Unorm
+        /// [`TextureFormat::R16Snorm`]: super::TextureFormat::R16Snorm
+        /// [`TextureFormat::Rg16Unorm`]: super::TextureFormat::Rg16Unorm
+        /// [`TextureFormat::Rg16Snorm`]: super::TextureFormat::Rg16Snorm
+        /// [`TextureFormat::Rgba16Unorm`]: super::TextureFormat::Rgba16Unorm
+        /// [`TextureFormat::Rgba16Snorm`]: super::TextureFormat::Rgba16Snorm
+        /// [`TextureFormat::R8Unorm`]: super::TextureFormat::R8Unorm
+        /// [`TextureFormat::R8Snorm`]: super::TextureFormat::R8Snorm
+        /// [`TextureFormat::R8Uint`]: super::TextureFormat::R8Uint
+        /// [`TextureFormat::R8Sint`]: super::TextureFormat::R8Sint
+        /// [`TextureFormat::Rg8Unorm`]: super::TextureFormat::Rg8Unorm
+        /// [`TextureFormat::Rg8Snorm`]: super::TextureFormat::Rg8Snorm
+        /// [`TextureFormat::Rg8Uint`]: super::TextureFormat::Rg8Uint
+        /// [`TextureFormat::Rg8Sint`]: super::TextureFormat::Rg8Sint
+        /// [`TextureFormat::R16Uint`]: super::TextureFormat::R16Uint
+        /// [`TextureFormat::R16Sint`]: super::TextureFormat::R16Sint
+        /// [`TextureFormat::R16Float`]: super::TextureFormat::R16Float
+        /// [`TextureFormat::Rg16Uint`]: super::TextureFormat::Rg16Uint
+        /// [`TextureFormat::Rg16Sint`]: super::TextureFormat::Rg16Sint
+        /// [`TextureFormat::Rg16Float`]: super::TextureFormat::Rg16Float
+        /// [`TextureFormat::Rgb10a2Uint`]: super::TextureFormat::Rgb10a2Uint
+        /// [`TextureFormat::Rgb10a2Unorm`]: super::TextureFormat::Rgb10a2Unorm
+        /// [`TextureFormat::Rg11b10Ufloat`]: super::TextureFormat::Rg11b10Ufloat
+        /// [`TextureUsages::RENDER_ATTACHMENT`]: super::TextureUsages::RENDER_ATTACHMENT
+        /// [`TextureUsages::STORAGE_BINDING`]: super::TextureUsages::STORAGE_BINDING
+        #[name("texture-formats-tier1")]
+        const TEXTURE_FORMATS_TIER1 = WEBGPU_FEATURE_TEXTURE_FORMATS_TIER1;
+
+        /// Allows read-write storage access (WGSL `read_write`) on additional
+        /// texture formats.
+        ///
+        /// Requesting this feature also enables
+        /// [`Features::TEXTURE_FORMATS_TIER1`] (and transitively
+        /// [`Features::RG11B10UFLOAT_RENDERABLE`]), which it implies per the
+        /// WebGPU specification.
+        ///
+        /// Adds read-write [`TextureUsages::STORAGE_BINDING`] access to:
+        ///
+        /// - [`TextureFormat::R8Unorm`]
+        /// - [`TextureFormat::R8Uint`]
+        /// - [`TextureFormat::R8Sint`]
+        /// - [`TextureFormat::Rgba8Unorm`]
+        /// - [`TextureFormat::Rgba8Uint`]
+        /// - [`TextureFormat::Rgba8Sint`]
+        /// - [`TextureFormat::R16Uint`]
+        /// - [`TextureFormat::R16Sint`]
+        /// - [`TextureFormat::R16Float`]
+        /// - [`TextureFormat::Rgba16Uint`]
+        /// - [`TextureFormat::Rgba16Sint`]
+        /// - [`TextureFormat::Rgba16Float`]
+        /// - [`TextureFormat::Rgba32Uint`]
+        /// - [`TextureFormat::Rgba32Sint`]
+        /// - [`TextureFormat::Rgba32Float`]
+        ///
+        /// Supported platforms:
+        /// - Vulkan
+        /// - DX12
+        /// - Metal
+        /// - WebGPU
+        ///
+        /// This is a web and native feature.
+        ///
+        /// [`TextureFormat::R8Unorm`]: super::TextureFormat::R8Unorm
+        /// [`TextureFormat::R8Uint`]: super::TextureFormat::R8Uint
+        /// [`TextureFormat::R8Sint`]: super::TextureFormat::R8Sint
+        /// [`TextureFormat::Rgba8Unorm`]: super::TextureFormat::Rgba8Unorm
+        /// [`TextureFormat::Rgba8Uint`]: super::TextureFormat::Rgba8Uint
+        /// [`TextureFormat::Rgba8Sint`]: super::TextureFormat::Rgba8Sint
+        /// [`TextureFormat::R16Uint`]: super::TextureFormat::R16Uint
+        /// [`TextureFormat::R16Sint`]: super::TextureFormat::R16Sint
+        /// [`TextureFormat::R16Float`]: super::TextureFormat::R16Float
+        /// [`TextureFormat::Rgba16Uint`]: super::TextureFormat::Rgba16Uint
+        /// [`TextureFormat::Rgba16Sint`]: super::TextureFormat::Rgba16Sint
+        /// [`TextureFormat::Rgba16Float`]: super::TextureFormat::Rgba16Float
+        /// [`TextureFormat::Rgba32Uint`]: super::TextureFormat::Rgba32Uint
+        /// [`TextureFormat::Rgba32Sint`]: super::TextureFormat::Rgba32Sint
+        /// [`TextureFormat::Rgba32Float`]: super::TextureFormat::Rgba32Float
+        /// [`TextureUsages::STORAGE_BINDING`]: super::TextureUsages::STORAGE_BINDING
+        #[name("texture-formats-tier2")]
+        const TEXTURE_FORMATS_TIER2 = WEBGPU_FEATURE_TEXTURE_FORMATS_TIER2;
     }
 }
 
@@ -1858,6 +2007,26 @@ impl Features {
                 | FeaturesWGPU::EXPERIMENTAL_COOPERATIVE_MATRIX.bits(),
             FeaturesWebGPU::empty().bits(),
         ]))
+    }
+
+    /// Returns `self` plus all features implied by features in `self`, per
+    /// the WebGPU specification.
+    ///
+    /// [`TEXTURE_FORMATS_TIER2`] implies [`TEXTURE_FORMATS_TIER1`], which
+    /// implies [`RG11B10UFLOAT_RENDERABLE`].
+    ///
+    /// [`TEXTURE_FORMATS_TIER1`]: Features::TEXTURE_FORMATS_TIER1
+    /// [`TEXTURE_FORMATS_TIER2`]: Features::TEXTURE_FORMATS_TIER2
+    /// [`RG11B10UFLOAT_RENDERABLE`]: Features::RG11B10UFLOAT_RENDERABLE
+    #[must_use]
+    pub fn with_implied(mut self) -> Self {
+        if self.contains(Self::TEXTURE_FORMATS_TIER2) {
+            self |= Self::TEXTURE_FORMATS_TIER1;
+        }
+        if self.contains(Self::TEXTURE_FORMATS_TIER1) {
+            self |= Self::RG11B10UFLOAT_RENDERABLE;
+        }
+        self
     }
 
     /// Vertex formats allowed for creating and building BLASes
@@ -2034,6 +2203,26 @@ mod tests {
                 assert_eq!("shader-primitive-index".parse(), Ok(feature));
             }
         }
+    }
+
+    #[test]
+    fn with_implied() {
+        assert_eq!(Features::empty().with_implied(), Features::empty());
+        assert_eq!(
+            Features::SHADER_F16.with_implied(),
+            Features::SHADER_F16,
+            "features without implications should be unchanged"
+        );
+        assert_eq!(
+            Features::TEXTURE_FORMATS_TIER1.with_implied(),
+            Features::TEXTURE_FORMATS_TIER1 | Features::RG11B10UFLOAT_RENDERABLE
+        );
+        assert_eq!(
+            Features::TEXTURE_FORMATS_TIER2.with_implied(),
+            Features::TEXTURE_FORMATS_TIER2
+                | Features::TEXTURE_FORMATS_TIER1
+                | Features::RG11B10UFLOAT_RENDERABLE
+        );
     }
 
     #[test]

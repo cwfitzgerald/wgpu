@@ -558,8 +558,8 @@ mod tests {
                 .union(Features::CLIP_DISTANCES)
                 .union(Features::DUAL_SOURCE_BLENDING)
                 .union(Features::SUBGROUP)
-                //.union(Features::TEXTURE_FORMATS_TIER1) not implemented
-                //.union(Features::TEXTURE_FORMATS_TIER2) not implemented
+                .union(Features::TEXTURE_FORMATS_TIER1)
+                .union(Features::TEXTURE_FORMATS_TIER2)
                 .union(Features::PRIMITIVE_INDEX)
                 //.union(Features::TEXTURE_COMPONENT_SWIZZLE) not implemented
                 // Standard-track features not in official spec
