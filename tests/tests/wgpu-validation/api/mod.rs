@@ -9,6 +9,7 @@ mod error_scopes;
 mod experimental;
 mod external_texture;
 mod immediates;
+mod implied_features;
 mod instance;
 mod render_pipeline;
 mod texture;

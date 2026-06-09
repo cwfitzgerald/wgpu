@@ -697,6 +697,22 @@ pub struct Adapter {
 
 impl Adapter {
     pub fn new(raw: hal::DynExposedAdapter) -> Self {
+        // Backends must advertise the features implied (per the WebGPU spec)
+        // by any feature they advertise, so that expanding a feature request
+        // in `create_device_and_queue` can never make it unsupportable.
+        debug_assert!(
+            !raw.features.contains(wgt::Features::TEXTURE_FORMATS_TIER2)
+                || raw.features.contains(wgt::Features::TEXTURE_FORMATS_TIER1),
+            "backends advertising TEXTURE_FORMATS_TIER2 must also advertise TEXTURE_FORMATS_TIER1"
+        );
+        debug_assert!(
+            !raw.features.contains(wgt::Features::TEXTURE_FORMATS_TIER1)
+                || raw
+                    .features
+                    .contains(wgt::Features::RG11B10UFLOAT_RENDERABLE),
+            "backends advertising TEXTURE_FORMATS_TIER1 must also advertise RG11B10UFLOAT_RENDERABLE"
+        );
+
         Self { raw }
     }
 
@@ -852,6 +868,17 @@ impl Adapter {
         desc: &DeviceDescriptor,
         instance_flags: InstanceFlags,
     ) -> Result<(Arc<Device>, Arc<Queue>), RequestDeviceError> {
+        // Expand the requested features with the features they imply, per the
+        // WebGPU spec (`texture-formats-tier2` implies `texture-formats-tier1`
+        // implies `rg11b10ufloat-renderable`). The adapter is guaranteed to
+        // support implied features whenever it supports the implying one (see
+        // the assertions in `Adapter::new`), so this can't fail the support
+        // check below on its own.
+        let desc = &DeviceDescriptor {
+            required_features: desc.required_features.with_implied(),
+            ..desc.clone()
+        };
+
         // Verify all features were exposed by the adapter
         if !self.raw.features.contains(desc.required_features) {
             return Err(RequestDeviceError::UnsupportedFeature(
