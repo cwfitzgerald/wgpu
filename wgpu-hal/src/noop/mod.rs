@@ -233,7 +233,11 @@ impl crate::Adapter for Context {
         &self,
         format: wgt::TextureFormat,
     ) -> crate::TextureFormatCapabilities {
-        crate::TextureFormatCapabilities::empty()
+        // The noop backend "supports" everything, matching the adapter
+        // advertising `Features::all()` by default. This matters for
+        // validation paths driven by adapter capabilities rather than the
+        // guaranteed-format table.
+        crate::TextureFormatCapabilities::all()
     }
 
     unsafe fn surface_capabilities(&self, surface: &Context) -> Option<crate::SurfaceCapabilities> {
