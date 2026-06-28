@@ -45,6 +45,12 @@ const EXAMPLES: &[ExampleDesc] = &[
         webgpu: true,
     },
     ExampleDesc {
+        name: "gpu_stress",
+        function: wgpu_examples::gpu_stress::main,
+        webgl: false,  // Native only example
+        webgpu: false, // Native only example
+    },
+    ExampleDesc {
         name: "hello_synchronization",
         function: wgpu_examples::hello_synchronization::main,
         webgl: false, // No canvas for WebGL

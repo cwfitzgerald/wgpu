@@ -51,6 +51,20 @@ pub trait Example: 'static + Sized {
     fn update(&mut self, event: WindowEvent);
 
     fn render(&mut self, view: &wgpu::TextureView, device: &wgpu::Device, queue: &wgpu::Queue);
+
+    /// Lets the example mutate the live surface configuration — e.g. `present_mode` or
+    /// `desired_maximum_frame_latency` — in response to input handled in [`Self::update`].
+    ///
+    /// Called once per frame before the surface texture is acquired, with the surface's supported
+    /// present modes (so the example can cycle through valid ones). Return `true` to have the
+    /// framework reconfigure the surface before acquiring; the default never reconfigures.
+    fn reconfigure_surface(
+        &mut self,
+        _config: &mut wgpu::SurfaceConfiguration,
+        _present_modes: &[wgpu::PresentMode],
+    ) -> bool {
+        false
+    }
 }
 
 // Initialize logging in platform dependent ways.
@@ -102,6 +116,9 @@ fn spawn(f: impl Future<Output = ()> + 'static) {
 struct SurfaceWrapper {
     surface: Option<wgpu::Surface<'static>>,
     config: Option<wgpu::SurfaceConfiguration>,
+    /// Present modes the surface supports, queried at [`Self::resume`]. Passed to
+    /// [`Example::reconfigure_surface`] so examples can cycle through valid present modes.
+    present_modes: Vec<wgpu::PresentMode>,
 }
 
 impl SurfaceWrapper {
@@ -110,6 +127,7 @@ impl SurfaceWrapper {
         Self {
             surface: None,
             config: None,
+            present_modes: Vec::new(),
         }
     }
 
@@ -166,7 +184,20 @@ impl SurfaceWrapper {
         config.desired_maximum_frame_latency = 3;
 
         surface.configure(&context.device, &config);
+        self.present_modes = surface.get_capabilities(&context.adapter).present_modes;
         self.config = Some(config);
+    }
+
+    /// Applies any live surface reconfiguration the example requests via
+    /// [`Example::reconfigure_surface`], reconfiguring the surface in place when it returns `true`.
+    fn reconfigure<E: Example>(&mut self, context: &ExampleContext, example: &mut E) {
+        let config = self.config.as_mut().unwrap();
+        if example.reconfigure_surface(config, &self.present_modes) {
+            self.surface
+                .as_ref()
+                .unwrap()
+                .configure(&context.device, config);
+        }
     }
 
     /// Resize the surface, making sure to not resize to zero.
@@ -544,6 +575,9 @@ impl<E: Example> ApplicationHandler<AppAction> for App<E> {
                 }
 
                 self.frame_counter.update();
+
+                // Apply any surface reconfiguration the example requested from input.
+                surface.reconfigure(context, example);
 
                 let window_arc = self.window.clone().unwrap();
                 if let Some(frame) = surface.acquire(context, window_arc) {
