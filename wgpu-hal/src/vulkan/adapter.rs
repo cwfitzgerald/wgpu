@@ -1186,6 +1186,10 @@ pub struct PhysicalDeviceProperties {
     /// `VK_EXT_pci_bus_info` extension.
     pci_bus_info: Option<vk::PhysicalDevicePCIBusInfoPropertiesEXT<'static>>,
 
+    /// Device identity properties from Vulkan 1.1, including the device LUID used to
+    /// match the Vulkan physical device against a DXGI adapter for interop.
+    id: Option<vk::PhysicalDeviceIDProperties<'static>>,
+
     /// The device API version.
     ///
     /// Which is the version of Vulkan supported for device-level functionality.
@@ -1339,6 +1343,11 @@ impl PhysicalDeviceProperties {
         // Optional `VK_KHR_external_memory_win32`
         if self.supports_extension(khr::external_memory_win32::NAME) {
             extensions.push(khr::external_memory_win32::NAME);
+        }
+
+        // Optional `VK_KHR_external_semaphore_win32`
+        if self.supports_extension(khr::external_semaphore_win32::NAME) {
+            extensions.push(khr::external_semaphore_win32::NAME);
         }
 
         // Optional `VK_KHR_external_memory_fd`
@@ -1975,6 +1984,13 @@ impl super::InstanceShared {
                     properties2 = properties2.push_next(next);
                 }
 
+                if capabilities.device_api_version >= vk::API_VERSION_1_1 {
+                    let next = capabilities
+                        .id
+                        .insert(vk::PhysicalDeviceIDProperties::default());
+                    properties2 = properties2.push_next(next);
+                }
+
                 unsafe {
                     get_device_properties.get_physical_device_properties2(phd, &mut properties2)
                 };
@@ -2424,6 +2440,9 @@ impl super::Instance {
             max_draw_indirect_count: phd_capabilities.properties.limits.max_draw_indirect_count,
             non_coherent_map_mask: phd_capabilities.properties.limits.non_coherent_atom_size - 1,
             can_present: true,
+            device_luid: phd_capabilities
+                .id
+                .and_then(|id| (id.device_luid_valid == vk::TRUE).then_some(id.device_luid)),
             //TODO: make configurable
             robust_buffer_access: phd_features.core.robust_buffer_access != 0,
             robust_image_access: match phd_features.robustness2 {
@@ -2664,6 +2683,15 @@ impl super::Adapter {
         } else {
             None
         };
+        let external_semaphore_win32_fn =
+            if enabled_extensions.contains(&khr::external_semaphore_win32::NAME) {
+                Some(khr::external_semaphore_win32::Device::new(
+                    &self.instance.raw,
+                    &raw_device,
+                ))
+            } else {
+                None
+            };
 
         let naga_options = {
             use naga::back::spv;
@@ -2919,6 +2947,7 @@ impl super::Adapter {
                 ray_tracing_pipelines: ray_tracing_pipeline_fns,
                 mesh_shading: mesh_shading_fns,
                 external_memory_fd: external_memory_fd_fn,
+                external_semaphore_win32: external_semaphore_win32_fn,
             },
             pipeline_cache_validation_key,
             vendor_id: self.phd_capabilities.properties.vendor_id,
@@ -2935,6 +2964,8 @@ impl super::Adapter {
             texture_identity_factory: super::ResourceIdentityFactory::new(),
             texture_view_identity_factory: super::ResourceIdentityFactory::new(),
             empty_descriptor_set_layout,
+            #[cfg(windows)]
+            dxgi_interop: once_cell::sync::OnceCell::new(),
         });
 
         let relay_semaphores = super::RelaySemaphores::new(&shared)?;
