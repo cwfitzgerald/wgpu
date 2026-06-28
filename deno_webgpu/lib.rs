@@ -209,6 +209,7 @@ impl GPU {
               ..Default::default()
             },
             gl: wgpu_types::GlBackendOptions::default(),
+            vulkan: wgpu_types::VulkanBackendOptions::default(),
             noop: wgpu_types::NoopBackendOptions::default(),
           },
           display: None,
