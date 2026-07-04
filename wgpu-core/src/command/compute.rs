@@ -1098,8 +1098,7 @@ fn dispatch_workgroups_indirect(
     buffer.check_destroyed(state.pass.base.snatch_guard)?;
 
     let stride = 3 * 4; // 3 integers, x/y/z group size
-    if let Some(action) = buffer.initialization_status.read().create_action(
-        &buffer,
+    if let Some(action) = buffer.create_init_action(
         offset..(offset + stride),
         MemoryInitKind::NeedsInitializedMemory,
     ) {

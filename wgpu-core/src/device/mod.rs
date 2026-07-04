@@ -1,5 +1,5 @@
 use alloc::{boxed::Box, string::String, vec::Vec};
-use core::{fmt, num::NonZeroU32};
+use core::{fmt, num::NonZeroU32, sync::atomic::Ordering};
 
 use crate::{
     binding_model,
@@ -283,11 +283,8 @@ pub(crate) fn map_buffer(
             mapped[fill_range].fill(0);
         }
     } else {
-        for uninitialized in buffer
-            .initialization_status
-            .write()
-            .drain(offset..(size + offset))
-        {
+        let mut init_status = buffer.initialization_status.write();
+        for uninitialized in init_status.drain(offset..(size + offset)) {
             // The mapping's pointer is already offset, however we track the
             // uninitialized range relative to the buffer's start.
             let fill_range =
@@ -301,6 +298,11 @@ pub(crate) fn map_buffer(
             {
                 unsafe { raw_device.flush_mapped_ranges(raw_buffer, &[uninitialized]) };
             }
+        }
+        // If mapping drained the last uninitialized range, flip the fast-path
+        // flag while still holding the write lock.
+        if init_status.is_fully_initialized() {
+            buffer.is_fully_initialized.store(true, Ordering::Relaxed);
         }
     }
 

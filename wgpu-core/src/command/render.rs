@@ -2899,11 +2899,9 @@ fn set_index_buffer(
     let end = offset + resolved_size;
     state.index.update_buffer(offset..end, index_format);
 
-    if let Some(action) = buffer.initialization_status.read().create_action(
-        &buffer,
-        offset..end,
-        MemoryInitKind::NeedsInitializedMemory,
-    ) {
+    if let Some(action) =
+        buffer.create_init_action(offset..end, MemoryInitKind::NeedsInitializedMemory)
+    {
         state.pass.base.buffer_memory_init_actions.push(action);
     }
 
@@ -2962,11 +2960,9 @@ fn set_vertex_buffer(
             .buffers
             .merge_single(&buffer, wgt::BufferUses::VERTEX)?;
 
-        if let Some(action) = buffer.initialization_status.read().create_action(
-            &buffer,
-            buffer_range.clone(),
-            MemoryInitKind::NeedsInitializedMemory,
-        ) {
+        if let Some(action) =
+            buffer.create_init_action(buffer_range.clone(), MemoryInitKind::NeedsInitializedMemory)
+        {
             state.pass.base.buffer_memory_init_actions.push(action);
         }
 
@@ -3306,8 +3302,7 @@ fn multi_draw_indirect(
         }
     };
 
-    if let Some(action) = indirect_buffer.initialization_status.read().create_action(
-        &indirect_buffer,
+    if let Some(action) = indirect_buffer.create_init_action(
         offset..offset + args_size,
         MemoryInitKind::NeedsInitializedMemory,
     ) {
@@ -3524,8 +3519,7 @@ fn multi_draw_indirect_count(
         }
     };
 
-    if let Some(action) = indirect_buffer.initialization_status.read().create_action(
-        &indirect_buffer,
+    if let Some(action) = indirect_buffer.create_init_action(
         offset..offset + args_size,
         MemoryInitKind::NeedsInitializedMemory,
     ) {
@@ -3541,8 +3535,7 @@ fn multi_draw_indirect_count(
             count_buffer_size: count_buffer.size,
         });
     }
-    if let Some(action) = count_buffer.initialization_status.read().create_action(
-        &count_buffer,
+    if let Some(action) = count_buffer.create_init_action(
         count_buffer_offset..count_buffer_offset + count_bytes,
         MemoryInitKind::NeedsInitializedMemory,
     ) {
@@ -3617,13 +3610,7 @@ fn execute_bundle(
         bundle
             .buffer_memory_init_actions
             .iter()
-            .filter_map(|action| {
-                action
-                    .buffer
-                    .initialization_status
-                    .read()
-                    .check_action(action)
-            }),
+            .filter_map(|action| action.buffer.check_init_action(action)),
     );
     for action in bundle.texture_memory_init_actions.iter() {
         state.pass.pending_discard_init_fixups.extend(

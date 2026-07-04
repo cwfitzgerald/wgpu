@@ -148,13 +148,10 @@ pub(super) fn flush_bindings_helper(state: &mut PassState) -> Result<(), Destroy
 
     for (i, bind_group, dynamic_offsets) in entries {
         state.base.buffer_memory_init_actions.extend(
-            bind_group.buffer_init_actions.iter().filter_map(|action| {
-                action
-                    .buffer
-                    .initialization_status
-                    .read()
-                    .check_action(action)
-            }),
+            bind_group
+                .buffer_init_actions
+                .iter()
+                .filter_map(|action| action.buffer.check_init_action(action)),
         );
         for action in bind_group.texture_init_actions.iter() {
             state.pending_discard_init_fixups.extend(

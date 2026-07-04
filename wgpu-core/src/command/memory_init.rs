@@ -2,7 +2,7 @@ use alloc::{
     sync::Arc,
     vec::{Drain, Vec},
 };
-use core::ops::Range;
+use core::{ops::Range, sync::atomic::Ordering};
 
 use hashbrown::hash_map::Entry;
 
@@ -180,12 +180,17 @@ impl BakedCommands {
             } else {
                 buffer_use.range.end + wgt::COPY_BUFFER_ALIGNMENT - end_remainder
             };
-            let uninitialized_ranges = initialization_status.drain(buffer_use.range.start..end);
+            // The drain iterator borrows `initialization_status` mutably and
+            // only finalizes the tracker mutation when it is dropped, so keep it
+            // scoped before we re-borrow to read `is_fully_initialized`.
+            {
+                let uninitialized_ranges = initialization_status.drain(buffer_use.range.start..end);
 
-            match buffer_use.kind {
-                MemoryInitKind::ImplicitlyInitialized => {}
-                MemoryInitKind::NeedsInitializedMemory => {
-                    match uninitialized_ranges_per_buffer.entry(buffer_use.buffer.tracker_index()) {
+                match buffer_use.kind {
+                    MemoryInitKind::ImplicitlyInitialized => {}
+                    MemoryInitKind::NeedsInitializedMemory => match uninitialized_ranges_per_buffer
+                        .entry(buffer_use.buffer.tracker_index())
+                    {
                         Entry::Vacant(e) => {
                             e.insert((
                                 buffer_use.buffer.clone(),
@@ -195,8 +200,18 @@ impl BakedCommands {
                         Entry::Occupied(mut e) => {
                             e.get_mut().1.extend(uninitialized_ranges);
                         }
-                    }
+                    },
                 }
+            }
+
+            // If the buffer is now fully initialized, flip the encode-side
+            // fast-path flag while we still hold the write lock so future
+            // encodes can skip the tracker entirely for this buffer.
+            if initialization_status.is_fully_initialized() {
+                buffer_use
+                    .buffer
+                    .is_fully_initialized
+                    .store(true, Ordering::Relaxed);
             }
         }
 

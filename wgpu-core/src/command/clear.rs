@@ -209,11 +209,9 @@ pub(super) fn clear_buffer(
     }
 
     // Mark dest as initialized.
-    if let Some(action) = dst_buffer.initialization_status.read().create_action(
-        &dst_buffer,
-        offset..end_offset,
-        MemoryInitKind::ImplicitlyInitialized,
-    ) {
+    if let Some(action) =
+        dst_buffer.create_init_action(offset..end_offset, MemoryInitKind::ImplicitlyInitialized)
+    {
         state.buffer_memory_init_actions.push(action);
     }
 

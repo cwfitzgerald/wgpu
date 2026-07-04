@@ -567,8 +567,7 @@ pub(super) fn resolve_query_set(
 
     let query_set = state.tracker.query_sets.insert_single(query_set);
 
-    if let Some(action) = dst_buffer.initialization_status.read().create_action(
-        &dst_buffer,
+    if let Some(action) = dst_buffer.create_init_action(
         buffer_start_offset..buffer_end_offset,
         MemoryInitKind::ImplicitlyInitialized,
     ) {

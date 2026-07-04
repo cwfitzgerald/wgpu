@@ -960,13 +960,9 @@ fn set_index_buffer(
     }
     let end = offset + buffer.resolve_binding_size(offset, size)?;
 
-    state
-        .buffer_memory_init_actions
-        .extend(buffer.initialization_status.read().create_action(
-            &buffer,
-            offset..end.get(),
-            MemoryInitKind::NeedsInitializedMemory,
-        ));
+    state.buffer_memory_init_actions.extend(
+        buffer.create_init_action(offset..end.get(), MemoryInitKind::NeedsInitializedMemory),
+    );
     state.set_index_buffer(buffer, index_format, offset..end.get());
     Ok(())
 }
@@ -1006,13 +1002,9 @@ fn set_vertex_buffer(
         let binding_size = buffer.resolve_binding_size(offset, size)?;
         let buffer_range = offset..(offset + binding_size);
 
-        state
-            .buffer_memory_init_actions
-            .extend(buffer.initialization_status.read().create_action(
-                &buffer,
-                buffer_range.clone(),
-                MemoryInitKind::NeedsInitializedMemory,
-            ));
+        state.buffer_memory_init_actions.extend(
+            buffer.create_init_action(buffer_range.clone(), MemoryInitKind::NeedsInitializedMemory),
+        );
         state.vertex.set_buffer(slot as usize, buffer, buffer_range);
         if let Some(pipeline) = state.pipeline.as_deref() {
             state.vertex.update_limits(&pipeline.vertex_steps);
@@ -1211,8 +1203,7 @@ fn multi_draw_indirect(
     assert!(offset <= wgt::BufferAddress::MAX - stride);
     state
         .buffer_memory_init_actions
-        .extend(buffer.initialization_status.read().create_action(
-            &buffer,
+        .extend(buffer.create_init_action(
             offset..(offset + stride),
             MemoryInitKind::NeedsInitializedMemory,
         ));

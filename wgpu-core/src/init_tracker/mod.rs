@@ -185,6 +185,12 @@ where
         }
     }
 
+    /// Returns `true` if there are no uninitialized ranges left, i.e. the
+    /// entire resource has been initialized.
+    pub(crate) fn is_fully_initialized(&self) -> bool {
+        self.uninitialized_ranges.is_empty()
+    }
+
     /// Checks for uninitialized ranges within a given query range.
     ///
     /// If `query_range` includes any uninitialized portions of this init

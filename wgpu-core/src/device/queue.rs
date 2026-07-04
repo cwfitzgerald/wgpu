@@ -841,10 +841,13 @@ impl Queue {
         // Ensure the overwritten bytes are marked as initialized so
         // they don't need to be nulled prior to mapping or binding.
         {
-            buffer
-                .initialization_status
-                .write()
-                .drain(buffer_offset..(buffer_offset + staging_buffer.size.get()));
+            let mut init_status = buffer.initialization_status.write();
+            init_status.drain(buffer_offset..(buffer_offset + staging_buffer.size.get()));
+            // If this write completed initialization of the buffer, flip the
+            // encode-side fast-path flag while holding the write lock.
+            if init_status.is_fully_initialized() {
+                buffer.is_fully_initialized.store(true, Ordering::Relaxed);
+            }
         }
 
         Ok(())

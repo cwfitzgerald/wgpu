@@ -771,8 +771,7 @@ fn handle_buffer_init(
         // Adjust the start/end outwards to 4B alignment.
         let aligned_start = start & !ALIGN_MASK;
         let aligned_end = (end + ALIGN_MASK) & !ALIGN_MASK;
-        if let Some(action) = buffer.initialization_status.read().create_action(
-            buffer,
+        if let Some(action) = buffer.create_init_action(
             aligned_start..aligned_end,
             MemoryInitKind::NeedsInitializedMemory,
         ) {
@@ -791,8 +790,7 @@ fn handle_buffer_init(
         let aligned_start = (start + ALIGN_MASK) & !ALIGN_MASK;
         let aligned_end = end & !ALIGN_MASK;
         if aligned_start != start {
-            if let Some(action) = buffer.initialization_status.read().create_action(
-                buffer,
+            if let Some(action) = buffer.create_init_action(
                 aligned_start - ALIGN_SIZE..aligned_start,
                 MemoryInitKind::NeedsInitializedMemory,
             ) {
@@ -800,8 +798,7 @@ fn handle_buffer_init(
             }
         }
         if aligned_start != aligned_end {
-            if let Some(action) = buffer.initialization_status.read().create_action(
-                buffer,
+            if let Some(action) = buffer.create_init_action(
                 aligned_start..aligned_end,
                 MemoryInitKind::ImplicitlyInitialized,
             ) {
@@ -814,8 +811,7 @@ fn handle_buffer_init(
             // final size of the buffer. The final size of the buffer is not
             // readily available, but was rounded up to COPY_BUFFER_ALIGNMENT,
             // so no overrun is possible.
-            if let Some(action) = buffer.initialization_status.read().create_action(
-                buffer,
+            if let Some(action) = buffer.create_init_action(
                 aligned_end..aligned_end + ALIGN_SIZE,
                 MemoryInitKind::NeedsInitializedMemory,
             ) {
@@ -1096,15 +1092,13 @@ pub(super) fn copy_buffer_to_buffer(
     }
 
     // Make sure source is initialized memory and mark dest as initialized.
-    if let Some(action) = dst_buffer.initialization_status.read().create_action(
-        dst_buffer,
+    if let Some(action) = dst_buffer.create_init_action(
         destination_offset..destination_end_offset,
         MemoryInitKind::ImplicitlyInitialized,
     ) {
         state.buffer_memory_init_actions.push(action);
     }
-    if let Some(action) = src_buffer.initialization_status.read().create_action(
-        src_buffer,
+    if let Some(action) = src_buffer.create_init_action(
         source_offset..source_end_offset,
         MemoryInitKind::NeedsInitializedMemory,
     ) {

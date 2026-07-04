@@ -6,6 +6,7 @@ use core::{
     num::NonZeroU64,
     ops::Range,
     ptr::NonNull,
+    sync::atomic::{AtomicBool, Ordering},
 };
 use smallvec::SmallVec;
 use thiserror::Error;
@@ -24,7 +25,7 @@ use crate::{
         DeviceMismatch, HostMap, MissingDownlevelFlags, MissingFeatures,
     },
     hal_label,
-    init_tracker::{BufferInitTracker, TextureInitTracker},
+    init_tracker::{BufferInitTracker, BufferInitTrackerAction, TextureInitTracker},
     lock::{rank, Mutex, RwLock},
     ray_tracing::{BlasCompactReadyPendingClosure, BlasPrepareCompactError},
     resource_log,
@@ -482,6 +483,34 @@ pub struct Buffer {
     pub(crate) usage: wgt::BufferUsages,
     pub(crate) size: wgt::BufferAddress,
     pub(crate) initialization_status: RwLock<BufferInitTracker>,
+    /// Monotonic fast-path hint mirroring [`Self::initialization_status`].
+    ///
+    /// `false` is always safe: it merely means the slow path (read the tracker
+    /// under [`Self::initialization_status`]) must be taken. `true` guarantees
+    /// the tracker has zero uninitialized ranges and — because buffer init
+    /// trackers only ever shrink their uninitialized set (ranges are drained,
+    /// never re-added; `InitTracker::discard` exists only for `InitTracker<u32>`
+    /// texture layer trackers, not for the `u64`-indexed buffer tracker) — this
+    /// remains true forever once set.
+    ///
+    /// The encode-side init-tracker checks are a conservative filter, not
+    /// load-bearing validation (see `init_tracker`), so a stale `false` only
+    /// costs a redundant slow-path check while `true` lets us skip both the
+    /// `RwLock` read and pushing a `BufferInitTrackerAction` (which clones an
+    /// `Arc<Buffer>`).
+    ///
+    /// This is set (under the [`Self::initialization_status`] write lock) at
+    /// every site that drains the tracker, once the tracker becomes fully
+    /// initialized.
+    ///
+    /// [`Relaxed`](Ordering::Relaxed) is sufficient: the flag guards no data —
+    /// when the fast path observes `true` it skips the tracker entirely rather
+    /// than dereferencing anything guarded by the flag, so there is no
+    /// happens-before requirement to establish. A stale `false` is safe by
+    /// construction (slow path), and any thread that legitimately needs to see
+    /// the shrunk tracker already synchronizes through the tracker's own
+    /// `RwLock`.
+    pub(crate) is_fully_initialized: AtomicBool,
     /// The `label` from the descriptor used to create the resource.
     pub(crate) label: String,
     pub(crate) tracking_data: TrackingData,
@@ -545,6 +574,54 @@ impl Buffer {
                 expected,
             })
         }
+    }
+
+    /// Returns `true` if this buffer is known to be fully initialized.
+    ///
+    /// This reads the monotonic [`Self::is_fully_initialized`] hint rather than
+    /// the tracker, so it is cheap enough to gate the encode-side init-tracker
+    /// work on. See that field for the ordering rationale. A `false` result is
+    /// always safe (callers fall back to the tracker).
+    #[inline]
+    pub(crate) fn is_initialized(&self) -> bool {
+        self.is_fully_initialized.load(Ordering::Relaxed)
+    }
+
+    /// Encode-side helper: build a [`BufferInitTrackerAction`] for `query_range`
+    /// if — and only if — it would have any effect on initialization.
+    ///
+    /// Once the buffer is fully initialized this skips both the
+    /// [`Self::initialization_status`] read lock and the `Arc<Buffer>` clone
+    /// that constructing an action entails. This is a conservative filter (see
+    /// the `init_tracker` module docs): returning an action that turns out to
+    /// be unnecessary is harmless, so the fast path is purely an optimization.
+    pub(crate) fn create_init_action(
+        self: &Arc<Self>,
+        query_range: Range<wgt::BufferAddress>,
+        kind: crate::init_tracker::MemoryInitKind,
+    ) -> Option<BufferInitTrackerAction> {
+        if self.is_initialized() {
+            return None;
+        }
+        self.initialization_status
+            .read()
+            .create_action(self, query_range, kind)
+    }
+
+    /// Encode-side helper mirroring [`Self::create_init_action`], but for a
+    /// pre-built action (as recorded on bind groups and render bundles).
+    ///
+    /// Returns the (possibly shrunk) action if it still has any effect on
+    /// initialization, or `None` — including via the fully-initialized fast
+    /// path, which skips the read lock entirely.
+    pub(crate) fn check_init_action(
+        &self,
+        action: &BufferInitTrackerAction,
+    ) -> Option<BufferInitTrackerAction> {
+        if self.is_initialized() {
+            return None;
+        }
+        self.initialization_status.read().check_action(action)
     }
 
     /// Resolve the size of a binding for buffer with `offset` and `size`.
