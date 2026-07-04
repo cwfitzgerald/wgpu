@@ -514,7 +514,43 @@ pub struct Buffer {
     /// The `label` from the descriptor used to create the resource.
     pub(crate) label: String,
     pub(crate) tracking_data: TrackingData,
+    /// Authoritative host-mapping state.
+    ///
+    /// All reads and writes of the mapping state go through this mutex. The
+    /// [`Self::map_state_idle`] flag is a lock-free hint that mirrors it for a
+    /// single reader (submit-side validation); see that field and
+    /// [`Self::set_map_state`] for the invariant that keeps the two in sync.
     pub(crate) map_state: Mutex<BufferMapState>,
+    /// Lock-free fast-path hint mirroring [`Self::map_state`], read only by
+    /// submit-side validation ([`crate::device::queue::validate_command_buffer`]).
+    ///
+    /// Unlike [`Self::is_fully_initialized`] this is *not* monotonic: a buffer
+    /// maps and unmaps repeatedly, so the flag is maintained on every transition
+    /// in both directions.
+    ///
+    /// # Invariant
+    ///
+    /// `true` (idle) is trustworthy: it is only ever set while the mutex is held
+    /// and the state is genuinely [`BufferMapState::Idle`], so a reader that
+    /// observes `true` may treat the buffer as not-mapped without locking. A
+    /// stale `false` is always safe — it merely forces the reader onto the slow
+    /// path (lock the mutex and read the state), which is the pre-existing
+    /// behavior. Every write goes through [`Self::set_map_state`] /
+    /// [`Self::replace_map_state`], which set the flag while holding the mutex,
+    /// so the flag can never be `true` while the state is non-idle. (The one
+    /// documented exception is the transient `Idle` swap inside [`Self::map`],
+    /// which deliberately leaves the flag `false` because the buffer is mid-map.)
+    ///
+    /// # Ordering
+    ///
+    /// [`Relaxed`](Ordering::Relaxed) on both the store (under the mutex) and the
+    /// load (the fast path). The flag guards no data: when the reader observes
+    /// `true` it skips the mutex entirely rather than dereferencing anything the
+    /// mutex would have published, so there is no happens-before relationship to
+    /// establish. The mutex itself still orders all authoritative state
+    /// transitions; the flag is only a point-in-time hint about whether the last
+    /// committed transition left the buffer idle.
+    pub(crate) map_state_idle: AtomicBool,
     // Bind groups that reference this buffer. May contain duplicates.
     pub(crate) bind_groups: Mutex<WeakVec<BindGroup>>,
     pub(crate) timestamp_normalization_bind_group: Snatchable<TimestampNormalizationBindGroup>,
@@ -622,6 +658,41 @@ impl Buffer {
             return None;
         }
         self.initialization_status.read().check_action(action)
+    }
+
+    /// Lock-free fast-path check for submit-side validation: returns `true` if
+    /// the buffer is known to be idle (not mapped and no map pending) *without*
+    /// locking [`Self::map_state`].
+    ///
+    /// A `true` result is authoritative (see [`Self::map_state_idle`]); a
+    /// `false` result means the caller must fall back to reading the mutex.
+    #[inline]
+    pub(crate) fn is_map_state_idle_hint(&self) -> bool {
+        self.map_state_idle.load(Ordering::Relaxed)
+    }
+
+    /// Assign a new [`BufferMapState`], updating the [`Self::map_state_idle`]
+    /// hint in the same critical section.
+    ///
+    /// This is the choke point for map-state writes: routing every assignment
+    /// through here keeps the hint from ever going stale-`true` (see the field
+    /// invariant). Callers that need the previous state should use
+    /// [`Self::replace_map_state`] instead.
+    pub(crate) fn set_map_state(&self, new: BufferMapState) {
+        let mut guard = self.map_state.lock();
+        let idle = matches!(new, BufferMapState::Idle);
+        *guard = new;
+        self.map_state_idle.store(idle, Ordering::Relaxed);
+    }
+
+    /// Like [`Self::set_map_state`], but returns the previous state
+    /// ([`mem::replace`] semantics), still updating the hint under the lock.
+    pub(crate) fn replace_map_state(&self, new: BufferMapState) -> BufferMapState {
+        let mut guard = self.map_state.lock();
+        let idle = matches!(new, BufferMapState::Idle);
+        let old = mem::replace(&mut *guard, new);
+        self.map_state_idle.store(idle, Ordering::Relaxed);
+        old
     }
 
     /// Resolve the size of a binding for buffer with `offset` and `size`.
@@ -808,8 +879,8 @@ impl Buffer {
             }
 
             {
-                let map_state = &mut *self.map_state.lock();
-                *map_state = match *map_state {
+                let mut map_state = self.map_state.lock();
+                let new = match *map_state {
                     BufferMapState::Init { .. } | BufferMapState::Active { .. } => {
                         return Err((op, BufferAccessError::AlreadyMapped));
                     }
@@ -822,12 +893,16 @@ impl Buffer {
                         _parent_buffer: self.clone(),
                     }),
                 };
+                // Leaving `Idle` for `Waiting`: clear the fast-path hint while we
+                // still hold the lock (see [`Self::map_state_idle`]).
+                *map_state = new;
+                self.map_state_idle.store(false, Ordering::Relaxed);
             }
 
             if let Some(queue) = device.get_queue().as_ref() {
                 match queue.flush_writes_for_buffer(self, snatch_guard) {
                     Err(err) => {
-                        let state = mem::replace(&mut *self.map_state.lock(), BufferMapState::Idle);
+                        let state = self.replace_map_state(BufferMapState::Idle);
                         let BufferMapState::Waiting(BufferPendingMapping { op, .. }) = state else {
                             unreachable!();
                         };
@@ -963,6 +1038,13 @@ impl Buffer {
         // This _cannot_ be inlined into the match. If it is, the lock will be held
         // open through the whole match, resulting in a deadlock when we try to re-lock
         // the buffer back to active.
+        //
+        // We deliberately do *not* touch the `map_state_idle` hint here: this
+        // `Idle` is transient (the buffer is mid-map and is about to become
+        // `Active` below), so publishing a `true` hint would be a false idle. The
+        // incoming state is `Waiting`, whose hint is already `false`, and every
+        // terminal transition below re-establishes the correct hint under the
+        // lock. See [`Self::map_state_idle`].
         let mapping = mem::replace(&mut *self.map_state.lock(), BufferMapState::Idle);
         let pending_mapping = match mapping {
             BufferMapState::Waiting(pending_mapping) => pending_mapping,
@@ -971,7 +1053,7 @@ impl Buffer {
             // Mapping queued at least twice by map -> unmap -> map
             // and was already successfully mapped below
             BufferMapState::Active { .. } => {
-                *self.map_state.lock() = mapping;
+                self.set_map_state(mapping);
                 return None;
             }
             _ => panic!("No pending mapping."),
@@ -987,24 +1069,24 @@ impl Buffer {
                 snatch_guard,
             ) {
                 Ok(mapping) => {
-                    *self.map_state.lock() = BufferMapState::Active {
+                    self.set_map_state(BufferMapState::Active {
                         mapping,
                         range: pending_mapping.range.clone(),
                         host,
-                    };
+                    });
                     Ok(())
                 }
                 Err(e) => Err(e),
             }
         } else {
-            *self.map_state.lock() = BufferMapState::Active {
+            self.set_map_state(BufferMapState::Active {
                 mapping: hal::BufferMapping {
                     ptr: NonNull::dangling(),
                     is_coherent: true,
                 },
                 range: pending_mapping.range,
                 host: pending_mapping.op.host,
-            };
+            });
             Ok(())
         };
         Some((pending_mapping.op, status))
@@ -1025,7 +1107,9 @@ impl Buffer {
         let device = &self.device;
         let snatch_guard = device.snatchable_lock.read();
         let raw_buf = self.try_raw(&snatch_guard)?;
-        let map_state = mem::replace(&mut *self.map_state.lock(), BufferMapState::Idle);
+        // The buffer settles to `Idle` for every arm below (mapped state torn
+        // down, or an already-idle/aborted map), so publish the idle hint.
+        let map_state = self.replace_map_state(BufferMapState::Idle);
         match map_state {
             BufferMapState::Init { staging_buffer } => {
                 #[cfg(feature = "trace")]

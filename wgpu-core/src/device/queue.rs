@@ -2072,6 +2072,16 @@ fn validate_command_buffer(
             for buffer in cmd_buf_data.trackers.buffers.used_resources() {
                 buffer.check_destroyed(snatch_guard)?;
 
+                // Fast path: the overwhelmingly common case is a buffer that is
+                // neither mapped nor has a map pending. The `map_state_idle` hint
+                // lets us confirm that without locking `map_state` (see the field
+                // docs on `Buffer::map_state_idle`). A `true` hint is trustworthy;
+                // only when it reads `false` do we lock and re-check the
+                // authoritative state.
+                if buffer.is_map_state_idle_hint() {
+                    continue;
+                }
+
                 match *buffer.map_state.lock() {
                     BufferMapState::Idle => (),
                     _ => return Err(QueueSubmitError::BufferStillMapped(buffer.error_ident())),

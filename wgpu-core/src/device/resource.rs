@@ -1153,6 +1153,9 @@ impl Device {
             // the tracker and updates this flag accordingly.
             is_fully_initialized: AtomicBool::new(aligned_size == 0),
             map_state: Mutex::new(rank::BUFFER_MAP_STATE, resource::BufferMapState::Idle),
+            // Freshly created buffers start `Idle`; the `mapped_at_creation` path
+            // below re-establishes the hint if it maps the buffer.
+            map_state_idle: AtomicBool::new(true),
             label: desc.label.to_string(),
             tracking_data: TrackingData::new(self.tracker_indices.buffers.clone()),
             bind_groups: Mutex::new(rank::BUFFER_BIND_GROUPS, WeakVec::new()),
@@ -1176,11 +1179,11 @@ impl Device {
                 let snatch_guard: SnatchGuard = self.snatchable_lock.read();
                 map_buffer(&buffer, 0, map_size, HostMap::Write, &snatch_guard)?
             };
-            *buffer.map_state.lock() = resource::BufferMapState::Active {
+            buffer.set_map_state(resource::BufferMapState::Active {
                 mapping,
                 range: 0..map_size,
                 host: HostMap::Write,
-            };
+            });
             wgt::BufferUses::MAP_WRITE
         } else {
             let mut staging_buffer =
@@ -1199,7 +1202,7 @@ impl Device {
                 }
             }
 
-            *buffer.map_state.lock() = resource::BufferMapState::Init { staging_buffer };
+            buffer.set_map_state(resource::BufferMapState::Init { staging_buffer });
             wgt::BufferUses::COPY_DST
         };
 
@@ -1361,6 +1364,8 @@ impl Device {
             // initialized: their tracker has no actionable uninitialized range.
             is_fully_initialized: AtomicBool::new(true),
             map_state: Mutex::new(rank::BUFFER_MAP_STATE, resource::BufferMapState::Idle),
+            // Imported buffers start `Idle` and are never mapped-at-creation.
+            map_state_idle: AtomicBool::new(true),
             label: desc.label.to_string(),
             tracking_data: TrackingData::new(self.tracker_indices.buffers.clone()),
             bind_groups: Mutex::new(rank::BUFFER_BIND_GROUPS, WeakVec::new()),
