@@ -5,6 +5,7 @@ use wgpu_benchmark::Benchmark;
 
 mod bind_groups;
 mod computepass;
+mod frame;
 mod renderpass;
 mod resource_creation;
 mod shader;
@@ -60,6 +61,28 @@ impl DeviceState {
             queue,
         }
     }
+
+    /// Create a device on the noop backend, which runs all of wgpu-core's validation
+    /// and tracking but issues no work to a GPU driver, isolating wgpu's CPU overhead
+    /// from driver variance.
+    fn new_noop() -> Self {
+        #[cfg(feature = "tracy")]
+        tracy_client::Client::start();
+
+        let (device, queue) = wgpu::Device::noop(&wgpu::DeviceDescriptor::default());
+        let adapter_info = device.adapter_info();
+
+        println!(
+            "  Using adapter: {} ({:?})",
+            adapter_info.name, adapter_info.backend
+        );
+
+        Self {
+            adapter_info,
+            device,
+            queue,
+        }
+    }
 }
 
 fn main() {
@@ -95,6 +118,10 @@ fn main() {
         Benchmark {
             name: "Computepass Encoding",
             func: computepass::run_bench,
+        },
+        Benchmark {
+            name: "Frame Encoding",
+            func: frame::run_bench,
         },
     ];
 

@@ -109,6 +109,7 @@ Timings:
     --time SECONDS              Override time per benchmark in seconds.
 
 Other:
+    --param KEY=VALUE           Set a benchmark-specific parameter (repeatable).
     --color                     Set colored output (always,always-ansi,auto,never).
     --format terse              Specify --list output format (only 'terse' is supported).
     --no-capture                (Ignored)
@@ -145,6 +146,15 @@ pub fn main(benchmarks: Vec<Benchmark>) {
     } else {
         None
     };
+
+    let mut params = HashMap::new();
+    for pair in args.values_from_str::<_, String>("--param").unwrap() {
+        let Some((key, value)) = pair.split_once('=') else {
+            eprintln!("--param must be in KEY=VALUE form, got {pair:?}.");
+            return;
+        };
+        params.insert(key.to_string(), value.to_string());
+    }
 
     let baseline_name: Option<String> = args.opt_value_from_str(["-b", "--baseline"]).unwrap();
     let write_baseline: Option<String> =
@@ -226,6 +236,7 @@ pub fn main(benchmarks: Vec<Benchmark>) {
             override_iters: override_iterations,
             default_iterations: LoopControl::default(),
             is_test,
+            params: params.clone(),
         };
 
         stdout
