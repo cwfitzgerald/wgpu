@@ -337,8 +337,9 @@ impl RenderPass {
             multiview_mask,
         } = desc;
 
+        let base = BasePass::with_capacity(label, &parent.device.render_pass_size_hint);
         Self {
-            base: BasePass::new(label),
+            base,
             device: parent.device().clone(),
             parent: Some(parent),
             color_attachments,
@@ -2224,6 +2225,14 @@ impl RenderPass {
         let mut cmd_buf_data = cmd_enc.data.lock();
 
         cmd_buf_data.unlock_encoder()?;
+
+        // Fold this pass's final sizes into the device's capacity hint so that
+        // subsequent passes can be pre-sized. Done before `take()` empties the
+        // vectors. Cheap relaxed stores; races are harmless (see `PassSizeHint`).
+        cmd_enc
+            .device
+            .render_pass_size_hint
+            .record_finished(self.base.commands.len(), self.base.dynamic_offsets.len());
 
         let base = self.base.take();
 

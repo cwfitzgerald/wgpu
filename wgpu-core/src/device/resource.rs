@@ -243,6 +243,12 @@ pub struct Device {
 
     pub(crate) command_allocator: command::CommandAllocator,
 
+    /// Heuristic capacity hints used to pre-size the heap vectors of freshly
+    /// opened render/compute passes, tracked separately per pass kind. See
+    /// [`command::PassSizeHint`].
+    pub(crate) render_pass_size_hint: command::PassSizeHint,
+    pub(crate) compute_pass_size_hint: command::PassSizeHint,
+
     pub(crate) command_indices: RwLock<CommandIndices>,
 
     /// The index of the last successful submission to this device's
@@ -341,6 +347,8 @@ const _: () = {
             empty_bgl,
             label,
             command_allocator,
+            render_pass_size_hint,
+            compute_pass_size_hint,
             command_indices,
             last_successful_submission_index,
             fence,
@@ -374,6 +382,8 @@ const _: () = {
         _check_bound(empty_bgl);
         _check_bound(label);
         _check_bound(command_allocator);
+        _check_bound(render_pass_size_hint);
+        _check_bound(compute_pass_size_hint);
         _check_bound(command_indices);
         _check_bound(last_successful_submission_index);
         _check_bound(fence);
@@ -696,6 +706,8 @@ impl Device {
                 ),
                 label: desc.label.to_string(),
                 command_allocator,
+                render_pass_size_hint: command::PassSizeHint::default(),
+                compute_pass_size_hint: command::PassSizeHint::default(),
                 command_indices: RwLock::new(
                     rank::DEVICE_COMMAND_INDICES,
                     CommandIndices {
