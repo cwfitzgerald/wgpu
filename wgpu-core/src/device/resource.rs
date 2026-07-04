@@ -1405,6 +1405,10 @@ impl Device {
                 rank::BUFFER_INITIALIZATION_STATUS,
                 BufferInitTracker::new(tail_start),
             ),
+            // The tracker starts with `0..tail_start` uninitialized. The
+            // `mapped_at_creation` staging path below drains the tracker and
+            // updates this flag accordingly.
+            is_fully_initialized: AtomicBool::new(tail_start == 0),
             map_state: Arc::new(RwLock::new(
                 rank::BUFFER_MAP_STATE,
                 resource::BufferMapState::Idle,
@@ -1507,7 +1511,15 @@ impl Device {
             // Zero initialize memory and then mark the buffer as initialized
             // (it's guaranteed that this is the case by the time the buffer is usable)
             staging_buffer.write_zeros();
-            buffer.initialization_status.write().drain(0..final_size);
+            {
+                let mut init_status = buffer.initialization_status.write();
+                init_status.drain(0..final_size);
+                // Draining the full range leaves the buffer fully initialized;
+                // set the fast-path flag while still holding the write lock.
+                if init_status.is_fully_initialized() {
+                    buffer.is_fully_initialized.store(true, Ordering::Relaxed);
+                }
+            }
 
             *buffer.map_state.write() = resource::BufferMapState::Init { staging_buffer };
             wgt::BufferUses::COPY_DST
@@ -1777,6 +1789,9 @@ impl Device {
                 rank::BUFFER_INITIALIZATION_STATUS,
                 BufferInitTracker::new(0),
             ),
+            // Buffers imported from a raw HAL handle are treated as fully
+            // initialized: their tracker has no actionable uninitialized range.
+            is_fully_initialized: AtomicBool::new(true),
             map_state: Arc::new(RwLock::new(
                 rank::BUFFER_MAP_STATE,
                 resource::BufferMapState::Idle,
@@ -3543,11 +3558,8 @@ impl Device {
         // Once a buffer is initialized, nothing can cause the contents to revert to an
         // unknown state, so we do not record an init action in the bind group when that is
         // the case. (The same is not true of textures.)
-        buffer_init_actions.extend(buffer.initialization_status.read().create_action(
-            buffer,
-            init_range,
-            MemoryInitKind::NeedsInitializedMemory,
-        ));
+        buffer_init_actions
+            .extend(buffer.create_init_action(init_range, MemoryInitKind::NeedsInitializedMemory));
 
         Ok(bb)
     }

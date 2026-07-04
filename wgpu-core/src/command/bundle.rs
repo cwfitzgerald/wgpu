@@ -1059,11 +1059,7 @@ fn set_index_buffer(
 
     state
         .buffer_memory_init_actions
-        .extend(buffer.initialization_status.read().create_action(
-            &buffer,
-            range.clone(),
-            MemoryInitKind::NeedsInitializedMemory,
-        ));
+        .extend(buffer.create_init_action(range.clone(), MemoryInitKind::NeedsInitializedMemory));
     state.set_index_buffer(buffer, index_format, range);
     Ok(())
 }
@@ -1101,13 +1097,9 @@ fn set_vertex_buffer(
         }
         let range = buffer.resolve_vertex_or_index_binding_range(offset, size)?;
 
-        state
-            .buffer_memory_init_actions
-            .extend(buffer.initialization_status.read().create_action(
-                &buffer,
-                range.clone(),
-                MemoryInitKind::NeedsInitializedMemory,
-            ));
+        state.buffer_memory_init_actions.extend(
+            buffer.create_init_action(range.clone(), MemoryInitKind::NeedsInitializedMemory),
+        );
         state.vertex.set_buffer(slot as usize, buffer, range);
         if let Some(pipeline) = state.pipeline.as_deref() {
             state.vertex.update_limits(&pipeline.vertex_steps);
@@ -1314,8 +1306,7 @@ fn multi_draw_indirect(
     }
     state
         .buffer_memory_init_actions
-        .extend(buffer.initialization_status.read().create_action(
-            &buffer,
+        .extend(buffer.create_init_action(
             offset..(offset + stride),
             MemoryInitKind::NeedsInitializedMemory,
         ));

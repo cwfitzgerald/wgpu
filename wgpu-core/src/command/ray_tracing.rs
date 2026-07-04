@@ -843,15 +843,12 @@ fn iter_blas<'snatch_guard: 'buffers, 'buffers>(
                             });
                         }
                         let vertex_buffer_offset = mesh.first_vertex as u64 * mesh.vertex_stride;
-                        if let Some(action) =
-                            vertex_buffer.initialization_status.read().create_action(
-                                vertex_buffer,
-                                vertex_buffer_offset
-                                    ..(vertex_buffer_offset
-                                        + mesh.size.vertex_count as u64 * mesh.vertex_stride),
-                                MemoryInitKind::NeedsInitializedMemory,
-                            )
-                        {
+                        if let Some(action) = vertex_buffer.create_init_action(
+                            vertex_buffer_offset
+                                ..(vertex_buffer_offset
+                                    + mesh.size.vertex_count as u64 * mesh.vertex_stride),
+                            MemoryInitKind::NeedsInitializedMemory,
+                        ) {
                             state.buffer_memory_init_actions.push(action);
                         }
                         vertex_raw
@@ -920,14 +917,11 @@ fn iter_blas<'snatch_guard: 'buffers, 'buffers>(
                             });
                         }
 
-                        if let Some(action) =
-                            index_buffer.initialization_status.read().create_action(
-                                index_buffer,
-                                u64::from(vertex_offset)
-                                    ..(u64::from(vertex_offset) + u64::from(indexes_size)),
-                                MemoryInitKind::NeedsInitializedMemory,
-                            )
-                        {
+                        if let Some(action) = index_buffer.create_init_action(
+                            u64::from(vertex_offset)
+                                ..(u64::from(vertex_offset) + u64::from(indexes_size)),
+                            MemoryInitKind::NeedsInitializedMemory,
+                        ) {
                             state.buffer_memory_init_actions.push(action);
                         }
                         Some((index_raw, vertex_offset))
@@ -995,13 +989,10 @@ fn iter_blas<'snatch_guard: 'buffers, 'buffers>(
                                 buffer_size: transform_buffer.size,
                             });
                         }
-                        if let Some(action) =
-                            transform_buffer.initialization_status.read().create_action(
-                                transform_buffer,
-                                u64::from(offset)..(u64::from(offset) + 48),
-                                MemoryInitKind::NeedsInitializedMemory,
-                            )
-                        {
+                        if let Some(action) = transform_buffer.create_init_action(
+                            u64::from(offset)..(u64::from(offset) + 48),
+                            MemoryInitKind::NeedsInitializedMemory,
+                        ) {
                             state.buffer_memory_init_actions.push(action);
                         }
                         Some((transform_raw, offset))
@@ -1151,14 +1142,11 @@ fn iter_blas<'snatch_guard: 'buffers, 'buffers>(
                             });
                         }
 
-                        if let Some(action) =
-                            aabb_buffer.initialization_status.read().create_action(
-                                aabb_buffer,
-                                u64::from(aabb.primitive_offset)
-                                    ..u64::from(aabb.primitive_offset) + u64::from(aabb_size),
-                                MemoryInitKind::NeedsInitializedMemory,
-                            )
-                        {
+                        if let Some(action) = aabb_buffer.create_init_action(
+                            u64::from(aabb.primitive_offset)
+                                ..u64::from(aabb.primitive_offset) + u64::from(aabb_size),
+                            MemoryInitKind::NeedsInitializedMemory,
+                        ) {
                             state.buffer_memory_init_actions.push(action);
                         }
                         aabb_raw
