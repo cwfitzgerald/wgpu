@@ -423,13 +423,17 @@ impl BufferTracker {
     ///
     /// If the ID is higher than the length of internal vectors,
     /// the vectors will be extended. A call to set_size is not needed.
-    pub fn set_from_usage_scope(&mut self, scope: &BufferUsageScope) {
+    pub fn set_from_usage_scope(&mut self, scope: &mut BufferUsageScope) {
         let incoming_size = scope.state.len();
         if incoming_size > self.start.len() {
             self.set_size(incoming_size);
         }
 
-        for index in scope.metadata.owned_indices() {
+        // Move each resource out of the scope's metadata on the insert path
+        // (rather than cloning it), since the scope is cleared/recycled right
+        // after this call. We snapshot the owned indices up front so the
+        // metadata can be mutated (resources taken out) while we iterate.
+        for index in scope.metadata.owned_indices_snapshot() {
             self.tracker_assert_in_bounds(index);
             scope.tracker_assert_in_bounds(index);
             unsafe {
@@ -439,8 +443,8 @@ impl BufferTracker {
                         state: &scope.state,
                     },
                     None,
-                    ResourceMetadataProvider::Indirect {
-                        metadata: &scope.metadata,
+                    ResourceMetadataProvider::IndirectTake {
+                        metadata: &mut scope.metadata,
                     },
                 )
             }
@@ -486,6 +490,13 @@ impl BufferTracker {
 
             // SAFETY: we checked that the index is in bounds for the scope, and
             // called `set_size` to ensure it is valid for `self`.
+            //
+            // On the insert path this moves the resource out of the scope into
+            // `self`. On the barrier path (already tracked in `self`) the
+            // provider is unused and the resource is left in the scope; the
+            // `remove` below then drops it. Either way the scope no longer owns
+            // `index` afterwards, matching the previous clone-then-remove
+            // behaviour but without the clone/drop pair on the insert path.
             unsafe {
                 self.insert_or_barrier_update(
                     index,
@@ -493,8 +504,8 @@ impl BufferTracker {
                         state: &scope.state,
                     },
                     None,
-                    ResourceMetadataProvider::Indirect {
-                        metadata: &scope.metadata,
+                    ResourceMetadataProvider::IndirectTake {
+                        metadata: &mut scope.metadata,
                     },
                 )
             };
@@ -742,8 +753,8 @@ unsafe fn insert<T: Clone>(
         }
         *current_states.get_unchecked_mut(index) = new_end_state;
 
-        let resource = metadata_provider.get(index);
-        resource_metadata.insert(index, resource.clone());
+        let resource = metadata_provider.get_own(index);
+        resource_metadata.insert(index, resource);
     }
 }
 
