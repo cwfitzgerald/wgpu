@@ -1422,6 +1422,75 @@ crate::impl_labeled!(CommandBuffer);
 crate::impl_parent_device!(CommandBuffer);
 crate::impl_storage_item!(CommandBuffer);
 
+/// A per-device heuristic for how large a freshly-opened pass's heap vectors are
+/// likely to grow, used to pre-size them at [`BasePass::with_capacity`] and avoid
+/// the repeated reallocation (`grow_amortized` doublings) that dominates recording
+/// of large passes.
+///
+/// This is a plain high-water mark of the final sizes of *finished* passes of the
+/// same kind (render vs compute): each field records the largest length seen so
+/// far, clamped to a hard cap (see [`Self::MAX_COMMANDS`] /
+/// [`Self::MAX_DYNAMIC_OFFSETS`]). It is a pure heuristic — reads and writes use
+/// relaxed atomics, so races between concurrently-encoding passes are harmless
+/// (they can only cause a slightly smaller-than-ideal pre-allocation, never
+/// incorrect behavior). Updating it costs a single relaxed [`fetch_max`] per pass
+/// end, and reading it a single relaxed load per pass begin; neither adds any
+/// per-command cost.
+///
+/// The over-allocation this can cause is transient: the vectors are moved out of
+/// the pass and into the encoder's command list at pass end, and freed when the
+/// command buffer is submitted. The cap bounds the worst case (see the constants).
+///
+/// [`fetch_max`]: core::sync::atomic::AtomicUsize::fetch_max
+#[derive(Debug, Default)]
+pub(crate) struct PassSizeHint {
+    /// High-water mark of finished passes' `commands.len()`.
+    commands: core::sync::atomic::AtomicUsize,
+    /// High-water mark of finished passes' `dynamic_offsets.len()`.
+    dynamic_offsets: core::sync::atomic::AtomicUsize,
+}
+
+impl PassSizeHint {
+    /// Hard cap on the pre-sized `commands` capacity.
+    ///
+    /// An `ArcRenderCommand` is 56 bytes and an `ArcComputeCommand` 48 bytes, so
+    /// 8192 commands bounds the worst-case pre-allocation at roughly 448 KiB per
+    /// pass. That over-allocation is transient (freed at submit) and only reached
+    /// after a pass that actually recorded that many commands. The value
+    /// comfortably covers the expensive tail of the doubling sequence (…, 2048,
+    /// 4096, 8192) that the profile attributes reallocation time to, while
+    /// keeping the cost of over-sizing the many tiny passes in a frame bounded.
+    const MAX_COMMANDS: usize = 8192;
+
+    /// Hard cap on the pre-sized `dynamic_offsets` capacity.
+    ///
+    /// `dynamic_offsets` holds `u32`s (4 bytes each), so this bounds the
+    /// worst-case pre-allocation at 32 KiB per pass. It roughly tracks the draw
+    /// count, so it is capped independently of (and equal to) the command cap.
+    const MAX_DYNAMIC_OFFSETS: usize = 8192;
+
+    /// Capacities to pre-allocate a freshly-opened pass with.
+    fn suggested_capacities(&self) -> (usize, usize) {
+        use core::sync::atomic::Ordering;
+        (
+            self.commands
+                .load(Ordering::Relaxed)
+                .min(Self::MAX_COMMANDS),
+            self.dynamic_offsets
+                .load(Ordering::Relaxed)
+                .min(Self::MAX_DYNAMIC_OFFSETS),
+        )
+    }
+
+    /// Fold a finished pass's final sizes into the high-water mark.
+    fn record_finished(&self, commands: usize, dynamic_offsets: usize) {
+        use core::sync::atomic::Ordering;
+        self.commands.fetch_max(commands, Ordering::Relaxed);
+        self.dynamic_offsets
+            .fetch_max(dynamic_offsets, Ordering::Relaxed);
+    }
+}
+
 /// A stream of commands for a render pass or compute pass.
 ///
 /// This also contains side tables referred to by certain commands,
@@ -1482,6 +1551,22 @@ impl<C: Clone, E: Clone> BasePass<C, E> {
             error: None,
             commands: Vec::new(),
             dynamic_offsets: Vec::new(),
+            string_data: Vec::new(),
+            immediates_data: Vec::new(),
+        }
+    }
+
+    /// Like [`Self::new`], but pre-allocates `commands` and `dynamic_offsets`
+    /// according to a [`PassSizeHint`] to avoid reallocation churn while
+    /// recording. `string_data` and `immediates_data` are left empty: they are
+    /// negligible in size and only touched by debug-marker/immediate commands.
+    fn with_capacity(label: &Label, size_hint: &PassSizeHint) -> Self {
+        let (commands_cap, dynamic_offsets_cap) = size_hint.suggested_capacities();
+        Self {
+            label: label.as_deref().map(str::to_owned),
+            error: None,
+            commands: Vec::with_capacity(commands_cap),
+            dynamic_offsets: Vec::with_capacity(dynamic_offsets_cap),
             string_data: Vec::new(),
             immediates_data: Vec::new(),
         }

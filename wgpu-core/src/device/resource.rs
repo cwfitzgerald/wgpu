@@ -217,6 +217,12 @@ pub struct Device {
 
     pub(crate) command_allocator: command::CommandAllocator,
 
+    /// Heuristic capacity hints used to pre-size the heap vectors of freshly
+    /// opened render/compute passes, tracked separately per pass kind. See
+    /// [`command::PassSizeHint`].
+    pub(crate) render_pass_size_hint: command::PassSizeHint,
+    pub(crate) compute_pass_size_hint: command::PassSizeHint,
+
     pub(crate) command_indices: RwLock<CommandIndices>,
 
     /// The index of the last successful submission to this device's
@@ -528,6 +534,8 @@ impl Device {
             ),
             label: desc.label.to_string(),
             command_allocator,
+            render_pass_size_hint: command::PassSizeHint::default(),
+            compute_pass_size_hint: command::PassSizeHint::default(),
             command_indices: RwLock::new(
                 rank::DEVICE_COMMAND_INDICES,
                 CommandIndices {

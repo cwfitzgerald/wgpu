@@ -81,8 +81,9 @@ impl ComputePass {
             timestamp_writes,
         } = desc;
 
+        let base = BasePass::with_capacity(&label, &parent.device.compute_pass_size_hint);
         Self {
-            base: BasePass::new(&label),
+            base,
             parent: Some(parent),
             timestamp_writes,
 
@@ -610,6 +611,14 @@ impl Global {
         let mut cmd_buf_data = cmd_enc.data.lock();
 
         cmd_buf_data.unlock_encoder()?;
+
+        // Fold this pass's final sizes into the device's capacity hint so that
+        // subsequent passes can be pre-sized. Done before `take()` empties the
+        // vectors. Cheap relaxed stores; races are harmless (see `PassSizeHint`).
+        cmd_enc
+            .device
+            .compute_pass_size_hint
+            .record_finished(pass.base.commands.len(), pass.base.dynamic_offsets.len());
 
         let base = pass.base.take();
 
