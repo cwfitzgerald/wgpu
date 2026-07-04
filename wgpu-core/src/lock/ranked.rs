@@ -384,7 +384,7 @@ impl<'a, T> ops::DerefMut for RwLockWriteGuard<'a, T> {
 
 #[cfg(test)]
 mod tests {
-    use super::Mutex;
+    use super::{Mutex, RwLock};
     use crate::lock::rank;
 
     /// Locks can be acquired in the order indicated by their ranks.
@@ -436,6 +436,22 @@ mod tests {
         let guard3 = lock3.lock();
         drop(guard3);
         drop(guard1);
+    }
+
+    /// Regression test for the command-vec pool release path: the submit path
+    /// reclaims a pass's vectors into [`rank::COMMAND_VEC_POOL`] while holding
+    /// `Device::snatchable_lock` (read), so `COMMAND_VEC_POOL` must be a follower
+    /// of [`rank::DEVICE_SNATCHABLE_LOCK`]. This reproduces that nesting against
+    /// the real rank table; it panics if the follower edge is missing.
+    #[test]
+    fn command_vec_pool_after_snatchable_read() {
+        let snatchable = RwLock::new(rank::DEVICE_SNATCHABLE_LOCK, ());
+        let pool = Mutex::new(rank::COMMAND_VEC_POOL, ());
+
+        let snatch_guard = snatchable.read();
+        let pool_guard = pool.lock();
+        drop(pool_guard);
+        drop(snatch_guard);
     }
 
     /// Locks can only be acquired and released in a stack-like order.
