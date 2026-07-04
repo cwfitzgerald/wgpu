@@ -389,7 +389,22 @@ impl Binder {
         offsets: &[wgt::DynamicOffset],
     ) {
         let payload = &mut self.payloads[index];
-        payload.group = Some(bind_group.clone());
+
+        // Fast path: the same bind group is frequently re-set on consecutive
+        // draws (only its dynamic offsets change). When the incoming group is
+        // pointer-identical to the one already assigned at this index, its
+        // layout is by definition the same `Arc`, so the group/layout `Arc`
+        // clones (and their matching drops) are redundant work. We still must
+        // update the dynamic offsets and mark this slot for rebind so the
+        // encoder re-emits it with the new offsets.
+        let same_group = payload
+            .group
+            .as_ref()
+            .is_some_and(|current| Arc::ptr_eq(current, bind_group));
+
+        if !same_group {
+            payload.group = Some(bind_group.clone());
+        }
         payload.dynamic_offsets.clear();
         payload.dynamic_offsets.extend_from_slice(offsets);
 
@@ -420,7 +435,14 @@ impl Binder {
             }
         }
 
-        self.manager.assign(index, bind_group.layout.clone());
+        if same_group {
+            // The layout `Arc` already assigned at this index is identical, so
+            // skip the redundant clone. We still mark the slot for rebind, which
+            // is the only other effect of `manager.assign`.
+            self.manager.update_rebind_start_index(index);
+        } else {
+            self.manager.assign(index, bind_group.layout.clone());
+        }
     }
 
     pub(super) fn clear_group(&mut self, index: usize) {

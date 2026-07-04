@@ -209,13 +209,13 @@ pub(super) fn clear_buffer(
     }
 
     // Mark dest as initialized.
-    state
-        .buffer_memory_init_actions
-        .extend(dst_buffer.initialization_status.read().create_action(
-            &dst_buffer,
-            offset..end_offset,
-            MemoryInitKind::ImplicitlyInitialized,
-        ));
+    if let Some(action) = dst_buffer.initialization_status.read().create_action(
+        &dst_buffer,
+        offset..end_offset,
+        MemoryInitKind::ImplicitlyInitialized,
+    ) {
+        state.buffer_memory_init_actions.push(action);
+    }
 
     // actual hal barrier & operation
     let dst_barrier = dst_pending.map(|pending| pending.into_hal(&dst_buffer, state.snatch_guard));

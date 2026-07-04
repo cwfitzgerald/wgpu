@@ -567,13 +567,13 @@ pub(super) fn resolve_query_set(
 
     let query_set = state.tracker.query_sets.insert_single(query_set);
 
-    state
-        .buffer_memory_init_actions
-        .extend(dst_buffer.initialization_status.read().create_action(
-            &dst_buffer,
-            buffer_start_offset..buffer_end_offset,
-            MemoryInitKind::ImplicitlyInitialized,
-        ));
+    if let Some(action) = dst_buffer.initialization_status.read().create_action(
+        &dst_buffer,
+        buffer_start_offset..buffer_end_offset,
+        MemoryInitKind::ImplicitlyInitialized,
+    ) {
+        state.buffer_memory_init_actions.push(action);
+    }
 
     let raw_encoder = state.raw_encoder.open_if_closed()?;
     let raw_dst_buffer = dst_buffer.try_raw(state.snatch_guard)?;

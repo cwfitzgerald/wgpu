@@ -1070,13 +1070,13 @@ fn dispatch_workgroups_indirect(
     buffer.check_destroyed(state.pass.base.snatch_guard)?;
 
     let stride = 3 * 4; // 3 integers, x/y/z group size
-    state.pass.base.buffer_memory_init_actions.extend(
-        buffer.initialization_status.read().create_action(
-            &buffer,
-            offset..(offset + stride),
-            MemoryInitKind::NeedsInitializedMemory,
-        ),
-    );
+    if let Some(action) = buffer.initialization_status.read().create_action(
+        &buffer,
+        offset..(offset + stride),
+        MemoryInitKind::NeedsInitializedMemory,
+    ) {
+        state.pass.base.buffer_memory_init_actions.push(action);
+    }
 
     if let Some(ref indirect_validation) = state.pass.base.device.indirect_validation {
         let params = indirect_validation.dispatch.params(

@@ -2870,13 +2870,13 @@ fn set_index_buffer(
     let end = offset + resolved_size;
     state.index.update_buffer(offset..end, index_format);
 
-    state.pass.base.buffer_memory_init_actions.extend(
-        buffer.initialization_status.read().create_action(
-            &buffer,
-            offset..end,
-            MemoryInitKind::NeedsInitializedMemory,
-        ),
-    );
+    if let Some(action) = buffer.initialization_status.read().create_action(
+        &buffer,
+        offset..end,
+        MemoryInitKind::NeedsInitializedMemory,
+    ) {
+        state.pass.base.buffer_memory_init_actions.push(action);
+    }
 
     unsafe {
         hal::DynCommandEncoder::set_index_buffer(
@@ -2933,13 +2933,13 @@ fn set_vertex_buffer(
             .buffers
             .merge_single(&buffer, wgt::BufferUses::VERTEX)?;
 
-        state.pass.base.buffer_memory_init_actions.extend(
-            buffer.initialization_status.read().create_action(
-                &buffer,
-                buffer_range.clone(),
-                MemoryInitKind::NeedsInitializedMemory,
-            ),
-        );
+        if let Some(action) = buffer.initialization_status.read().create_action(
+            &buffer,
+            buffer_range.clone(),
+            MemoryInitKind::NeedsInitializedMemory,
+        ) {
+            state.pass.base.buffer_memory_init_actions.push(action);
+        }
 
         state
             .vertex
@@ -3277,13 +3277,13 @@ fn multi_draw_indirect(
         }
     };
 
-    state.pass.base.buffer_memory_init_actions.extend(
-        indirect_buffer.initialization_status.read().create_action(
-            &indirect_buffer,
-            offset..offset + args_size,
-            MemoryInitKind::NeedsInitializedMemory,
-        ),
-    );
+    if let Some(action) = indirect_buffer.initialization_status.read().create_action(
+        &indirect_buffer,
+        offset..offset + args_size,
+        MemoryInitKind::NeedsInitializedMemory,
+    ) {
+        state.pass.base.buffer_memory_init_actions.push(action);
+    }
 
     fn draw(
         raw_encoder: &mut dyn hal::DynCommandEncoder,
@@ -3495,13 +3495,13 @@ fn multi_draw_indirect_count(
         }
     };
 
-    state.pass.base.buffer_memory_init_actions.extend(
-        indirect_buffer.initialization_status.read().create_action(
-            &indirect_buffer,
-            offset..offset + args_size,
-            MemoryInitKind::NeedsInitializedMemory,
-        ),
-    );
+    if let Some(action) = indirect_buffer.initialization_status.read().create_action(
+        &indirect_buffer,
+        offset..offset + args_size,
+        MemoryInitKind::NeedsInitializedMemory,
+    ) {
+        state.pass.base.buffer_memory_init_actions.push(action);
+    }
 
     let begin_count_offset = count_buffer_offset;
     let count_bytes = 4;
@@ -3512,13 +3512,13 @@ fn multi_draw_indirect_count(
             count_buffer_size: count_buffer.size,
         });
     }
-    state.pass.base.buffer_memory_init_actions.extend(
-        count_buffer.initialization_status.read().create_action(
-            &count_buffer,
-            count_buffer_offset..count_buffer_offset + count_bytes,
-            MemoryInitKind::NeedsInitializedMemory,
-        ),
-    );
+    if let Some(action) = count_buffer.initialization_status.read().create_action(
+        &count_buffer,
+        count_buffer_offset..count_buffer_offset + count_bytes,
+        MemoryInitKind::NeedsInitializedMemory,
+    ) {
+        state.pass.base.buffer_memory_init_actions.push(action);
+    }
 
     match family {
         DrawCommandFamily::Draw => unsafe {

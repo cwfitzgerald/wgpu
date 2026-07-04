@@ -771,13 +771,13 @@ fn handle_buffer_init(
         // Adjust the start/end outwards to 4B alignment.
         let aligned_start = start & !ALIGN_MASK;
         let aligned_end = (end + ALIGN_MASK) & !ALIGN_MASK;
-        state
-            .buffer_memory_init_actions
-            .extend(buffer.initialization_status.read().create_action(
-                buffer,
-                aligned_start..aligned_end,
-                MemoryInitKind::NeedsInitializedMemory,
-            ));
+        if let Some(action) = buffer.initialization_status.read().create_action(
+            buffer,
+            aligned_start..aligned_end,
+            MemoryInitKind::NeedsInitializedMemory,
+        ) {
+            state.buffer_memory_init_actions.push(action);
+        }
     } else {
         // If the transfer will write a contiguous region of the buffer, then we
         // don't need to initialize that region.
@@ -791,22 +791,22 @@ fn handle_buffer_init(
         let aligned_start = (start + ALIGN_MASK) & !ALIGN_MASK;
         let aligned_end = end & !ALIGN_MASK;
         if aligned_start != start {
-            state.buffer_memory_init_actions.extend(
-                buffer.initialization_status.read().create_action(
-                    buffer,
-                    aligned_start - ALIGN_SIZE..aligned_start,
-                    MemoryInitKind::NeedsInitializedMemory,
-                ),
-            );
+            if let Some(action) = buffer.initialization_status.read().create_action(
+                buffer,
+                aligned_start - ALIGN_SIZE..aligned_start,
+                MemoryInitKind::NeedsInitializedMemory,
+            ) {
+                state.buffer_memory_init_actions.push(action);
+            }
         }
         if aligned_start != aligned_end {
-            state.buffer_memory_init_actions.extend(
-                buffer.initialization_status.read().create_action(
-                    buffer,
-                    aligned_start..aligned_end,
-                    MemoryInitKind::ImplicitlyInitialized,
-                ),
-            );
+            if let Some(action) = buffer.initialization_status.read().create_action(
+                buffer,
+                aligned_start..aligned_end,
+                MemoryInitKind::ImplicitlyInitialized,
+            ) {
+                state.buffer_memory_init_actions.push(action);
+            }
         }
         if aligned_end != end {
             // It is possible that `aligned_end + ALIGN_SIZE > dst_buffer.size`,
@@ -814,13 +814,13 @@ fn handle_buffer_init(
             // final size of the buffer. The final size of the buffer is not
             // readily available, but was rounded up to COPY_BUFFER_ALIGNMENT,
             // so no overrun is possible.
-            state.buffer_memory_init_actions.extend(
-                buffer.initialization_status.read().create_action(
-                    buffer,
-                    aligned_end..aligned_end + ALIGN_SIZE,
-                    MemoryInitKind::NeedsInitializedMemory,
-                ),
-            );
+            if let Some(action) = buffer.initialization_status.read().create_action(
+                buffer,
+                aligned_end..aligned_end + ALIGN_SIZE,
+                MemoryInitKind::NeedsInitializedMemory,
+            ) {
+                state.buffer_memory_init_actions.push(action);
+            }
         }
     }
 }
@@ -1096,20 +1096,20 @@ pub(super) fn copy_buffer_to_buffer(
     }
 
     // Make sure source is initialized memory and mark dest as initialized.
-    state
-        .buffer_memory_init_actions
-        .extend(dst_buffer.initialization_status.read().create_action(
-            dst_buffer,
-            destination_offset..destination_end_offset,
-            MemoryInitKind::ImplicitlyInitialized,
-        ));
-    state
-        .buffer_memory_init_actions
-        .extend(src_buffer.initialization_status.read().create_action(
-            src_buffer,
-            source_offset..source_end_offset,
-            MemoryInitKind::NeedsInitializedMemory,
-        ));
+    if let Some(action) = dst_buffer.initialization_status.read().create_action(
+        dst_buffer,
+        destination_offset..destination_end_offset,
+        MemoryInitKind::ImplicitlyInitialized,
+    ) {
+        state.buffer_memory_init_actions.push(action);
+    }
+    if let Some(action) = src_buffer.initialization_status.read().create_action(
+        src_buffer,
+        source_offset..source_end_offset,
+        MemoryInitKind::NeedsInitializedMemory,
+    ) {
+        state.buffer_memory_init_actions.push(action);
+    }
 
     let region = hal::BufferCopy {
         src_offset: source_offset,

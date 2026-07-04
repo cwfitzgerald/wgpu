@@ -65,13 +65,14 @@ impl CommandBufferTextureMemoryActions {
         // We don't need to add MemoryInitKind::NeedsInitializedMemory to
         // init_actions if a surface is part of the discard list. But that would
         // mean splitting up the action which is more than we'd win here.
-        self.init_actions.extend(
-            action
-                .texture
-                .initialization_status
-                .read()
-                .check_action(action),
-        );
+        if let Some(init_action) = action
+            .texture
+            .initialization_status
+            .read()
+            .check_action(action)
+        {
+            self.init_actions.push(init_action);
+        }
 
         // We expect very few discarded surfaces at any point in time which is
         // why a simple linear search is likely best. (i.e. most of the time
