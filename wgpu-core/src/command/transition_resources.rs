@@ -88,7 +88,7 @@ pub(crate) fn transition_resources(
     CommandEncoder::insert_barriers_from_scope(
         state.raw_encoder,
         state.tracker,
-        &usage_scope,
+        &mut usage_scope,
         state.snatch_guard,
     );
     Ok(())

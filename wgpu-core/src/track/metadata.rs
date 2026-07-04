@@ -130,12 +130,46 @@ impl<T: Clone> ResourceMetadata<T> {
         iterate_bitvec_indices(&self.owned)
     }
 
+    /// Returns an iterator over the indices of all resources owned by `self`,
+    /// snapshotting occupancy up front so that `self` may be mutated (for
+    /// example, resources taken out via [`Self::take`]) while iterating.
+    ///
+    /// The yielded indices, and their order, are identical to
+    /// [`Self::owned_indices`] evaluated against `self` at the time of the
+    /// call. Mutations made during iteration do not affect the sequence.
+    pub(super) fn owned_indices_snapshot(&self) -> OwnedIndicesSnapshot {
+        if !self.owned.is_empty() {
+            self.tracker_assert_in_bounds(self.owned.len() - 1)
+        };
+        OwnedIndicesSnapshot::new(self.owned.clone())
+    }
+
     /// Remove the resource with the given index from the set.
     pub(super) unsafe fn remove(&mut self, index: usize) {
         unsafe {
             *self.resources.get_unchecked_mut(index) = None;
         }
         self.owned.set(index, false);
+    }
+
+    /// Remove the resource with the given index from the set, returning it.
+    ///
+    /// This is like [`Self::remove`], but hands back ownership of the removed
+    /// resource instead of dropping it. Leaving the slot as `None` with its
+    /// occupancy bit cleared keeps the same clean, unoccupied state as
+    /// [`Self::remove`], so the metadata can subsequently be cleared, dropped,
+    /// or recycled without double-dropping or leaving a dangling occupancy bit.
+    ///
+    /// # Safety
+    ///
+    /// The given `index` must be in bounds for this `ResourceMetadata`'s
+    /// existing tables, and the slot must be occupied (`owned[index]` set).
+    /// See `tracker_assert_in_bounds`.
+    #[inline(always)]
+    pub(super) unsafe fn take(&mut self, index: usize) -> T {
+        let resource = unsafe { self.resources.get_unchecked_mut(index).take() };
+        self.owned.set(index, false);
+        unsafe { resource.unwrap_unchecked() }
     }
 }
 
@@ -148,6 +182,12 @@ pub(super) enum ResourceMetadataProvider<'a, T: Clone> {
     Direct { resource: &'a T },
     /// Comes from another metadata tracker.
     Indirect { metadata: &'a ResourceMetadata<T> },
+    /// Comes from another metadata tracker whose entries are being consumed:
+    /// [`Self::get_own`] moves the resource out of the source rather than
+    /// cloning it.
+    IndirectTake {
+        metadata: &'a mut ResourceMetadata<T>,
+    },
 }
 impl<T: Clone> ResourceMetadataProvider<'_, T> {
     /// Get a reference to the resource from this.
@@ -157,14 +197,41 @@ impl<T: Clone> ResourceMetadataProvider<'_, T> {
     /// - The index must be in bounds of the metadata tracker if this uses an indirect source.
     #[inline(always)]
     pub(super) unsafe fn get(&self, index: usize) -> &T {
+        let metadata: &ResourceMetadata<T> = match self {
+            ResourceMetadataProvider::Direct { resource } => return resource,
+            ResourceMetadataProvider::Indirect { metadata } => metadata,
+            ResourceMetadataProvider::IndirectTake { metadata } => metadata,
+        };
+        metadata.tracker_assert_in_bounds(index);
+        let resource = unsafe { metadata.resources.get_unchecked(index) }.as_ref();
+        unsafe { resource.unwrap_unchecked() }
+    }
+
+    /// Take ownership of the resource from this.
+    ///
+    /// For [`Self::Direct`] and [`Self::Indirect`] sources this clones the
+    /// resource, exactly like `self.get(index).clone()`. For
+    /// [`Self::IndirectTake`] it *moves* the resource out of the source
+    /// metadata, avoiding a clone/reference-count bump and the matching drop
+    /// when the source is later cleared.
+    ///
+    /// # Safety
+    ///
+    /// - The index must be in bounds of the metadata tracker if this uses an
+    ///   indirect source.
+    /// - For an [`Self::IndirectTake`] source the slot must be occupied.
+    #[inline(always)]
+    pub(super) unsafe fn get_own(self, index: usize) -> T {
         match self {
-            ResourceMetadataProvider::Direct { resource } => resource,
+            ResourceMetadataProvider::Direct { resource } => resource.clone(),
             ResourceMetadataProvider::Indirect { metadata } => {
                 metadata.tracker_assert_in_bounds(index);
-                {
-                    let resource = unsafe { metadata.resources.get_unchecked(index) }.as_ref();
-                    unsafe { resource.unwrap_unchecked() }
-                }
+                let resource = unsafe { metadata.resources.get_unchecked(index) }.as_ref();
+                unsafe { resource.unwrap_unchecked() }.clone()
+            }
+            ResourceMetadataProvider::IndirectTake { metadata } => {
+                metadata.tracker_assert_in_bounds(index);
+                unsafe { metadata.take(index) }
             }
         }
     }
@@ -179,6 +246,76 @@ fn resize_bitvec<B: bit_vec::BitBlock>(vec: &mut BitVec<B>, size: usize) {
         }
     } else {
         vec.truncate(size);
+    }
+}
+
+/// An owning iterator over the set-bit indices of a [`BitVec`].
+///
+/// This is the owning counterpart of [`iterate_bitvec_indices`]: it takes a
+/// snapshot of the occupancy bits so the source metadata may be mutated while
+/// iterating. It yields the same indices in the same order, and likewise skips
+/// entire `usize`s worth of bits if they are all false.
+pub(super) struct OwnedIndicesSnapshot {
+    owned: BitVec<usize>,
+    /// Number of valid bits (may be less than `owned.len() * BITS_PER_BLOCK`).
+    size: usize,
+    /// Index of the block currently being drained.
+    block_index: usize,
+    /// Remaining bits of the current block, shifted down as they are consumed.
+    word: usize,
+    /// The bit index that the low bit of `word` corresponds to.
+    bit_cursor: usize,
+}
+
+impl OwnedIndicesSnapshot {
+    const BITS_PER_BLOCK: usize = usize::BITS as usize;
+
+    fn new(owned: BitVec<usize>) -> Self {
+        let size = owned.len();
+        Self {
+            owned,
+            size,
+            block_index: 0,
+            word: 0,
+            bit_cursor: 0,
+        }
+    }
+}
+
+impl Iterator for OwnedIndicesSnapshot {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<usize> {
+        loop {
+            // Drain any remaining set bits in the current word.
+            while self.word != 0 {
+                let tz = self.word.trailing_zeros() as usize;
+                let index = self.bit_cursor + tz;
+                // Consume up to and including the found bit.
+                self.bit_cursor += tz + 1;
+                // Shift the bit out, guarding against a full-width shift.
+                self.word = self.word.checked_shr(tz as u32 + 1).unwrap_or(0);
+                if index < self.size {
+                    return Some(index);
+                }
+            }
+
+            // Advance to the next non-empty block, skipping empty ones.
+            let blocks = self.owned.storage();
+            loop {
+                if self.block_index >= blocks.len() {
+                    return None;
+                }
+                let word = blocks[self.block_index];
+                let bit_start = self.block_index * Self::BITS_PER_BLOCK;
+                self.block_index += 1;
+                if word != 0 {
+                    self.word = word;
+                    self.bit_cursor = bit_start;
+                    break;
+                }
+            }
+        }
     }
 }
 

@@ -2327,7 +2327,7 @@ pub(super) fn encode_render_pass(
         .open_pass(base.label.as_deref())
         .map_pass_err(pass_scope)?;
 
-    let (scope, pending_discard_init_fixups, mut pending_query_resets) = {
+    let (mut scope, pending_discard_init_fixups, mut pending_query_resets) = {
         let mut pending_query_resets = QueryResetMap::new();
         let mut pending_discard_init_fixups = SurfacesInDiscardState::new();
 
@@ -2772,7 +2772,7 @@ pub(super) fn encode_render_pass(
         CommandEncoder::insert_barriers_from_scope(
             transit,
             tracker,
-            &scope,
+            &mut scope,
             parent_state.snatch_guard,
         );
 

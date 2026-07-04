@@ -1030,13 +1030,13 @@ impl CommandEncoder {
     pub(crate) fn insert_barriers_from_scope(
         raw: &mut dyn hal::DynCommandEncoder,
         base: &mut Tracker,
-        head: &UsageScope,
+        head: &mut UsageScope,
         snatch_guard: &SnatchGuard,
     ) {
         profiling::scope!("insert_barriers");
 
-        base.buffers.set_from_usage_scope(&head.buffers);
-        base.textures.set_from_usage_scope(&head.textures);
+        base.buffers.set_from_usage_scope(&mut head.buffers);
+        base.textures.set_from_usage_scope(&mut head.textures);
 
         Self::drain_barriers(raw, base, snatch_guard);
     }

@@ -584,27 +584,41 @@ impl TextureTracker {
     ///
     /// If the ID is higher than the length of internal vectors,
     /// the vectors will be extended. A call to set_size is not needed.
-    pub fn set_from_usage_scope(&mut self, scope: &TextureUsageScope) {
+    pub fn set_from_usage_scope(&mut self, scope: &mut TextureUsageScope) {
         let incoming_size = scope.set.size();
         if incoming_size > self.start_set.size() {
             self.set_size(incoming_size);
         }
 
-        for index in scope.metadata.owned_indices() {
+        // Move each texture out of the scope's metadata on the insert path
+        // (rather than cloning it), since the scope is cleared/recycled right
+        // after this call. We snapshot the owned indices up front so the
+        // metadata can be mutated (textures taken out) while we iterate.
+        //
+        // The texture selector is cloned into a local before we form the `&mut`
+        // borrow of the metadata, so the shared read of the resource and the
+        // `&mut` used to take it never overlap.
+        for index in scope.metadata.owned_indices_snapshot() {
             self.tracker_assert_in_bounds(index);
             scope.tracker_assert_in_bounds(index);
+            let texture_selector = unsafe {
+                scope
+                    .metadata
+                    .get_resource_unchecked(index)
+                    .full_range
+                    .clone()
+            };
             unsafe {
-                let texture_selector = &scope.metadata.get_resource_unchecked(index).full_range;
                 insert_or_barrier_update(
-                    texture_selector,
+                    &texture_selector,
                     Some(&mut self.start_set),
                     &mut self.end_set,
                     &mut self.metadata,
                     index,
                     TextureStateProvider::TextureSet { set: &scope.set },
                     None,
-                    ResourceMetadataProvider::Indirect {
-                        metadata: &scope.metadata,
+                    ResourceMetadataProvider::IndirectTake {
+                        metadata: &mut scope.metadata,
                     },
                     &mut self.temp,
                     self.ordered_uses_mask,
@@ -650,6 +664,16 @@ impl TextureTracker {
             let texture_selector = &view.parent.full_range;
             // SAFETY: we checked that the index is in bounds for the scope, and
             // called `set_size` to ensure it is valid for `self`.
+            //
+            // On the insert path this moves the texture out of the scope into
+            // `self`. On the barrier path (already tracked in `self`) the
+            // provider is unused and the texture is left in the scope; the
+            // `remove` below then drops it. Either way the scope no longer owns
+            // `index` afterwards, matching the previous clone-then-remove
+            // behaviour but without the clone/drop pair on the insert path.
+            //
+            // `texture_selector` is borrowed from the bind group's view, not
+            // from the scope metadata, so it does not alias the `&mut` take.
             unsafe {
                 insert_or_barrier_update(
                     texture_selector,
@@ -659,8 +683,8 @@ impl TextureTracker {
                     index,
                     TextureStateProvider::TextureSet { set: &scope.set },
                     None,
-                    ResourceMetadataProvider::Indirect {
-                        metadata: &scope.metadata,
+                    ResourceMetadataProvider::IndirectTake {
+                        metadata: &mut scope.metadata,
                     },
                     &mut self.temp,
                     self.ordered_uses_mask,
@@ -1167,8 +1191,8 @@ unsafe fn insert<T: Clone>(
     }
 
     unsafe {
-        let resource = metadata_provider.get(index);
-        resource_metadata.insert(index, resource.clone());
+        let resource = metadata_provider.get_own(index);
+        resource_metadata.insert(index, resource);
     }
 }
 
