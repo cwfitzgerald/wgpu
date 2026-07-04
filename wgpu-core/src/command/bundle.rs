@@ -106,7 +106,8 @@ use crate::{
     command::{
         bind::Binder, pass::validate_immediates_alignment, pass_base, BasePass,
         BindGroupStateChange, ColorAttachmentError, DrawError, EncoderStateError, IdReferences,
-        MapPassErr, PassErrorScope, PassStateError, RenderCommand, RenderCommandError, StateChange,
+        MapPassErr, PassErrorScope, PassStateError, RenderArenas, RenderCommand,
+        RenderCommandError, StateChange,
     },
     device::{
         AttachmentData, Device, DeviceError, MissingDownlevelFlags, MissingFeatures,
@@ -412,6 +413,7 @@ impl RenderBundleEncoder {
             flat_dynamic_offsets: Vec::new(),
             device: device.clone(),
             commands: Vec::new(),
+            arenas: RenderArenas::default(),
             buffer_memory_init_actions: Vec::new(),
             texture_memory_init_actions: Vec::new(),
             next_dynamic_offset: 0,
@@ -593,6 +595,7 @@ impl RenderBundleEncoder {
             flat_dynamic_offsets,
             device,
             commands,
+            arenas,
             buffer_memory_init_actions,
             texture_memory_init_actions,
             ..
@@ -619,6 +622,7 @@ impl RenderBundleEncoder {
                 string_data,
                 immediates_data,
             },
+            arenas,
             is_depth_read_only: self.is_depth_read_only,
             is_stencil_read_only: self.is_stencil_read_only,
             device: device.clone(),
@@ -916,9 +920,10 @@ fn set_pipeline(
         return Err(RenderCommandError::IncompatibleStencilAccess(pipeline.error_ident()).into());
     }
 
+    let pipeline_index = state.arenas.pipelines.push(pipeline.clone());
     state
         .commands
-        .push(ArcRenderCommand::SetPipeline(pipeline.clone()));
+        .push(ArcRenderCommand::SetPipeline(pipeline_index));
 
     state.pipeline = Some(pipeline.clone());
 
@@ -1305,6 +1310,10 @@ pub struct RenderBundle {
     // Normalized command stream. It can be executed verbatim,
     // without re-binding anything on the pipeline change.
     base: BasePass<ArcRenderCommand, Infallible>,
+    /// Resources referenced by `base`, interned into per-type arenas at finish
+    /// time. Immutable afterwards; the bundle may be executed by many passes /
+    /// frames, and the commands in `base` index these arenas.
+    arenas: RenderArenas,
     pub(super) is_depth_read_only: bool,
     pub(super) is_stencil_read_only: bool,
     pub(crate) device: Arc<Device>,
@@ -1359,6 +1368,7 @@ impl RenderBundle {
                 string_data: Vec::new(),
                 immediates_data: Vec::new(),
             },
+            arenas: RenderArenas::default(),
             is_depth_read_only: false,
             is_stencil_read_only: false,
             buffer_memory_init_actions: Vec::new(),
@@ -1370,9 +1380,26 @@ impl RenderBundle {
         })
     }
 
+    /// Reconstruct a base pass whose commands carry resolved `Arc`s (rather than
+    /// arena indices), for trace recording. Resolving indices to `Arc`s here
+    /// yields the exact same emitted format traces used before arenas.
     #[cfg(feature = "trace")]
-    pub(crate) fn to_base_pass(&self) -> BasePass<RenderCommand<ArcReferences>, Infallible> {
-        self.base.clone()
+    pub(crate) fn to_base_pass(
+        &self,
+    ) -> BasePass<RenderCommand<crate::command::ArcReferences>, Infallible> {
+        BasePass {
+            label: self.base.label.clone(),
+            error: None,
+            commands: self
+                .base
+                .commands
+                .iter()
+                .map(|cmd| super::render::resolve_render_command_to_arc(&self.arenas, cmd))
+                .collect(),
+            dynamic_offsets: self.base.dynamic_offsets.clone(),
+            string_data: self.base.string_data.clone(),
+            immediates_data: self.base.immediates_data.clone(),
+        }
     }
 
     /// Actually encode the contents into a native command buffer.
@@ -1407,7 +1434,10 @@ impl RenderBundle {
                     num_dynamic_offsets,
                     bind_group,
                 } => {
-                    let raw_bg = bind_group.as_ref().unwrap().try_raw(snatch_guard)?;
+                    // Resolve the index against this bundle's own (immutable)
+                    // arena. `&self`, so multi-pass / multi-frame reuse is fine.
+                    let bind_group = self.arenas.bind_groups.get(bind_group.unwrap());
+                    let raw_bg = bind_group.try_raw(snatch_guard)?;
                     unsafe {
                         raw.set_bind_group(
                             pipeline_layout
@@ -1423,6 +1453,7 @@ impl RenderBundle {
                     offsets = &offsets[*num_dynamic_offsets..];
                 }
                 Cmd::SetPipeline(pipeline) => {
+                    let pipeline = self.arenas.pipelines.get(*pipeline);
                     unsafe {
                         raw.set_render_pipeline(
                             pipeline
@@ -1715,6 +1746,10 @@ struct State {
 
     device: Arc<Device>,
     commands: Vec<ArcRenderCommand>,
+    /// Resources referenced by `commands`, interned into per-type arenas. This
+    /// becomes the finished [`RenderBundle`]'s `arenas`; the emitted commands
+    /// carry indices into it.
+    arenas: RenderArenas,
     buffer_memory_init_actions: Vec<BufferInitTrackerAction>,
     texture_memory_init_actions: Vec<TextureInitTrackerAction>,
     next_dynamic_offset: usize,
@@ -1819,23 +1854,26 @@ impl State {
     /// This should be further deduplicated with similar code on render/compute passes.
     fn flush_bindings(&mut self) {
         let start = self.binder.take_rebind_start_index();
-        let entries = self.binder.list_valid_with_start(start);
+        // Collect the emitted bind groups first so we can intern them into the
+        // arena (a `&mut self.arenas` borrow) after the `&self.binder` iteration
+        // ends. Each emitted `SetBindGroup` gets its own arena entry, matching
+        // the previous per-command `Arc`.
+        for (i, bind_group, dynamic_offsets) in self.binder.list_valid_with_start(start) {
+            self.buffer_memory_init_actions
+                .extend_from_slice(&bind_group.buffer_init_actions);
+            self.texture_memory_init_actions
+                .extend_from_slice(&bind_group.texture_init_actions);
+            self.flat_dynamic_offsets.extend_from_slice(dynamic_offsets);
 
-        self.commands
-            .extend(entries.map(|(i, bind_group, dynamic_offsets)| {
-                self.buffer_memory_init_actions
-                    .extend_from_slice(&bind_group.buffer_init_actions);
-                self.texture_memory_init_actions
-                    .extend_from_slice(&bind_group.texture_init_actions);
-
-                self.flat_dynamic_offsets.extend_from_slice(dynamic_offsets);
-
-                ArcRenderCommand::SetBindGroup {
-                    index: i.try_into().unwrap(),
-                    bind_group: Some(bind_group.clone()),
-                    num_dynamic_offsets: dynamic_offsets.len(),
-                }
-            }));
+            let index = i.try_into().unwrap();
+            let num_dynamic_offsets = dynamic_offsets.len();
+            let bind_group = self.arenas.bind_groups.push(bind_group.clone());
+            self.commands.push(ArcRenderCommand::SetBindGroup {
+                index,
+                bind_group: Some(bind_group),
+                num_dynamic_offsets,
+            });
+        }
     }
 }
 

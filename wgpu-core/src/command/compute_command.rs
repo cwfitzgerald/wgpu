@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 
 #[cfg(feature = "serde")]
 use crate::command::serde_object_reference_struct;
-use crate::command::{ArcReferences, ReferenceType};
+use crate::command::{ArenaReferences, ReferenceType};
 
 #[cfg(feature = "serde")]
 use macro_rules_attribute::apply;
@@ -73,5 +73,12 @@ pub enum ComputeCommand<R: ReferenceType> {
     },
 }
 
+/// Equivalent to `ComputeCommand` with the ids resolved into copyable indices
+/// into per-pass [arenas](crate::command::ComputeArenas).
+///
+/// The name is retained for historical continuity; the resource references it
+/// carries are arena indices, and the resolved `Arc`s live in the arenas that
+/// travel alongside the command stream.
+///
 /// cbindgen:ignore
-pub type ArcComputeCommand = ComputeCommand<ArcReferences>;
+pub type ArcComputeCommand = ComputeCommand<ArenaReferences>;

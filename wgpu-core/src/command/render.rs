@@ -25,11 +25,12 @@ use crate::{
             QueryResetMap, QuerySetWrites,
         },
         render_command::ArcRenderCommand,
-        ArcCommand, ArcPassTimestampWrites, BasePass, BindGroupStateChange,
+        ArcCommand, ArcPassTimestampWrites, BasePass, BindGroupArenaIndex, BindGroupStateChange,
         CommandBufferTextureMemoryActions, CommandEncoder, CommandEncoderError, DebugGroupError,
         DrawCommandFamily, DrawError, DrawKind, EncoderStateError, EncodingState, ExecutionError,
         InnerCommandEncoder, MapPassErr, PassErrorScope, PassStateError, PassTimestampWrites,
-        QueryUseError, Rect, RenderCommandError, StateChange, TimestampWritesError,
+        QuerySetArenaIndex, QueryUseError, Rect, RenderArenas, RenderCommandError,
+        RenderInternCaches, RenderPipelineArenaIndex, StateChange, TimestampWritesError,
     },
     device::{
         AttachmentData, Device, DeviceError, MissingDownlevelFlags, MissingFeatures,
@@ -335,6 +336,18 @@ pub struct RenderPass {
     // Resource binding dedupe state.
     current_bind_groups: BindGroupStateChange,
     current_pipeline: StateChange<id::RenderPipelineId>,
+
+    /// Resources referenced by this pass, interned into per-type arenas. Moved
+    /// out into the [`RunRenderPass`](ArcCommand::RunRenderPass) command when
+    /// the pass ends.
+    ///
+    /// [`RunRenderPass`]: ArcCommand::RunRenderPass
+    arenas: RenderArenas,
+
+    /// Per-slot last-resolved memos: on a repeat set of the same id on a slot,
+    /// the cached arena index is reused with no resolve. Pure recording-time
+    /// state, dropped at pass end.
+    intern_caches: RenderInternCaches,
 }
 
 impl_resource_type!(RenderPass);
@@ -359,6 +372,7 @@ impl RenderPass {
             .device
             .command_vec_pool
             .acquire_render(&parent.device.render_pass_size_hint);
+        let arenas = parent.device.command_vec_pool.acquire_render_arenas();
         let base = BasePass::from_pooled(label, commands, dynamic_offsets);
         Self {
             base,
@@ -371,6 +385,9 @@ impl RenderPass {
 
             current_bind_groups: BindGroupStateChange::new(),
             current_pipeline: StateChange::new(),
+
+            arenas,
+            intern_caches: RenderInternCaches::new(),
         }
     }
 
@@ -385,6 +402,9 @@ impl RenderPass {
             multiview_mask: None,
             current_bind_groups: BindGroupStateChange::new(),
             current_pipeline: StateChange::new(),
+
+            arenas: RenderArenas::default(),
+            intern_caches: RenderInternCaches::new(),
         }
     }
 
@@ -2273,6 +2293,10 @@ impl Global {
         cmd_buf_data.push_with(|| -> Result<_, RenderPassError> {
             Ok(ArcCommand::RunRenderPass {
                 pass: base?,
+                // Move the interned resources out of the pass to travel next to
+                // the command stream that indexes them. On the error path above
+                // this is skipped and the arenas drop with the pass.
+                arenas: core::mem::take(&mut pass.arenas),
                 color_attachments: SmallVec::from(pass.color_attachments.as_slice()),
                 depth_stencil_attachment: pass.depth_stencil_attachment.take(),
                 timestamp_writes: pass.timestamp_writes.take(),
@@ -2301,6 +2325,7 @@ impl Global {
 pub(super) fn encode_render_pass(
     parent_state: &mut EncodingState<InnerCommandEncoder>,
     mut base: BasePass<ArcRenderCommand, Infallible>,
+    mut arenas: RenderArenas,
     color_attachments: ColorAttachments<Arc<TextureView>>,
     mut depth_stencil_attachment: Option<
         ResolvedRenderPassDepthStencilAttachment<Arc<TextureView>>,
@@ -2413,20 +2438,65 @@ pub(super) fn encode_render_pass(
                     bind_group,
                 } => {
                     let scope = PassErrorScope::SetBindGroup;
-                    pass::set_bind_group::<RenderPassErrorInner>(
-                        &mut state.pass,
-                        device,
-                        &base.dynamic_offsets,
-                        index,
-                        num_dynamic_offsets,
-                        bind_group,
-                        true,
-                    )
-                    .map_pass_err(scope)?;
+                    match bind_group {
+                        Some(bg_index) => {
+                            // (4a): the usage scope is a join-semilattice under
+                            // OR of usage bits, and `merge_bind_group` is
+                            // check-then-write, so merging a bind group whose
+                            // usages are already all present is a guaranteed
+                            // no-op. We skip that repeat merge, but still
+                            // perform it the FIRST time the bind group is seen —
+                            // so a self-conflicting bind group, or a conflict
+                            // with another resource, is still detected there,
+                            // with identical error attribution. Barriers are
+                            // computed once from the final scope and OR is
+                            // order-independent, so they are unaffected.
+                            //
+                            // The tracker insert (#8510) is likewise done only
+                            // the first time, deduplicating the clone and the
+                            // submit-time re-validation.
+                            let entry = arenas.bind_groups.entry(bg_index);
+                            let merge_into_scope = !entry.merged_into_scope;
+                            let insert_into_tracker = !entry.merged_into_tracker;
+                            let bg = &entry.arc;
+                            pass::set_bind_group::<RenderPassErrorInner>(
+                                &mut state.pass,
+                                &base.dynamic_offsets,
+                                index,
+                                num_dynamic_offsets,
+                                Some(bg),
+                                merge_into_scope,
+                                insert_into_tracker,
+                            )
+                            .map_pass_err(scope)?;
+                            // Only record the flags after a successful merge /
+                            // insert, so a conflicting first merge is not marked
+                            // as done. Skip the second (mutable) resolve entirely
+                            // once both flags are already set — the steady state
+                            // for a bind group re-bound every draw.
+                            if merge_into_scope || insert_into_tracker {
+                                let entry = arenas.bind_groups.entry_mut(bg_index);
+                                entry.merged_into_scope = true;
+                                entry.merged_into_tracker = true;
+                            }
+                        }
+                        None => {
+                            pass::set_bind_group::<RenderPassErrorInner>(
+                                &mut state.pass,
+                                &base.dynamic_offsets,
+                                index,
+                                num_dynamic_offsets,
+                                None,
+                                false,
+                                false,
+                            )
+                            .map_pass_err(scope)?;
+                        }
+                    }
                 }
                 ArcRenderCommand::SetPipeline(pipeline) => {
                     let scope = PassErrorScope::SetPipelineRender;
-                    set_pipeline(&mut state, device, pipeline).map_pass_err(scope)?;
+                    set_pipeline(&mut state, arenas.pipelines.get(pipeline)).map_pass_err(scope)?;
                 }
                 ArcRenderCommand::SetIndexBuffer {
                     buffer,
@@ -2606,9 +2676,8 @@ pub(super) fn encode_render_pass(
                     let scope = PassErrorScope::WriteTimestamp;
                     pass::write_timestamp::<RenderPassErrorInner>(
                         &mut state.pass,
-                        device,
                         Some(&mut pending_query_resets),
-                        query_set,
+                        arenas.query_sets.get(query_set),
                         query_index,
                     )
                     .map_pass_err(scope)?;
@@ -2649,6 +2718,7 @@ pub(super) fn encode_render_pass(
                     query_set,
                     query_index,
                 } => {
+                    let query_set = arenas.query_sets.get(query_set).clone();
                     api_log!(
                         "RenderPass::begin_pipeline_statistics_query {query_index} {}",
                         query_set.error_ident()
@@ -2707,6 +2777,14 @@ pub(super) fn encode_render_pass(
             core::mem::take(&mut base.commands),
             core::mem::take(&mut base.dynamic_offsets),
         );
+        // The command stream has been fully replayed, so nothing indexes the
+        // arenas anymore; recycle their (potentially large) backing vectors,
+        // dropping the interned `Arc`s. Barriers below are computed from the
+        // usage scope / tracker, which hold their own references. (Error paths
+        // below simply drop the arenas, as before.)
+        device
+            .command_vec_pool
+            .release_render_arenas(core::mem::take(&mut arenas));
 
         if *state.pass.base.debug_scope_depth > 0 {
             Err(
@@ -2798,22 +2876,21 @@ pub(super) fn encode_render_pass(
 
 fn set_pipeline(
     state: &mut State,
-    device: &Arc<Device>,
-    pipeline: Arc<RenderPipeline>,
+    pipeline: &Arc<RenderPipeline>,
 ) -> Result<(), RenderPassErrorInner> {
     api_log!("RenderPass::set_pipeline {}", pipeline.error_ident());
 
     state.pipeline = Some(pipeline.clone());
 
+    // Keep the pipeline alive for submission. `same_device` was already checked
+    // when the pipeline was interned at record time.
     let pipeline = state
         .pass
         .base
         .tracker
         .render_pipelines
-        .insert_single(pipeline)
+        .insert_single(pipeline.clone())
         .clone();
-
-    pipeline.same_device(device)?;
 
     state
         .info
@@ -3647,6 +3724,413 @@ fn execute_bundle(
     Ok(())
 }
 
+/// Intern an `Arc`-carrying render [`BasePass`] (as produced by trace replay in
+/// the `player`) into the arena form used at runtime: each command's resources
+/// are moved into a fresh [`RenderArenas`] and replaced with indices.
+///
+/// This is the inverse of [`resolve_render_base_pass_to_arc`]. It is only used
+/// on the replay path, which has already resolved trace pointers/ids into
+/// `Arc`s and cannot build arena indices itself (they are crate-internal).
+#[cfg(feature = "replay")]
+#[doc(hidden)]
+pub fn intern_render_base_pass_from_arc(
+    base: BasePass<crate::command::RenderCommand<crate::command::ArcReferences>, Infallible>,
+) -> (BasePass<ArcRenderCommand, Infallible>, RenderArenas) {
+    use crate::command::RenderCommand as C;
+    let mut arenas = RenderArenas::default();
+    let commands = base
+        .commands
+        .into_iter()
+        .map(|cmd| match cmd {
+            C::SetBindGroup {
+                index,
+                num_dynamic_offsets,
+                bind_group,
+            } => C::SetBindGroup {
+                index,
+                num_dynamic_offsets,
+                bind_group: bind_group.map(|bg| arenas.bind_groups.push(bg)),
+            },
+            C::SetPipeline(p) => C::SetPipeline(arenas.pipelines.push(p)),
+            // Buffers are not interned: the `Arc`s pass straight through.
+            C::SetIndexBuffer {
+                buffer,
+                index_format,
+                offset,
+                size,
+            } => C::SetIndexBuffer {
+                buffer,
+                index_format,
+                offset,
+                size,
+            },
+            C::SetVertexBuffer {
+                slot,
+                buffer,
+                offset,
+                size,
+            } => C::SetVertexBuffer {
+                slot,
+                buffer,
+                offset,
+                size,
+            },
+            C::SetBlendConstant(c) => C::SetBlendConstant(c),
+            C::SetStencilReference(v) => C::SetStencilReference(v),
+            C::SetViewport {
+                rect,
+                depth_min,
+                depth_max,
+            } => C::SetViewport {
+                rect,
+                depth_min,
+                depth_max,
+            },
+            C::SetScissor(r) => C::SetScissor(r),
+            C::SetImmediate {
+                offset,
+                size_bytes,
+                values_offset,
+            } => C::SetImmediate {
+                offset,
+                size_bytes,
+                values_offset,
+            },
+            C::Draw {
+                vertex_count,
+                instance_count,
+                first_vertex,
+                first_instance,
+            } => C::Draw {
+                vertex_count,
+                instance_count,
+                first_vertex,
+                first_instance,
+            },
+            C::DrawIndexed {
+                index_count,
+                instance_count,
+                first_index,
+                base_vertex,
+                first_instance,
+            } => C::DrawIndexed {
+                index_count,
+                instance_count,
+                first_index,
+                base_vertex,
+                first_instance,
+            },
+            C::DrawMeshTasks {
+                group_count_x,
+                group_count_y,
+                group_count_z,
+            } => C::DrawMeshTasks {
+                group_count_x,
+                group_count_y,
+                group_count_z,
+            },
+            C::DrawIndirect {
+                buffer,
+                offset,
+                count,
+                family,
+                vertex_or_index_limit,
+                instance_limit,
+            } => C::DrawIndirect {
+                buffer,
+                offset,
+                count,
+                family,
+                vertex_or_index_limit,
+                instance_limit,
+            },
+            C::MultiDrawIndirectCount {
+                buffer,
+                offset,
+                count_buffer,
+                count_buffer_offset,
+                max_count,
+                family,
+            } => C::MultiDrawIndirectCount {
+                buffer,
+                offset,
+                count_buffer,
+                count_buffer_offset,
+                max_count,
+                family,
+            },
+            C::PushDebugGroup { color, len } => C::PushDebugGroup { color, len },
+            C::PopDebugGroup => C::PopDebugGroup,
+            C::InsertDebugMarker { color, len } => C::InsertDebugMarker { color, len },
+            C::WriteTimestamp {
+                query_set,
+                query_index,
+            } => C::WriteTimestamp {
+                query_set: arenas.query_sets.push(query_set),
+                query_index,
+            },
+            C::BeginOcclusionQuery { query_index } => C::BeginOcclusionQuery { query_index },
+            C::EndOcclusionQuery => C::EndOcclusionQuery,
+            C::BeginPipelineStatisticsQuery {
+                query_set,
+                query_index,
+            } => C::BeginPipelineStatisticsQuery {
+                query_set: arenas.query_sets.push(query_set),
+                query_index,
+            },
+            C::EndPipelineStatisticsQuery => C::EndPipelineStatisticsQuery,
+            C::ExecuteBundle(b) => C::ExecuteBundle(b),
+        })
+        .collect();
+    (
+        BasePass {
+            label: base.label,
+            error: None,
+            commands,
+            dynamic_offsets: base.dynamic_offsets,
+            string_data: base.string_data,
+            immediates_data: base.immediates_data,
+        },
+        arenas,
+    )
+}
+
+/// Resolve every command in an arena-indexed render [`BasePass`] back into one
+/// carrying resolved `Arc`s, for trace recording.
+#[cfg(feature = "trace")]
+pub(crate) fn resolve_render_base_pass_to_arc(
+    arenas: &RenderArenas,
+    base: &BasePass<ArcRenderCommand, Infallible>,
+) -> BasePass<crate::command::RenderCommand<crate::command::ArcReferences>, Infallible> {
+    BasePass {
+        label: base.label.clone(),
+        error: None,
+        commands: base
+            .commands
+            .iter()
+            .map(|cmd| resolve_render_command_to_arc(arenas, cmd))
+            .collect(),
+        dynamic_offsets: base.dynamic_offsets.clone(),
+        string_data: base.string_data.clone(),
+        immediates_data: base.immediates_data.clone(),
+    }
+}
+
+/// Resolve an arena-indexed [`RenderCommand`] back into one carrying resolved
+/// `Arc`s, for trace recording. The emitted trace then matches exactly what was
+/// produced before arenas (each `Arc` is later turned into a pointer id).
+///
+/// Shared by render-pass and render-bundle trace conversion.
+#[cfg(feature = "trace")]
+pub(crate) fn resolve_render_command_to_arc(
+    arenas: &RenderArenas,
+    cmd: &ArcRenderCommand,
+) -> crate::command::RenderCommand<crate::command::ArcReferences> {
+    use crate::command::RenderCommand as C;
+    match *cmd {
+        C::SetBindGroup {
+            index,
+            num_dynamic_offsets,
+            ref bind_group,
+        } => C::SetBindGroup {
+            index,
+            num_dynamic_offsets,
+            bind_group: bind_group.map(|i| arenas.bind_groups.get(i).clone()),
+        },
+        C::SetPipeline(p) => C::SetPipeline(arenas.pipelines.get(p).clone()),
+        // Buffers are not interned: clone the `Arc` straight off the command.
+        C::SetIndexBuffer {
+            ref buffer,
+            index_format,
+            offset,
+            size,
+        } => C::SetIndexBuffer {
+            buffer: buffer.clone(),
+            index_format,
+            offset,
+            size,
+        },
+        C::SetVertexBuffer {
+            slot,
+            ref buffer,
+            offset,
+            size,
+        } => C::SetVertexBuffer {
+            slot,
+            buffer: buffer.clone(),
+            offset,
+            size,
+        },
+        C::SetBlendConstant(c) => C::SetBlendConstant(c),
+        C::SetStencilReference(v) => C::SetStencilReference(v),
+        C::SetViewport {
+            rect,
+            depth_min,
+            depth_max,
+        } => C::SetViewport {
+            rect,
+            depth_min,
+            depth_max,
+        },
+        C::SetScissor(r) => C::SetScissor(r),
+        C::SetImmediate {
+            offset,
+            size_bytes,
+            values_offset,
+        } => C::SetImmediate {
+            offset,
+            size_bytes,
+            values_offset,
+        },
+        C::Draw {
+            vertex_count,
+            instance_count,
+            first_vertex,
+            first_instance,
+        } => C::Draw {
+            vertex_count,
+            instance_count,
+            first_vertex,
+            first_instance,
+        },
+        C::DrawIndexed {
+            index_count,
+            instance_count,
+            first_index,
+            base_vertex,
+            first_instance,
+        } => C::DrawIndexed {
+            index_count,
+            instance_count,
+            first_index,
+            base_vertex,
+            first_instance,
+        },
+        C::DrawMeshTasks {
+            group_count_x,
+            group_count_y,
+            group_count_z,
+        } => C::DrawMeshTasks {
+            group_count_x,
+            group_count_y,
+            group_count_z,
+        },
+        C::DrawIndirect {
+            ref buffer,
+            offset,
+            count,
+            family,
+            vertex_or_index_limit,
+            instance_limit,
+        } => C::DrawIndirect {
+            buffer: buffer.clone(),
+            offset,
+            count,
+            family,
+            vertex_or_index_limit,
+            instance_limit,
+        },
+        C::MultiDrawIndirectCount {
+            ref buffer,
+            offset,
+            ref count_buffer,
+            count_buffer_offset,
+            max_count,
+            family,
+        } => C::MultiDrawIndirectCount {
+            buffer: buffer.clone(),
+            offset,
+            count_buffer: count_buffer.clone(),
+            count_buffer_offset,
+            max_count,
+            family,
+        },
+        C::PushDebugGroup { color, len } => C::PushDebugGroup { color, len },
+        C::PopDebugGroup => C::PopDebugGroup,
+        C::InsertDebugMarker { color, len } => C::InsertDebugMarker { color, len },
+        C::WriteTimestamp {
+            query_set,
+            query_index,
+        } => C::WriteTimestamp {
+            query_set: arenas.query_sets.get(query_set).clone(),
+            query_index,
+        },
+        C::BeginOcclusionQuery { query_index } => C::BeginOcclusionQuery { query_index },
+        C::EndOcclusionQuery => C::EndOcclusionQuery,
+        C::BeginPipelineStatisticsQuery {
+            query_set,
+            query_index,
+        } => C::BeginPipelineStatisticsQuery {
+            query_set: arenas.query_sets.get(query_set).clone(),
+            query_index,
+        },
+        C::EndPipelineStatisticsQuery => C::EndPipelineStatisticsQuery,
+        C::ExecuteBundle(ref b) => C::ExecuteBundle(b.clone()),
+    }
+}
+
+// Record-time interning helpers.
+//
+// Each resolves an id to its `Arc` (checking validity) at most once per
+// distinct id per slot — a cache hit reuses the arena index with no
+// `Storage::get`. On a miss the resolved `Arc` is `same_device`-checked once
+// (device parentage is immutable, so this need not be repeated at replay) and
+// *moved* into the arena.
+
+fn intern_bind_group(
+    hub: &crate::hub::Hub,
+    arena: &mut crate::command::BindGroupArena,
+    cache: Option<&mut crate::command::InternCache<id::BindGroupId, BindGroupArenaIndex>>,
+    device: &Device,
+    id: id::BindGroupId,
+) -> Result<BindGroupArenaIndex, RenderPassErrorInner> {
+    if let Some(cache) = cache.as_deref() {
+        if let Some(index) = cache.get(id) {
+            return Ok(index);
+        }
+    }
+    let bind_group = hub.bind_groups.get(id).get()?;
+    bind_group.same_device(device)?;
+    let index = arena.push(bind_group);
+    if let Some(cache) = cache {
+        cache.store(id, index);
+    }
+    Ok(index)
+}
+
+fn intern_render_pipeline(
+    hub: &crate::hub::Hub,
+    arena: &mut crate::command::RenderPipelineArena,
+    cache: &mut crate::command::InternCache<id::RenderPipelineId, RenderPipelineArenaIndex>,
+    device: &Device,
+    id: id::RenderPipelineId,
+) -> Result<RenderPipelineArenaIndex, RenderPassErrorInner> {
+    if let Some(index) = cache.get(id) {
+        return Ok(index);
+    }
+    // `render_pipelines` stores `Arc`s directly (never `Fallible`), so validity
+    // is checked with `check_valid`, not `Fallible::get`.
+    let pipeline = hub.render_pipelines.get(id);
+    pipeline.check_valid()?;
+    pipeline.same_device(device)?;
+    let index = arena.push(pipeline);
+    cache.store(id, index);
+    Ok(index)
+}
+
+fn intern_query_set(
+    hub: &crate::hub::Hub,
+    arena: &mut crate::command::QuerySetArena,
+    device: &Device,
+    id: id::QuerySetId,
+) -> Result<QuerySetArenaIndex, RenderPassErrorInner> {
+    // `query_sets` stores `Arc`s directly (never `Fallible`).
+    let query_set = hub.query_sets.get(id);
+    query_set.check_is_valid()?;
+    query_set.same_device(device)?;
+    Ok(arena.push(query_set))
+}
+
 // Recording a render pass.
 //
 // The only error that should be returned from these methods is
@@ -3683,15 +4167,32 @@ impl Global {
             return Ok(());
         }
 
-        let mut bind_group = None;
-        if let Some(bind_group_id) = bind_group_id {
-            let hub = &self.hub;
-            bind_group = Some(pass_try!(
-                base,
-                scope,
-                hub.bind_groups.get(bind_group_id).get(),
-            ));
-        }
+        // Intern the bind group into the pass's arena, resolving (and
+        // `same_device`-checking) it at most once per distinct id per slot. The
+        // resolve cache survives offset-bearing binds, so the object-uniform
+        // bind group re-bound on every draw is resolved exactly once even
+        // though a command is emitted for each draw (its dynamic offsets are
+        // per-call data recorded separately).
+        //
+        // These field accesses split the borrow of `pass`: `base` reborrows
+        // `pass.base`, while interning touches the disjoint `pass.arenas` /
+        // `pass.intern_caches`. `pass.parent` is `Some` here (`pass_base!`
+        // returned early otherwise). Borrow the device rather than cloning the
+        // `Arc` — this runs per `set_bind_group` command.
+        let device = &pass.parent.as_ref().unwrap().device;
+        let bind_group = match bind_group_id {
+            Some(bind_group_id) => {
+                let interned = intern_bind_group(
+                    &self.hub,
+                    &mut pass.arenas.bind_groups,
+                    pass.intern_caches.bind_groups.get_mut(index as usize),
+                    device,
+                    bind_group_id,
+                );
+                Some(pass_try!(base, scope, interned))
+            }
+            None => None,
+        };
 
         base.commands.push(ArcRenderCommand::SetBindGroup {
             index,
@@ -3733,9 +4234,16 @@ impl Global {
             return Ok(());
         }
 
-        let hub = &self.hub;
-        let pipeline = hub.render_pipelines.get(pipeline_id);
-        pass_try!(base, scope, pipeline.check_valid());
+        // Borrow (don't clone) the device: this runs per `set_pipeline` command.
+        let device = &pass.parent.as_ref().unwrap().device;
+        let interned = intern_render_pipeline(
+            &self.hub,
+            &mut pass.arenas.pipelines,
+            &mut pass.intern_caches.pipeline,
+            device,
+            pipeline_id,
+        );
+        let pipeline = pass_try!(base, scope, interned);
 
         base.commands.push(ArcRenderCommand::SetPipeline(pipeline));
 
@@ -3765,6 +4273,8 @@ impl Global {
         let scope = PassErrorScope::SetIndexBuffer;
         let base = pass_base!(pass, scope);
 
+        // Buffers are not interned: resolve the id to its `Arc` and carry it
+        // directly on the command (`same_device` is checked at replay).
         base.commands.push(ArcRenderCommand::SetIndexBuffer {
             buffer: pass_try!(base, scope, self.resolve_buffer_id(buffer_id)),
             index_format,
@@ -3801,6 +4311,8 @@ impl Global {
         let scope = PassErrorScope::SetVertexBuffer;
         let base = pass_base!(pass, scope);
 
+        // Buffers are not interned: resolve the id to its `Arc` and carry it
+        // directly on the command (`same_device` is checked at replay).
         let buffer = if let Some(buffer_id) = buffer_id {
             Some(pass_try!(base, scope, self.resolve_buffer_id(buffer_id)))
         } else {
@@ -4479,8 +4991,16 @@ impl Global {
         let scope = PassErrorScope::WriteTimestamp;
         let base = pass_base!(pass, scope);
 
-        let query_set = self.resolve_query_set_id(query_set_id);
-        pass_try!(base, scope, query_set.check_is_valid());
+        let query_set = pass_try!(
+            base,
+            scope,
+            intern_query_set(
+                &self.hub,
+                &mut pass.arenas.query_sets,
+                &pass.parent.as_ref().unwrap().device,
+                query_set_id,
+            ),
+        );
         base.commands.push(ArcRenderCommand::WriteTimestamp {
             query_set,
             query_index,
@@ -4560,8 +5080,16 @@ impl Global {
         let scope = PassErrorScope::BeginPipelineStatisticsQuery;
         let base = pass_base!(pass, scope);
 
-        let query_set = self.resolve_query_set_id(query_set_id);
-        pass_try!(base, scope, query_set.check_is_valid());
+        let query_set = pass_try!(
+            base,
+            scope,
+            intern_query_set(
+                &self.hub,
+                &mut pass.arenas.query_sets,
+                &pass.parent.as_ref().unwrap().device,
+                query_set_id,
+            ),
+        );
         base.commands
             .push(ArcRenderCommand::BeginPipelineStatisticsQuery {
                 query_set,

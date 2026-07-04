@@ -9,6 +9,7 @@
 //! state tracking, like [`InnerCommandEncoder`].
 
 mod allocator;
+mod arena;
 mod bind;
 mod bundle;
 mod clear;
@@ -41,6 +42,22 @@ pub use self::encoder_command::PointerReferences;
 // This module previously did `pub use *` for some of the submodules. When that
 // was removed, every type that was previously public via `use *` was listed
 // here. Some types (in particular `CopySide`) may be exported unnecessarily.
+pub(crate) use self::{
+    arena::{
+        BindGroupArena, BindGroupArenaIndex, ComputeArenas, ComputeInternCaches,
+        ComputePipelineArena, ComputePipelineArenaIndex, InternCache, QuerySetArena,
+        QuerySetArenaIndex, RenderArenas, RenderInternCaches, RenderPipelineArena,
+        RenderPipelineArenaIndex,
+    },
+    clear::clear_texture,
+    encoder::EncodingState,
+    memory_init::CommandBufferTextureMemoryActions,
+    render::{get_dst_stride_of_indirect_args, get_src_stride_of_indirect_args, VertexState},
+    transfer::{
+        extract_texture_selector, validate_linear_texture_data, validate_texture_buffer_copy,
+        validate_texture_copy_dst_format, validate_texture_copy_range,
+    },
+};
 pub use self::{
     bundle::{
         bundle_ffi, CreateRenderBundleError, ExecutionError, RenderBundle, RenderBundleDescriptor,
@@ -54,7 +71,9 @@ pub use self::{
     },
     compute_command::ArcComputeCommand,
     draw::{DrawError, Rect, RenderCommandError},
-    encoder_command::{ArcCommand, ArcReferences, Command, IdReferences, ReferenceType},
+    encoder_command::{
+        ArcCommand, ArcReferences, ArenaReferences, Command, IdReferences, NoArenas, ReferenceType,
+    },
     query::{QueryError, QueryUseError, ResolveError, SimplifiedQueryType},
     render::{
         ArcRenderPassColorAttachment, AttachmentError, AttachmentErrorLocation,
@@ -67,18 +86,21 @@ pub use self::{
     transfer::{CopySide, TransferError},
     transition_resources::TransitionResourcesError,
 };
-pub(crate) use self::{
-    clear::clear_texture,
-    encoder::EncodingState,
-    memory_init::CommandBufferTextureMemoryActions,
-    render::{get_dst_stride_of_indirect_args, get_src_stride_of_indirect_args, VertexState},
-    transfer::{
-        extract_texture_selector, validate_linear_texture_data, validate_texture_buffer_copy,
-        validate_texture_copy_dst_format, validate_texture_copy_range,
-    },
-};
 
 pub(crate) use allocator::CommandAllocator;
+
+#[cfg(feature = "trace")]
+pub(crate) use self::{
+    compute::resolve_compute_base_pass_to_arc, render::resolve_render_base_pass_to_arc,
+};
+
+/// Replay-only helpers used by `player` to turn `Arc`-carrying trace passes into
+/// the runtime arena form.
+#[cfg(feature = "replay")]
+#[doc(hidden)]
+pub use self::{
+    compute::intern_compute_base_pass_from_arc, render::intern_render_base_pass_from_arc,
+};
 
 /// cbindgen:ignore
 pub use self::{compute_command::ComputeCommand, render_command::RenderCommand};
@@ -1146,6 +1168,7 @@ impl CommandEncoder {
                 match command {
                     ArcCommand::RunRenderPass {
                         pass,
+                        arenas,
                         color_attachments,
                         depth_stencil_attachment,
                         timestamp_writes,
@@ -1159,6 +1182,7 @@ impl CommandEncoder {
                         let res = render::encode_render_pass(
                             &mut state,
                             pass,
+                            arenas,
                             color_attachments,
                             depth_stencil_attachment,
                             timestamp_writes,
@@ -1177,13 +1201,19 @@ impl CommandEncoder {
                     }
                     ArcCommand::RunComputePass {
                         pass,
+                        arenas,
                         timestamp_writes,
                     } => {
                         api_log!(
                             "Begin encoding compute pass with '{}' label",
                             pass.label.as_deref().unwrap_or("")
                         );
-                        let res = compute::encode_compute_pass(&mut state, pass, timestamp_writes);
+                        let res = compute::encode_compute_pass(
+                            &mut state,
+                            pass,
+                            arenas,
+                            timestamp_writes,
+                        );
                         match res.as_ref() {
                             Err(err) => {
                                 api_log!("Finished encoding compute pass ({err:?})")
@@ -1531,24 +1561,44 @@ impl PassSizeHint {
 ///   over-sized vector is dropped rather than pooled. This keeps every pooled
 ///   entry no larger than the cap that already bounds pre-sizing.
 ///
+/// In addition to the command and offset vectors, the per-pass resource
+/// *arenas* (see [`arena`]) recycle their backing vectors through the same
+/// pool with the same per-entry cap ([`PassSizeHint::MAX_COMMANDS`]). Each
+/// command interns at most one resource per arena, so an arena never holds more
+/// entries than the command stream; a released vector whose capacity exceeds the
+/// cap is dropped rather than pooled (see [`Self::push_bounded`]), so there is
+/// no correctness or unbounded-memory impact. Buffers are *not* interned (they
+/// carry their `Arc`s directly in the command), so there is no buffer-entry
+/// pool. Bind groups and query sets share an element type across pass kinds, so
+/// one pool each serves render and compute; the two pipeline-entry types differ
+/// and are pooled per kind. The command element types themselves are unchanged
+/// in size by interning (the largest enum variant still dominates:
+/// `ArcRenderCommand` 56 B, `ArcComputeCommand` 48 B), so the command pools are
+/// as before; the arenas add bounded growth on top.
+///
 /// The worst-case retained memory per device is therefore:
 ///
-/// | Pool                | entries × cap × elem size          | ≈ bytes |
-/// |---------------------|------------------------------------|---------|
-/// | render commands     | 16 × 8192 × 56 B (`ArcRenderCommand`)  | ~7.0 MiB |
-/// | compute commands    | 16 × 8192 × 48 B (`ArcComputeCommand`) | ~6.0 MiB |
-/// | dynamic offsets     | 16 × 8192 × 4 B (`u32`)                | ~0.5 MiB |
+/// | Pool                     | entries × cap × elem size               | ≈ bytes |
+/// |--------------------------|-----------------------------------------|---------|
+/// | render commands          | 16 × 8192 × 56 B (`ArcRenderCommand`)   | ~7.0 MiB |
+/// | compute commands         | 16 × 8192 × 48 B (`ArcComputeCommand`)  | ~6.0 MiB |
+/// | dynamic offsets          | 16 × 8192 × 4 B (`u32`)                 | ~0.5 MiB |
+/// | bind-group entries       | 16 × 8192 × 16 B (`BindGroupEntry`)     | ~2.0 MiB |
+/// | query-set entries        | 16 × 8192 × 8 B (`QuerySetEntry`)       | ~1.0 MiB |
+/// | render-pipeline entries  | 16 × 8192 × 8 B (`RenderPipelineEntry`) | ~1.0 MiB |
+/// | compute-pipeline entries | 16 × 8192 × 8 B (`ComputePipelineEntry`)| ~1.0 MiB |
 ///
-/// i.e. a hard ceiling of roughly **13.5 MiB** per device, reached only after a
-/// device has run enough concurrently-outstanding, cap-sized passes to fill all
-/// three pools.
+/// i.e. a hard ceiling of roughly **18.5 MiB** per device, reached only after a
+/// device has run enough concurrently-outstanding, cap-sized passes to fill
+/// every pool.
 ///
 /// # Concurrency
 ///
-/// The three pools each sit behind a [`Mutex`] (rank
-/// [`rank::COMMAND_VEC_POOL`]). A pass acquires its vectors once at pass begin
-/// and the pool reclaims them once at submit-time encode — on the order of a
-/// couple of dozen lock acquisitions per frame, never anything per-command.
+/// All seven pools (the three command/offset pools plus the four arena-entry
+/// pools) each sit behind a [`Mutex`] (rank [`rank::COMMAND_VEC_POOL`]). A
+/// pass acquires its vectors once at pass begin and the pool reclaims them
+/// once at submit-time encode — on the order of a couple of dozen lock
+/// acquisitions per frame, never anything per-command.
 /// Nothing is held when acquiring at pass begin. At release the submit path
 /// holds `Device::snatchable_lock` (read), so `COMMAND_VEC_POOL` is ordered
 /// after [`rank::DEVICE_SNATCHABLE_LOCK`] in the lock-rank graph; the pool
@@ -1559,6 +1609,14 @@ pub(crate) struct CommandVecPool {
     render_commands: Mutex<Vec<Vec<ArcRenderCommand>>>,
     compute_commands: Mutex<Vec<Vec<ArcComputeCommand>>>,
     dynamic_offsets: Mutex<Vec<Vec<wgt::DynamicOffset>>>,
+    // Per-type arena backing vectors. Bind groups and query sets share an
+    // element type across render and compute passes, so a single pool each
+    // serves both; pipeline entries differ, so they are pooled per kind.
+    // (Buffers are not interned, so there is no buffer-entry pool.)
+    bind_group_entries: Mutex<Vec<Vec<arena::BindGroupEntry>>>,
+    query_set_entries: Mutex<Vec<Vec<arena::QuerySetEntry>>>,
+    render_pipeline_entries: Mutex<Vec<Vec<arena::RenderPipelineEntry>>>,
+    compute_pipeline_entries: Mutex<Vec<Vec<arena::ComputePipelineEntry>>>,
 }
 
 impl CommandVecPool {
@@ -1575,7 +1633,67 @@ impl CommandVecPool {
             render_commands: Mutex::new(rank::COMMAND_VEC_POOL, Vec::new()),
             compute_commands: Mutex::new(rank::COMMAND_VEC_POOL, Vec::new()),
             dynamic_offsets: Mutex::new(rank::COMMAND_VEC_POOL, Vec::new()),
+            bind_group_entries: Mutex::new(rank::COMMAND_VEC_POOL, Vec::new()),
+            query_set_entries: Mutex::new(rank::COMMAND_VEC_POOL, Vec::new()),
+            render_pipeline_entries: Mutex::new(rank::COMMAND_VEC_POOL, Vec::new()),
+            compute_pipeline_entries: Mutex::new(rank::COMMAND_VEC_POOL, Vec::new()),
         }
+    }
+
+    /// Acquire pooled (empty) backing vectors for a render pass's arenas.
+    pub(crate) fn acquire_render_arenas(&self) -> RenderArenas {
+        RenderArenas::from_pooled(
+            self.bind_group_entries.lock().pop().unwrap_or_default(),
+            self.render_pipeline_entries
+                .lock()
+                .pop()
+                .unwrap_or_default(),
+            self.query_set_entries.lock().pop().unwrap_or_default(),
+        )
+    }
+
+    /// Acquire pooled (empty) backing vectors for a compute pass's arenas.
+    pub(crate) fn acquire_compute_arenas(&self) -> ComputeArenas {
+        ComputeArenas::from_pooled(
+            self.bind_group_entries.lock().pop().unwrap_or_default(),
+            self.compute_pipeline_entries
+                .lock()
+                .pop()
+                .unwrap_or_default(),
+            self.query_set_entries.lock().pop().unwrap_or_default(),
+        )
+    }
+
+    /// Return a replayed render pass's arena backing vectors to the pool. The
+    /// arenas are emptied (dropping their interned `Arc`s) first.
+    pub(crate) fn release_render_arenas(&self, mut arenas: RenderArenas) {
+        Self::push_bounded_entries(&self.bind_group_entries, arenas.bind_groups.take_entries());
+        Self::push_bounded_entries(
+            &self.render_pipeline_entries,
+            arenas.pipelines.take_entries(),
+        );
+        Self::push_bounded_entries(&self.query_set_entries, arenas.query_sets.take_entries());
+    }
+
+    /// Return a replayed compute pass's arena backing vectors to the pool.
+    pub(crate) fn release_compute_arenas(&self, mut arenas: ComputeArenas) {
+        Self::push_bounded_entries(&self.bind_group_entries, arenas.bind_groups.take_entries());
+        Self::push_bounded_entries(
+            &self.compute_pipeline_entries,
+            arenas.pipelines.take_entries(),
+        );
+        Self::push_bounded_entries(&self.query_set_entries, arenas.query_sets.take_entries());
+    }
+
+    /// Empty an arena backing vector (dropping its interned `Arc`s) and push it
+    /// back into a pool, enforcing the same two bounding axes as
+    /// [`push_bounded`](Self::push_bounded): pool length and per-entry capacity.
+    /// Arena vectors are capped by [`PassSizeHint::MAX_COMMANDS`] because an
+    /// arena never holds more entries than the command stream (worst case one
+    /// interned resource per command).
+    fn push_bounded_entries<T>(pool: &Mutex<Vec<Vec<T>>>, mut vec: Vec<T>) {
+        vec.clear();
+        Self::push_bounded(pool, vec, PassSizeHint::MAX_COMMANDS);
     }
 
     /// Acquire an empty `commands` and `dynamic_offsets` vector for a

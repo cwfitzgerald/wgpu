@@ -3,7 +3,7 @@ use wgt::{BufferAddress, BufferSize, Color};
 use super::{DrawCommandFamily, Rect};
 #[cfg(feature = "serde")]
 use crate::command::serde_object_reference_struct;
-use crate::command::{ArcReferences, ReferenceType};
+use crate::command::{ArenaReferences, ReferenceType};
 
 #[cfg(feature = "serde")]
 use macro_rules_attribute::apply;
@@ -126,7 +126,8 @@ pub enum RenderCommand<R: ReferenceType> {
     ExecuteBundle(R::RenderBundle),
 }
 
-/// Equivalent to `RenderCommand` with the Ids resolved into resource Arcs.
+/// Equivalent to `RenderCommand` with the ids resolved into copyable indices
+/// into per-pass/-bundle [arenas](crate::command::RenderArenas).
 ///
 /// In a render pass, commands are stored in this format between when they are
 /// added to the pass, and when the pass is `end()`ed and the commands are
@@ -139,5 +140,9 @@ pub enum RenderCommand<R: ReferenceType> {
 /// bundle is finished, which means that parameters stored in an `ArcRenderCommand`
 /// for a render bundle operation must have been validated.
 ///
+/// The name is retained for historical continuity; the resource references it
+/// carries are arena indices, and the resolved `Arc`s live in the arenas that
+/// travel alongside the command stream.
+///
 /// cbindgen:ignore
-pub type ArcRenderCommand = RenderCommand<ArcReferences>;
+pub type ArcRenderCommand = RenderCommand<ArenaReferences>;

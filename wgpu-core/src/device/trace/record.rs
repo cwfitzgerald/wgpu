@@ -4,9 +4,9 @@ use std::io::Write as _;
 
 use crate::{
     command::{
-        ArcCommand, ArcComputeCommand, ArcPassTimestampWrites, ArcReferences, ArcRenderCommand,
-        BasePass, ColorAttachments, Command, ComputeCommand, PointerReferences, RenderCommand,
-        RenderPassColorAttachment, ResolvedRenderPassDepthStencilAttachment,
+        ArcCommand, ArcPassTimestampWrites, ArcReferences, BasePass, ColorAttachments, Command,
+        ComputeCommand, PointerReferences, RenderCommand, RenderPassColorAttachment,
+        ResolvedRenderPassDepthStencilAttachment,
     },
     device::trace::{Data, DataKind},
     id::{markers, PointerId},
@@ -253,20 +253,27 @@ impl IntoTrace for ArcCommand {
             ArcCommand::InsertDebugMarker(label) => Command::InsertDebugMarker(label),
             ArcCommand::RunComputePass {
                 pass,
+                arenas,
                 timestamp_writes,
             } => Command::RunComputePass {
-                pass: pass.into_trace(),
+                // Resolve the arena indices in each command back into `Arc`s,
+                // then convert those to pointer ids — the same emitted format as
+                // before arenas existed. The (Pointer) output has no arena.
+                pass: crate::command::resolve_compute_base_pass_to_arc(&arenas, &pass).into_trace(),
+                arenas: crate::command::NoArenas,
                 timestamp_writes: timestamp_writes.map(|tw| tw.into_trace()),
             },
             ArcCommand::RunRenderPass {
                 pass,
+                arenas,
                 color_attachments,
                 depth_stencil_attachment,
                 timestamp_writes,
                 occlusion_query_set,
                 multiview_mask,
             } => Command::RunRenderPass {
-                pass: pass.into_trace(),
+                pass: crate::command::resolve_render_base_pass_to_arc(&arenas, &pass).into_trace(),
+                arenas: crate::command::NoArenas,
                 color_attachments: color_attachments.into_trace(),
                 depth_stencil_attachment: depth_stencil_attachment.map(|d| d.into_trace()),
                 timestamp_writes: timestamp_writes.map(|tw| tw.into_trace()),
@@ -454,7 +461,7 @@ impl<C: IntoTrace> IntoTrace for BasePass<C, Infallible> {
     }
 }
 
-impl IntoTrace for ArcComputeCommand {
+impl IntoTrace for ComputeCommand<ArcReferences> {
     type Output = ComputeCommand<PointerReferences>;
     fn into_trace(self) -> Self::Output {
         use ComputeCommand as C;
@@ -525,7 +532,7 @@ impl IntoTrace for ArcComputeCommand {
     }
 }
 
-impl IntoTrace for ArcRenderCommand {
+impl IntoTrace for RenderCommand<ArcReferences> {
     type Output = RenderCommand<PointerReferences>;
     fn into_trace(self) -> Self::Output {
         use RenderCommand as C;

@@ -879,27 +879,45 @@ impl Player {
             Command::InsertDebugMarker(label) => Command::InsertDebugMarker(label.clone()),
             Command::RunComputePass {
                 pass,
+                arenas: _,
                 timestamp_writes,
-            } => Command::RunComputePass {
-                pass: self.resolve_compute_pass(pass),
-                timestamp_writes: timestamp_writes.map(|tw| self.resolve_pass_timestamp_writes(tw)),
-            },
+            } => {
+                // Resolve trace pointers into `Arc`s, then intern them into the
+                // runtime arena form (the arena is crate-internal to wgpu-core).
+                let (pass, arenas) = wgc::command::intern_compute_base_pass_from_arc(
+                    self.resolve_compute_pass(pass),
+                );
+                Command::RunComputePass {
+                    pass,
+                    arenas,
+                    timestamp_writes: timestamp_writes
+                        .map(|tw| self.resolve_pass_timestamp_writes(tw)),
+                }
+            }
             Command::RunRenderPass {
                 pass,
+                arenas: _,
                 color_attachments,
                 depth_stencil_attachment,
                 timestamp_writes,
                 occlusion_query_set,
                 multiview_mask,
-            } => Command::RunRenderPass {
-                pass: self.resolve_render_pass(pass),
-                color_attachments: self.resolve_color_attachments(color_attachments),
-                depth_stencil_attachment: depth_stencil_attachment
-                    .map(|att| self.resolve_depth_stencil_attachment(att)),
-                timestamp_writes: timestamp_writes.map(|tw| self.resolve_pass_timestamp_writes(tw)),
-                occlusion_query_set: occlusion_query_set.map(|qs| self.resolve_query_set_id(qs)),
-                multiview_mask,
-            },
+            } => {
+                let (pass, arenas) =
+                    wgc::command::intern_render_base_pass_from_arc(self.resolve_render_pass(pass));
+                Command::RunRenderPass {
+                    pass,
+                    arenas,
+                    color_attachments: self.resolve_color_attachments(color_attachments),
+                    depth_stencil_attachment: depth_stencil_attachment
+                        .map(|att| self.resolve_depth_stencil_attachment(att)),
+                    timestamp_writes: timestamp_writes
+                        .map(|tw| self.resolve_pass_timestamp_writes(tw)),
+                    occlusion_query_set: occlusion_query_set
+                        .map(|qs| self.resolve_query_set_id(qs)),
+                    multiview_mask,
+                }
+            }
             Command::BuildAccelerationStructures { blas, tlas } => {
                 Command::BuildAccelerationStructures {
                     blas: blas

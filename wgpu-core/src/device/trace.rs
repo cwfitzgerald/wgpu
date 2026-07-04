@@ -6,10 +6,9 @@ mod replay;
 use core::convert::Infallible;
 
 use alloc::{borrow::Cow, string::String, vec::Vec};
-use macro_rules_attribute::apply;
 
 use crate::{
-    command::{serde_object_reference_struct, BasePass, Command, ReferenceType, RenderCommand},
+    command::{BasePass, Command, ReferenceType, RenderCommand},
     id::{markers, PointerId},
     pipeline::GeneralRenderPipelineDescriptor,
 };
@@ -114,7 +113,31 @@ impl Data {
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
-#[apply(serde_object_reference_struct)]
+// Like `serde_object_reference_struct`, but `Action` nests `Command<R>` (whose
+// pass streams are parameterized by `R::PassReferences`), so its serde bound
+// must also cover those nested pass command streams.
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(
+        bound = "R::Buffer: serde::Serialize + for<'d> serde::Deserialize<'d>,\
+          R::Surface: serde::Serialize + for<'d> serde::Deserialize<'d>,\
+          R::Texture: serde::Serialize + for<'d> serde::Deserialize<'d>,\
+          R::TextureView: serde::Serialize + for<'d> serde::Deserialize<'d>,\
+          R::ExternalTexture: serde::Serialize + for<'d> serde::Deserialize<'d>,\
+          R::QuerySet: serde::Serialize + for<'d> serde::Deserialize<'d>,\
+          R::BindGroup: serde::Serialize + for<'d> serde::Deserialize<'d>,\
+          R::RenderPipeline: serde::Serialize + for<'d> serde::Deserialize<'d>,\
+          R::RenderBundle: serde::Serialize + for<'d> serde::Deserialize<'d>,\
+          R::ComputePipeline: serde::Serialize + for<'d> serde::Deserialize<'d>,\
+          R::Blas: serde::Serialize + for<'d> serde::Deserialize<'d>,\
+          R::Tlas: serde::Serialize + for<'d> serde::Deserialize<'d>,\
+          wgt::BufferTransition<R::Buffer>: serde::Serialize + for<'d> serde::Deserialize<'d>,\
+          wgt::TextureTransition<R::Texture>: serde::Serialize + for<'d> serde::Deserialize<'d>,\
+          crate::command::RenderCommand<R::PassReferences>: serde::Serialize + for<'d> serde::Deserialize<'d>,\
+          crate::command::ComputeCommand<R::PassReferences>: serde::Serialize + for<'d> serde::Deserialize<'d>"
+    )
+)]
 pub enum Action<'a, R: ReferenceType> {
     Init {
         desc: crate::device::DeviceDescriptor<'a>,

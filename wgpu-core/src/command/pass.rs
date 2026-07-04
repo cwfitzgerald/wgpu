@@ -6,9 +6,9 @@ use crate::command::{
     bind::Binder, memory_init::SurfacesInDiscardState, query::QueryResetMap, DebugGroupError,
     QueryUseError,
 };
-use crate::device::{Device, DeviceError, MissingFeatures};
+use crate::device::{DeviceError, MissingFeatures};
 use crate::pipeline::LateSizedBufferGroup;
-use crate::resource::{DestroyedResourceError, Labeled, ParentDevice, QuerySet};
+use crate::resource::{DestroyedResourceError, Labeled, QuerySet};
 use crate::track::{ResourceUsageCompatibilityError, UsageScope};
 use crate::{api_log, binding_model};
 use alloc::sync::Arc;
@@ -59,14 +59,30 @@ pub(crate) struct PassState<'scope, 'snatch_guard, 'cmd_enc> {
     pub(crate) string_offset: usize,
 }
 
+/// Replay a `SetBindGroup` command.
+///
+/// `bind_group` is borrowed from the pass's or bundle's arena, which owns the
+/// keep-alive `Arc`; it was resolved, validity-checked and `same_device`-checked
+/// once at record time, so those checks are not repeated here.
+///
+/// * `merge_into_scope` — whether to merge the bind group's resources into the
+///   usage scope. Only render passes do this (compute merges per dispatch in
+///   `flush_bindings`); and for render passes it is skipped when the caller's
+///   `(4a)` bookkeeping shows this bind group's usages are already in the scope
+///   (a repeat merge is a guaranteed no-op — see `encode_render_pass`).
+/// * `insert_into_tracker` — whether to add this bind group to the submit
+///   tracker (which fails submission if any referenced resource was destroyed).
+///   The caller passes `true` only the first time a given bind group is seen in
+///   the pass, deduplicating the per-command clone + submit-time re-validation
+///   (issue #8510).
 pub(crate) fn set_bind_group<E>(
     state: &mut PassState,
-    device: &Arc<Device>,
     dynamic_offsets: &[DynamicOffset],
     index: u32,
     num_dynamic_offsets: usize,
-    bind_group: Option<Arc<BindGroup>>,
-    merge_bind_groups: bool,
+    bind_group: Option<&Arc<BindGroup>>,
+    merge_into_scope: bool,
+    insert_into_tracker: bool,
 ) -> Result<(), E>
 where
     E: From<DeviceError>
@@ -75,7 +91,7 @@ where
         + From<DestroyedResourceError>
         + From<BindError>,
 {
-    if let Some(ref bind_group) = bind_group {
+    if let Some(bind_group) = bind_group {
         api_log!("Pass::set_bind_group {index} {}", bind_group.error_ident());
     } else {
         api_log!("Pass::set_bind_group {index} None");
@@ -98,17 +114,24 @@ where
     state.dynamic_offset_count += num_dynamic_offsets;
 
     if let Some(bind_group) = bind_group {
-        // Add the bind group to the tracker. This is done for both compute and
-        // render passes, and is used to fail submission of the command buffer if
-        // any resource in any of the bind groups has been destroyed, whether or
-        // not the bind group is actually used by the pipeline.
-        let bind_group = state.base.tracker.bind_groups.insert_single(bind_group);
-
-        bind_group.same_device(device)?;
+        if insert_into_tracker {
+            // Add the bind group to the tracker. This is done for both compute
+            // and render passes, and is used to fail submission of the command
+            // buffer if any resource in any of the bind groups has been
+            // destroyed, whether or not the bind group is actually used by the
+            // pipeline. We only do this once per distinct bind group in the
+            // pass (the arena dedups), so the clone here is paid once, not per
+            // command.
+            state
+                .base
+                .tracker
+                .bind_groups
+                .insert_single(bind_group.clone());
+        }
 
         bind_group.validate_dynamic_bindings(index, &state.temp_offsets)?;
 
-        if merge_bind_groups {
+        if merge_into_scope {
             // Merge the bind group's resources into the tracker. We only do this
             // for render passes. For compute passes it is done per dispatch in
             // [`flush_bindings`].
@@ -302,9 +325,8 @@ where
 
 pub(crate) fn write_timestamp<E>(
     state: &mut PassState,
-    device: &Arc<Device>,
     pending_query_resets: Option<&mut QueryResetMap>,
-    query_set: Arc<QuerySet>,
+    query_set: &Arc<QuerySet>,
     query_index: u32,
 ) -> Result<(), E>
 where
@@ -315,14 +337,18 @@ where
         query_set.error_ident()
     );
 
-    query_set.same_device(device)?;
+    // `same_device` was already checked when the query set was interned.
 
     state
         .base
         .device
         .require_features(wgt::Features::TIMESTAMP_QUERY_INSIDE_PASSES)?;
 
-    let query_set = state.base.tracker.query_sets.insert_single(query_set);
+    let query_set = state
+        .base
+        .tracker
+        .query_sets
+        .insert_single(query_set.clone());
 
     query_set.validate_and_write_timestamp(
         state.base.raw_encoder,

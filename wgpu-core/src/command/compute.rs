@@ -22,10 +22,11 @@ use crate::{
             end_pipeline_statistics_query, record_pass_timestamp_writes,
             validate_and_begin_pipeline_statistics_query,
         },
-        ArcCommand, ArcPassTimestampWrites, BasePass, BindGroupStateChange, CommandEncoder,
-        CommandEncoderError, DebugGroupError, EncoderStateError, InnerCommandEncoder, MapPassErr,
-        PassErrorScope, PassStateError, PassTimestampWrites, QueryUseError, StateChange,
-        TimestampWritesError, TransitionResourcesError,
+        ArcCommand, ArcPassTimestampWrites, BasePass, BindGroupArenaIndex, BindGroupStateChange,
+        CommandEncoder, CommandEncoderError, ComputeArenas, ComputeInternCaches,
+        ComputePipelineArenaIndex, DebugGroupError, EncoderStateError, InnerCommandEncoder,
+        MapPassErr, PassErrorScope, PassStateError, PassTimestampWrites, QuerySetArenaIndex,
+        QueryUseError, StateChange, TimestampWritesError, TransitionResourcesError,
     },
     device::{Device, DeviceError, MissingDownlevelFlags, MissingFeatures},
     global::Global,
@@ -65,6 +66,14 @@ pub struct ComputePass {
     // Resource binding dedupe state.
     current_bind_groups: BindGroupStateChange,
     current_pipeline: StateChange<id::ComputePipelineId>,
+
+    /// Resources referenced by this pass, interned into per-type arenas. Moved
+    /// out into the [`RunComputePass`](ArcCommand::RunComputePass) command when
+    /// the pass ends.
+    arenas: ComputeArenas,
+
+    /// Per-slot last-resolved memos for interning; pure recording-time state.
+    intern_caches: ComputeInternCaches,
 }
 
 impl_resource_type!(ComputePass);
@@ -85,6 +94,7 @@ impl ComputePass {
             .device
             .command_vec_pool
             .acquire_compute(&parent.device.compute_pass_size_hint);
+        let arenas = parent.device.command_vec_pool.acquire_compute_arenas();
         let base = BasePass::from_pooled(&label, commands, dynamic_offsets);
         Self {
             base,
@@ -93,6 +103,9 @@ impl ComputePass {
 
             current_bind_groups: BindGroupStateChange::new(),
             current_pipeline: StateChange::new(),
+
+            arenas,
+            intern_caches: ComputeInternCaches::new(),
         }
     }
 
@@ -103,6 +116,9 @@ impl ComputePass {
             timestamp_writes: None,
             current_bind_groups: BindGroupStateChange::new(),
             current_pipeline: StateChange::new(),
+
+            arenas: ComputeArenas::default(),
+            intern_caches: ComputeInternCaches::new(),
         }
     }
 
@@ -646,6 +662,10 @@ impl Global {
         cmd_buf_data.push_with(|| -> Result<_, ComputePassError> {
             Ok(ArcCommand::RunComputePass {
                 pass: base?,
+                // Move the interned resources out to travel with the command
+                // stream that indexes them (dropped with the pass on the error
+                // path above).
+                arenas: core::mem::take(&mut pass.arenas),
                 timestamp_writes: pass.timestamp_writes.take(),
             })
         })
@@ -670,6 +690,7 @@ impl Global {
 pub(super) fn encode_compute_pass(
     parent_state: &mut EncodingState<InnerCommandEncoder>,
     mut base: BasePass<ArcComputeCommand, Infallible>,
+    arenas: ComputeArenas,
     mut timestamp_writes: Option<ArcPassTimestampWrites>,
 ) -> Result<(), ComputePassError> {
     let pass_scope = PassErrorScope::Pass;
@@ -806,20 +827,28 @@ pub(super) fn encode_compute_pass(
                 bind_group,
             } => {
                 let scope = PassErrorScope::SetBindGroup;
+                // Compute never merges bind-group usages into the pass scope at
+                // set time (that happens per dispatch in `flush_bindings`), so
+                // `merge_into_scope` is always false. The (4a) scope-merge
+                // elision is render-only. The submit tracker still records the
+                // bind group; compute passes are short, so it is inserted per
+                // command as before.
+                let bind_group = bind_group.map(|i| &arenas.bind_groups.entry(i).arc);
                 pass::set_bind_group::<ComputePassErrorInner>(
                     &mut state.pass,
-                    device,
                     &base.dynamic_offsets,
                     index,
                     num_dynamic_offsets,
                     bind_group,
                     false,
+                    true,
                 )
                 .map_pass_err(scope)?;
             }
             ArcComputeCommand::SetPipeline(pipeline) => {
                 let scope = PassErrorScope::SetPipelineCompute;
-                set_pipeline(&mut state, device, pipeline).map_pass_err(scope)?;
+                set_pipeline(&mut state, device, arenas.pipelines.get(pipeline))
+                    .map_pass_err(scope)?;
             }
             ArcComputeCommand::SetImmediate {
                 offset,
@@ -872,9 +901,8 @@ pub(super) fn encode_compute_pass(
                 let scope = PassErrorScope::WriteTimestamp;
                 pass::write_timestamp::<ComputePassErrorInner>(
                     &mut state.pass,
-                    device,
                     None, // compute passes do not attempt to coalesce query resets
-                    query_set,
+                    arenas.query_sets.get(query_set),
                     query_index,
                 )
                 .map_pass_err(scope)?;
@@ -885,7 +913,7 @@ pub(super) fn encode_compute_pass(
             } => {
                 let scope = PassErrorScope::BeginPipelineStatisticsQuery;
                 validate_and_begin_pipeline_statistics_query(
-                    query_set,
+                    arenas.query_sets.get(query_set).clone(),
                     state.pass.base.raw_encoder,
                     &mut state.pass.base.tracker.query_sets,
                     device,
@@ -931,6 +959,9 @@ pub(super) fn encode_compute_pass(
         core::mem::take(&mut base.commands),
         core::mem::take(&mut base.dynamic_offsets),
     );
+    // Recycle the arena backing vectors now that replay is complete; see the
+    // render-pass equivalent for the lifetime argument.
+    device.command_vec_pool.release_compute_arenas(arenas);
 
     if *state.pass.base.debug_scope_depth > 0 {
         Err(
@@ -990,9 +1021,10 @@ pub(super) fn encode_compute_pass(
 fn set_pipeline(
     state: &mut State,
     device: &Arc<Device>,
-    pipeline: Arc<ComputePipeline>,
+    pipeline: &Arc<ComputePipeline>,
 ) -> Result<(), ComputePassErrorInner> {
-    pipeline.same_device(device)?;
+    let _ = device;
+    // `same_device` was already checked when the pipeline was interned.
 
     state.pipeline = Some(pipeline.clone());
 
@@ -1001,7 +1033,7 @@ fn set_pipeline(
         .base
         .tracker
         .compute_pipelines
-        .insert_single(pipeline)
+        .insert_single(pipeline.clone())
         .clone();
 
     unsafe {
@@ -1257,6 +1289,214 @@ fn dispatch_workgroups_indirect(
     Ok(())
 }
 
+/// Intern an `Arc`-carrying compute [`BasePass`] (as produced by trace replay
+/// in the `player`) into the arena form used at runtime. Inverse of
+/// [`resolve_compute_base_pass_to_arc`].
+#[cfg(feature = "replay")]
+#[doc(hidden)]
+pub fn intern_compute_base_pass_from_arc(
+    base: BasePass<crate::command::ComputeCommand<crate::command::ArcReferences>, Infallible>,
+) -> (BasePass<ArcComputeCommand, Infallible>, ComputeArenas) {
+    use crate::command::ComputeCommand as C;
+    let mut arenas = ComputeArenas::default();
+    let commands = base
+        .commands
+        .into_iter()
+        .map(|cmd| match cmd {
+            C::SetBindGroup {
+                index,
+                num_dynamic_offsets,
+                bind_group,
+            } => C::SetBindGroup {
+                index,
+                num_dynamic_offsets,
+                bind_group: bind_group.map(|bg| arenas.bind_groups.push(bg)),
+            },
+            C::SetPipeline(p) => C::SetPipeline(arenas.pipelines.push(p)),
+            C::SetImmediate {
+                offset,
+                size_bytes,
+                values_offset,
+            } => C::SetImmediate {
+                offset,
+                size_bytes,
+                values_offset,
+            },
+            C::DispatchWorkgroups(g) => C::DispatchWorkgroups(g),
+            // Buffers are not interned: the `Arc` passes straight through.
+            C::DispatchWorkgroupsIndirect { buffer, offset } => {
+                C::DispatchWorkgroupsIndirect { buffer, offset }
+            }
+            C::PushDebugGroup { color, len } => C::PushDebugGroup { color, len },
+            C::PopDebugGroup => C::PopDebugGroup,
+            C::InsertDebugMarker { color, len } => C::InsertDebugMarker { color, len },
+            C::WriteTimestamp {
+                query_set,
+                query_index,
+            } => C::WriteTimestamp {
+                query_set: arenas.query_sets.push(query_set),
+                query_index,
+            },
+            C::BeginPipelineStatisticsQuery {
+                query_set,
+                query_index,
+            } => C::BeginPipelineStatisticsQuery {
+                query_set: arenas.query_sets.push(query_set),
+                query_index,
+            },
+            C::EndPipelineStatisticsQuery => C::EndPipelineStatisticsQuery,
+            C::TransitionResources {
+                buffer_transitions,
+                texture_transitions,
+            } => C::TransitionResources {
+                buffer_transitions,
+                texture_transitions,
+            },
+        })
+        .collect();
+    (
+        BasePass {
+            label: base.label,
+            error: None,
+            commands,
+            dynamic_offsets: base.dynamic_offsets,
+            string_data: base.string_data,
+            immediates_data: base.immediates_data,
+        },
+        arenas,
+    )
+}
+
+/// Resolve every command in an arena-indexed compute [`BasePass`] back into one
+/// carrying resolved `Arc`s, for trace recording.
+#[cfg(feature = "trace")]
+pub(crate) fn resolve_compute_base_pass_to_arc(
+    arenas: &ComputeArenas,
+    base: &BasePass<ArcComputeCommand, Infallible>,
+) -> BasePass<crate::command::ComputeCommand<crate::command::ArcReferences>, Infallible> {
+    use crate::command::ComputeCommand as C;
+    let commands = base
+        .commands
+        .iter()
+        .map(|cmd| match *cmd {
+            C::SetBindGroup {
+                index,
+                num_dynamic_offsets,
+                ref bind_group,
+            } => C::SetBindGroup {
+                index,
+                num_dynamic_offsets,
+                bind_group: bind_group.map(|i| arenas.bind_groups.get(i).clone()),
+            },
+            C::SetPipeline(p) => C::SetPipeline(arenas.pipelines.get(p).clone()),
+            C::SetImmediate {
+                offset,
+                size_bytes,
+                values_offset,
+            } => C::SetImmediate {
+                offset,
+                size_bytes,
+                values_offset,
+            },
+            C::DispatchWorkgroups(g) => C::DispatchWorkgroups(g),
+            // Buffers are not interned: clone the `Arc` straight off the command.
+            C::DispatchWorkgroupsIndirect { ref buffer, offset } => C::DispatchWorkgroupsIndirect {
+                buffer: buffer.clone(),
+                offset,
+            },
+            C::PushDebugGroup { color, len } => C::PushDebugGroup { color, len },
+            C::PopDebugGroup => C::PopDebugGroup,
+            C::InsertDebugMarker { color, len } => C::InsertDebugMarker { color, len },
+            C::WriteTimestamp {
+                query_set,
+                query_index,
+            } => C::WriteTimestamp {
+                query_set: arenas.query_sets.get(query_set).clone(),
+                query_index,
+            },
+            C::BeginPipelineStatisticsQuery {
+                query_set,
+                query_index,
+            } => C::BeginPipelineStatisticsQuery {
+                query_set: arenas.query_sets.get(query_set).clone(),
+                query_index,
+            },
+            C::EndPipelineStatisticsQuery => C::EndPipelineStatisticsQuery,
+            C::TransitionResources {
+                ref buffer_transitions,
+                ref texture_transitions,
+            } => C::TransitionResources {
+                buffer_transitions: buffer_transitions.clone(),
+                texture_transitions: texture_transitions.clone(),
+            },
+        })
+        .collect();
+    BasePass {
+        label: base.label.clone(),
+        error: None,
+        commands,
+        dynamic_offsets: base.dynamic_offsets.clone(),
+        string_data: base.string_data.clone(),
+        immediates_data: base.immediates_data.clone(),
+    }
+}
+
+// Record-time interning helpers (compute). See the render-pass equivalents in
+// `render.rs`; these differ only in the error type. Resources are resolved,
+// validity- and `same_device`-checked once at record time and moved into the
+// arena; a per-slot cache serves repeats with no resolve.
+
+fn intern_bind_group_compute(
+    hub: &crate::hub::Hub,
+    arena: &mut crate::command::BindGroupArena,
+    cache: Option<&mut crate::command::InternCache<id::BindGroupId, BindGroupArenaIndex>>,
+    device: &Device,
+    id: id::BindGroupId,
+) -> Result<BindGroupArenaIndex, ComputePassErrorInner> {
+    if let Some(cache) = cache.as_deref() {
+        if let Some(index) = cache.get(id) {
+            return Ok(index);
+        }
+    }
+    let bind_group = hub.bind_groups.get(id).get()?;
+    bind_group.same_device(device)?;
+    let index = arena.push(bind_group);
+    if let Some(cache) = cache {
+        cache.store(id, index);
+    }
+    Ok(index)
+}
+
+fn intern_compute_pipeline(
+    hub: &crate::hub::Hub,
+    arena: &mut crate::command::ComputePipelineArena,
+    cache: &mut crate::command::InternCache<id::ComputePipelineId, ComputePipelineArenaIndex>,
+    device: &Device,
+    id: id::ComputePipelineId,
+) -> Result<ComputePipelineArenaIndex, ComputePassErrorInner> {
+    if let Some(index) = cache.get(id) {
+        return Ok(index);
+    }
+    let pipeline = hub.compute_pipelines.get(id);
+    pipeline.check_valid()?;
+    pipeline.same_device(device)?;
+    let index = arena.push(pipeline);
+    cache.store(id, index);
+    Ok(index)
+}
+
+fn intern_query_set_compute(
+    hub: &crate::hub::Hub,
+    arena: &mut crate::command::QuerySetArena,
+    device: &Device,
+    id: id::QuerySetId,
+) -> Result<QuerySetArenaIndex, ComputePassErrorInner> {
+    let query_set = hub.query_sets.get(id);
+    query_set.check_is_valid()?;
+    query_set.same_device(device)?;
+    Ok(arena.push(query_set))
+}
+
 // Recording a compute pass.
 //
 // The only error that should be returned from these methods is
@@ -1293,15 +1533,25 @@ impl Global {
             return Ok(());
         }
 
-        let mut bind_group = None;
-        if let Some(bind_group_id) = bind_group_id {
-            let hub = &self.hub;
-            bind_group = Some(pass_try!(
-                base,
-                scope,
-                hub.bind_groups.get(bind_group_id).get(),
-            ));
-        }
+        // Borrow the device rather than cloning the `Arc` — this runs per
+        // `set_bind_group` command, so a clone here would be per-command churn.
+        // `pass.parent`, `pass.arenas` and `pass.intern_caches` are disjoint
+        // fields, so the borrows do not conflict. `pass.parent` is `Some` here
+        // (`pass_base!` returned early otherwise).
+        let device = &pass.parent.as_ref().unwrap().device;
+        let bind_group = match bind_group_id {
+            Some(bind_group_id) => {
+                let interned = intern_bind_group_compute(
+                    &self.hub,
+                    &mut pass.arenas.bind_groups,
+                    pass.intern_caches.bind_groups.get_mut(index as usize),
+                    device,
+                    bind_group_id,
+                );
+                Some(pass_try!(base, scope, interned))
+            }
+            None => None,
+        };
 
         base.commands.push(ArcComputeCommand::SetBindGroup {
             index,
@@ -1343,9 +1593,16 @@ impl Global {
             return Ok(());
         }
 
-        let hub = &self.hub;
-        let compute_pipeline = hub.compute_pipelines.get(pipeline_id);
-        pass_try!(base, scope, compute_pipeline.check_valid());
+        // Borrow (don't clone) the device: this runs per `set_pipeline` command.
+        let device = &pass.parent.as_ref().unwrap().device;
+        let interned = intern_compute_pipeline(
+            &self.hub,
+            &mut pass.arenas.pipelines,
+            &mut pass.intern_caches.pipeline,
+            device,
+            pipeline_id,
+        );
+        let compute_pipeline = pass_try!(base, scope, interned);
 
         base.commands
             .push(ArcComputeCommand::SetPipeline(compute_pipeline));
@@ -1456,6 +1713,8 @@ impl Global {
         let scope = PassErrorScope::Dispatch { indirect: true };
         let base = pass_base!(pass, scope);
 
+        // Buffers are not interned: resolve the id to its `Arc` and carry it
+        // directly on the command (`same_device` is checked at replay).
         let buffer = pass_try!(base, scope, hub.buffers.get(buffer_id).get());
 
         base.commands
@@ -1572,9 +1831,16 @@ impl Global {
         let scope = PassErrorScope::WriteTimestamp;
         let base = pass_base!(pass, scope);
 
-        let hub = &self.hub;
-        let query_set = hub.query_sets.get(query_set_id);
-        pass_try!(base, scope, query_set.check_is_valid());
+        let query_set = pass_try!(
+            base,
+            scope,
+            intern_query_set_compute(
+                &self.hub,
+                &mut pass.arenas.query_sets,
+                &pass.parent.as_ref().unwrap().device,
+                query_set_id,
+            ),
+        );
 
         base.commands.push(ArcComputeCommand::WriteTimestamp {
             query_set,
@@ -1606,9 +1872,16 @@ impl Global {
         let scope = PassErrorScope::BeginPipelineStatisticsQuery;
         let base = pass_base!(pass, scope);
 
-        let hub = &self.hub;
-        let query_set = hub.query_sets.get(query_set_id);
-        pass_try!(base, scope, query_set.check_is_valid());
+        let query_set = pass_try!(
+            base,
+            scope,
+            intern_query_set_compute(
+                &self.hub,
+                &mut pass.arenas.query_sets,
+                &pass.parent.as_ref().unwrap().device,
+                query_set_id,
+            ),
+        );
 
         base.commands
             .push(ArcComputeCommand::BeginPipelineStatisticsQuery {
@@ -1665,6 +1938,8 @@ impl Global {
 
         let hub = &self.hub;
 
+        // Buffers are not interned: resolve each id to its `Arc` and carry it
+        // directly on the command (`same_device` is checked at replay).
         let buffer_transitions = pass_try!(
             base,
             scope,
