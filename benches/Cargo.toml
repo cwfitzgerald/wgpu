@@ -10,6 +10,11 @@ license.workspace = true
 rust-version.workspace = true
 publish = false
 
+# The lib target contains no benchmarks, and its default harness rejects the
+# custom flags (--time, --param, ...) that the bench target accepts.
+[lib]
+bench = false
+
 [[bench]]
 name = "wgpu-benchmark"
 harness = false
@@ -53,4 +58,4 @@ naga-test = { workspace = true, features = [] }
 nanorand.workspace = true
 pollster.workspace = true
 rayon.workspace = true
-wgpu.workspace = true
+wgpu = { workspace = true, features = ["noop"] }
