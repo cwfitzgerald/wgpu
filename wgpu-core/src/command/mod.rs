@@ -1491,6 +1491,185 @@ impl PassSizeHint {
     }
 }
 
+/// A per-device pool of empty-but-grown heap vectors, recycled across the
+/// render/compute passes of a device to avoid reallocating (and first-touching,
+/// i.e. page-faulting) their backing storage on every pass.
+///
+/// # What is pooled
+///
+/// The [`BasePass`] of a pass holds two vectors that grow large during
+/// recording: `commands` (the command stream) and `dynamic_offsets`. At pass
+/// end these are moved, still full, into the encoder's command list, and at
+/// submit they are *drained* — emptied of their elements but retaining their
+/// full grown capacity — as the pass is encoded into the HAL. This pool
+/// intercepts those drained-empty vectors at that point (see
+/// [`render::encode_render_pass`]/[`compute::encode_compute_pass`]) and hands
+/// them back out the next time a pass of the matching kind is opened (see
+/// [`RenderPass::new`]/[`ComputePass::new`]), in place of a fresh allocation.
+///
+/// A `Vec<ArcRenderCommand>` and a `Vec<ArcComputeCommand>` have different
+/// element types and cannot share backing storage in safe Rust, so `commands`
+/// is pooled separately per pass kind. `dynamic_offsets` is a `Vec<u32>`
+/// regardless of pass kind, so a single pool serves both. `string_data`
+/// (`Vec<u8>`) and `immediates_data` (`Vec<u32>`) are only touched by
+/// debug-marker/immediate commands and stay tiny, so they are not pooled.
+///
+/// The pool cooperates with [`PassSizeHint`]: on a pool *miss* a fresh vector is
+/// allocated with the hint's suggested capacity; on a *hit* the warm (already
+/// grown) vector is reused as-is.
+///
+/// # Bounding
+///
+/// Retained memory is strictly bounded on two axes:
+///
+/// * **Pool length** is capped at [`Self::MAX_ENTRIES`] vectors per pool. Once a
+///   pool is full, released vectors are simply dropped.
+/// * **Per-entry capacity** is bounded by rejecting any released vector whose
+///   capacity exceeds the corresponding [`PassSizeHint`] cap
+///   ([`PassSizeHint::MAX_COMMANDS`] for command vecs,
+///   [`PassSizeHint::MAX_DYNAMIC_OFFSETS`] for offset vecs) — such an
+///   over-sized vector is dropped rather than pooled. This keeps every pooled
+///   entry no larger than the cap that already bounds pre-sizing.
+///
+/// The worst-case retained memory per device is therefore:
+///
+/// | Pool                | entries × cap × elem size          | ≈ bytes |
+/// |---------------------|------------------------------------|---------|
+/// | render commands     | 16 × 8192 × 56 B (`ArcRenderCommand`)  | ~7.0 MiB |
+/// | compute commands    | 16 × 8192 × 48 B (`ArcComputeCommand`) | ~6.0 MiB |
+/// | dynamic offsets     | 16 × 8192 × 4 B (`u32`)                | ~0.5 MiB |
+///
+/// i.e. a hard ceiling of roughly **13.5 MiB** per device, reached only after a
+/// device has run enough concurrently-outstanding, cap-sized passes to fill all
+/// three pools.
+///
+/// # Concurrency
+///
+/// The three pools each sit behind a [`Mutex`] (rank
+/// [`rank::COMMAND_VEC_POOL`]). A pass acquires its vectors once at pass begin
+/// and the pool reclaims them once at submit-time encode — on the order of a
+/// couple of dozen lock acquisitions per frame, never anything per-command.
+/// Nothing is held when acquiring at pass begin. At release the submit path
+/// holds `Device::snatchable_lock` (read), so `COMMAND_VEC_POOL` is ordered
+/// after [`rank::DEVICE_SNATCHABLE_LOCK`] in the lock-rank graph; the pool
+/// mutex itself is a leaf — no other `wgpu-core` lock is taken while it is
+/// held.
+#[derive(Debug)]
+pub(crate) struct CommandVecPool {
+    render_commands: Mutex<Vec<Vec<ArcRenderCommand>>>,
+    compute_commands: Mutex<Vec<Vec<ArcComputeCommand>>>,
+    dynamic_offsets: Mutex<Vec<Vec<wgt::DynamicOffset>>>,
+}
+
+impl CommandVecPool {
+    /// Maximum number of recycled vectors held in each pool.
+    ///
+    /// A single frame in the reference benchmark opens on the order of 28
+    /// passes, but they do not all overlap, so a small pool suffices to keep
+    /// them warm. See the type-level docs for the worst-case memory bound this
+    /// implies together with the per-entry capacity caps.
+    const MAX_ENTRIES: usize = 16;
+
+    pub(crate) fn new() -> Self {
+        Self {
+            render_commands: Mutex::new(rank::COMMAND_VEC_POOL, Vec::new()),
+            compute_commands: Mutex::new(rank::COMMAND_VEC_POOL, Vec::new()),
+            dynamic_offsets: Mutex::new(rank::COMMAND_VEC_POOL, Vec::new()),
+        }
+    }
+
+    /// Acquire an empty `commands` and `dynamic_offsets` vector for a
+    /// freshly-opened render pass, reusing warm ones from the pool when
+    /// available and otherwise allocating fresh with the size hint's suggested
+    /// capacities.
+    fn acquire_render(
+        &self,
+        size_hint: &PassSizeHint,
+    ) -> (Vec<ArcRenderCommand>, Vec<wgt::DynamicOffset>) {
+        let (commands_cap, dynamic_offsets_cap) = size_hint.suggested_capacities();
+        let commands = self
+            .render_commands
+            .lock()
+            .pop()
+            .unwrap_or_else(|| Vec::with_capacity(commands_cap));
+        let dynamic_offsets = self
+            .dynamic_offsets
+            .lock()
+            .pop()
+            .unwrap_or_else(|| Vec::with_capacity(dynamic_offsets_cap));
+        (commands, dynamic_offsets)
+    }
+
+    /// Acquire an empty `commands` and `dynamic_offsets` vector for a
+    /// freshly-opened compute pass. See [`Self::acquire_render`].
+    fn acquire_compute(
+        &self,
+        size_hint: &PassSizeHint,
+    ) -> (Vec<ArcComputeCommand>, Vec<wgt::DynamicOffset>) {
+        let (commands_cap, dynamic_offsets_cap) = size_hint.suggested_capacities();
+        let commands = self
+            .compute_commands
+            .lock()
+            .pop()
+            .unwrap_or_else(|| Vec::with_capacity(commands_cap));
+        let dynamic_offsets = self
+            .dynamic_offsets
+            .lock()
+            .pop()
+            .unwrap_or_else(|| Vec::with_capacity(dynamic_offsets_cap));
+        (commands, dynamic_offsets)
+    }
+
+    /// Return a drained render pass's `commands` and `dynamic_offsets` vectors
+    /// to the pool. Both vectors must already be empty.
+    fn release_render(
+        &self,
+        commands: Vec<ArcRenderCommand>,
+        dynamic_offsets: Vec<wgt::DynamicOffset>,
+    ) {
+        Self::push_bounded(&self.render_commands, commands, PassSizeHint::MAX_COMMANDS);
+        Self::push_bounded(
+            &self.dynamic_offsets,
+            dynamic_offsets,
+            PassSizeHint::MAX_DYNAMIC_OFFSETS,
+        );
+    }
+
+    /// Return a drained compute pass's `commands` and `dynamic_offsets` vectors
+    /// to the pool. Both vectors must already be empty.
+    fn release_compute(
+        &self,
+        commands: Vec<ArcComputeCommand>,
+        dynamic_offsets: Vec<wgt::DynamicOffset>,
+    ) {
+        Self::push_bounded(&self.compute_commands, commands, PassSizeHint::MAX_COMMANDS);
+        Self::push_bounded(
+            &self.dynamic_offsets,
+            dynamic_offsets,
+            PassSizeHint::MAX_DYNAMIC_OFFSETS,
+        );
+    }
+
+    /// Push a drained vector back into a pool, enforcing both bounding axes:
+    /// the vector must be empty, and it is dropped rather than pooled if the
+    /// pool is already full or the vector's capacity exceeds `capacity_cap`.
+    fn push_bounded<T>(pool: &Mutex<Vec<Vec<T>>>, vec: Vec<T>, capacity_cap: usize) {
+        debug_assert!(
+            vec.is_empty(),
+            "only drained (empty) vectors may be returned to the command vec pool"
+        );
+        if vec.capacity() > capacity_cap {
+            // Reject over-cap vectors so every pooled entry stays within the
+            // documented per-entry bound. Dropping an empty vec is cheap.
+            return;
+        }
+        let mut pool = pool.lock();
+        if pool.len() < Self::MAX_ENTRIES {
+            pool.push(vec);
+        }
+    }
+}
+
 /// A stream of commands for a render pass or compute pass.
 ///
 /// This also contains side tables referred to by certain commands,
@@ -1556,17 +1735,29 @@ impl<C: Clone, E: Clone> BasePass<C, E> {
         }
     }
 
-    /// Like [`Self::new`], but pre-allocates `commands` and `dynamic_offsets`
-    /// according to a [`PassSizeHint`] to avoid reallocation churn while
-    /// recording. `string_data` and `immediates_data` are left empty: they are
-    /// negligible in size and only touched by debug-marker/immediate commands.
-    fn with_capacity(label: &Label, size_hint: &PassSizeHint) -> Self {
-        let (commands_cap, dynamic_offsets_cap) = size_hint.suggested_capacities();
+    /// Build a fresh, empty pass from `commands` and `dynamic_offsets` vectors
+    /// acquired from a [`CommandVecPool`].
+    ///
+    /// The two vectors are either warm (recycled, already grown) entries from
+    /// the pool or freshly allocated with the [`PassSizeHint`]'s suggested
+    /// capacities; either way this both pre-sizes them (avoiding the
+    /// `grow_amortized` doubling churn while recording) and, on a pool hit,
+    /// avoids re-faulting their backing pages. The caller must pass empty
+    /// vectors. `string_data` and `immediates_data` are left freshly empty:
+    /// they are negligible in size and only touched by debug-marker/immediate
+    /// commands, so they are not pooled.
+    fn from_pooled(
+        label: &Label,
+        commands: Vec<C>,
+        dynamic_offsets: Vec<wgt::DynamicOffset>,
+    ) -> Self {
+        debug_assert!(commands.is_empty());
+        debug_assert!(dynamic_offsets.is_empty());
         Self {
             label: label.as_deref().map(str::to_owned),
             error: None,
-            commands: Vec::with_capacity(commands_cap),
-            dynamic_offsets: Vec::with_capacity(dynamic_offsets_cap),
+            commands,
+            dynamic_offsets,
             string_data: Vec::new(),
             immediates_data: Vec::new(),
         }

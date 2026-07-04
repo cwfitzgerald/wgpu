@@ -223,6 +223,12 @@ pub struct Device {
     pub(crate) render_pass_size_hint: command::PassSizeHint,
     pub(crate) compute_pass_size_hint: command::PassSizeHint,
 
+    /// A pool of empty-but-grown command/dynamic-offset vectors, recycled across
+    /// the render/compute passes of this device to avoid reallocating (and
+    /// re-faulting) their backing storage on every pass. See
+    /// [`command::CommandVecPool`].
+    pub(crate) command_vec_pool: command::CommandVecPool,
+
     pub(crate) command_indices: RwLock<CommandIndices>,
 
     /// The index of the last successful submission to this device's
@@ -536,6 +542,7 @@ impl Device {
             command_allocator,
             render_pass_size_hint: command::PassSizeHint::default(),
             compute_pass_size_hint: command::PassSizeHint::default(),
+            command_vec_pool: command::CommandVecPool::new(),
             command_indices: RwLock::new(
                 rank::DEVICE_COMMAND_INDICES,
                 CommandIndices {

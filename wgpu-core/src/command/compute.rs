@@ -81,7 +81,11 @@ impl ComputePass {
             timestamp_writes,
         } = desc;
 
-        let base = BasePass::with_capacity(&label, &parent.device.compute_pass_size_hint);
+        let (commands, dynamic_offsets) = parent
+            .device
+            .command_vec_pool
+            .acquire_compute(&parent.device.compute_pass_size_hint);
+        let base = BasePass::from_pooled(&label, commands, dynamic_offsets);
         Self {
             base,
             parent: Some(parent),
@@ -912,6 +916,21 @@ pub(super) fn encode_compute_pass(
             }
         }
     }
+
+    // The command stream has been fully drained above, leaving `base.commands`
+    // empty but still holding its grown capacity. `base.dynamic_offsets`, in
+    // contrast, is consumed by reference (each `SetBindGroup` slices into it)
+    // and so is still populated here; clear it (an O(1) `Vec<u32>` truncation,
+    // no Drop glue) so only empty vectors reach the pool. Both then retain
+    // their grown capacity, which we recycle into the device pool so the next
+    // pass can reuse the storage instead of reallocating and re-faulting it.
+    // (On the error paths below the pass simply drops, freeing them, as before
+    // — not worth the complexity to recycle those rare cases.)
+    base.dynamic_offsets.clear();
+    device.command_vec_pool.release_compute(
+        core::mem::take(&mut base.commands),
+        core::mem::take(&mut base.dynamic_offsets),
+    );
 
     if *state.pass.base.debug_scope_depth > 0 {
         Err(
