@@ -24,9 +24,10 @@ use crate::{
         },
         ArcCommand, ArcPassTimestampWrites, BasePass, BindGroupArenaIndex, BindGroupStateChange,
         CommandEncoder, CommandEncoderError, ComputeArenas, ComputeInternCaches,
-        ComputePipelineArenaIndex, DebugGroupError, EncoderStateError, InnerCommandEncoder,
-        MapPassErr, PassErrorScope, PassStateError, PassTimestampWrites, QuerySetArenaIndex,
-        QueryUseError, StateChange, TimestampWritesError, TransitionResourcesError,
+        ComputePipelineArenaIndex, DebugGroupError, EncoderStateError, EncoderVecPool,
+        InnerCommandEncoder, MapPassErr, PassErrorScope, PassStateError, PassTimestampWrites,
+        QuerySetArenaIndex, QueryUseError, StateChange, TimestampWritesError,
+        TransitionResourcesError,
     },
     device::{Device, DeviceError, MissingDownlevelFlags, MissingFeatures},
     global::Global,
@@ -74,6 +75,12 @@ pub struct ComputePass {
 
     /// Per-slot last-resolved memos for interning; pure recording-time state.
     intern_caches: ComputeInternCaches,
+
+    /// Whether this pass has acquired its pooled backing storage (`base` and
+    /// `arenas`) from the encoder's [`EncoderVecPool`] yet. `false` until the
+    /// first recorded command triggers [`Self::ensure_storage_acquired`]; a
+    /// pass that records nothing never acquires and so never touches the pool.
+    storage_acquired: bool,
 }
 
 impl_resource_type!(ComputePass);
@@ -90,22 +97,22 @@ impl ComputePass {
             timestamp_writes,
         } = desc;
 
-        let (commands, dynamic_offsets) = parent
-            .device
-            .command_vec_pool
-            .acquire_compute(&parent.device.compute_pass_size_hint);
-        let arenas = parent.device.command_vec_pool.acquire_compute_arenas();
-        let base = BasePass::from_pooled(&label, commands, dynamic_offsets);
+        // Do not touch the encoder's pool here: the pass starts with fresh,
+        // empty (zero-capacity) storage and lazily acquires pooled, warm
+        // storage on its first recorded command (see
+        // `ensure_storage_acquired`). A pass that records nothing never touches
+        // the pool.
         Self {
-            base,
+            base: BasePass::new(&label),
             parent: Some(parent),
             timestamp_writes,
 
             current_bind_groups: BindGroupStateChange::new(),
             current_pipeline: StateChange::new(),
 
-            arenas,
+            arenas: ComputeArenas::default(),
             intern_caches: ComputeInternCaches::new(),
+            storage_acquired: false,
         }
     }
 
@@ -119,6 +126,44 @@ impl ComputePass {
 
             arenas: ComputeArenas::default(),
             intern_caches: ComputeInternCaches::new(),
+            // An invalid pass never records, so it never acquires from the pool.
+            storage_acquired: false,
+        }
+    }
+
+    /// Lazily acquire this pass's pooled backing storage on its first recorded
+    /// command. See [`RenderPass::acquire_storage`] for the full rationale;
+    /// this is the compute twin.
+    #[cold]
+    fn acquire_storage(&mut self) {
+        debug_assert!(self.base.commands.is_empty());
+        debug_assert!(self.base.dynamic_offsets.is_empty());
+
+        let parent = self
+            .parent
+            .as_ref()
+            .expect("open pass must have a parent encoder");
+        let device = &parent.device;
+        let mut status = parent.data.lock();
+        if let Some(pool) = status.vec_pool_mut() {
+            let (commands, dynamic_offsets) = pool.acquire_compute(&device.compute_pass_size_hint);
+            let arenas = pool.acquire_compute_arenas();
+            drop(status);
+            self.base.commands = commands;
+            self.base.dynamic_offsets = dynamic_offsets;
+            self.arenas = arenas;
+        }
+        // If the encoder has since been invalidated (no pool available), keep
+        // the pass's fresh empty storage; its commands are discarded at finish.
+        self.storage_acquired = true;
+    }
+
+    /// Fast-path wrapper around [`Self::acquire_storage`]: a cheap already-
+    /// acquired check, deferring to the `#[cold]` acquire on the first command.
+    #[inline]
+    fn ensure_storage_acquired(&mut self) {
+        if !self.storage_acquired {
+            self.acquire_storage();
         }
     }
 
@@ -689,6 +734,11 @@ impl Global {
 
 pub(super) fn encode_compute_pass(
     parent_state: &mut EncodingState<InnerCommandEncoder>,
+    // The encoder's own vector pool, into which this pass's drained backing
+    // vectors are recycled at the end of encoding. Passed as a separate
+    // parameter (not through `EncodingState`) so it stays independent of the
+    // field reborrows the inner `State` takes out of `parent_state`.
+    pool: &mut EncoderVecPool,
     mut base: BasePass<ArcComputeCommand, Infallible>,
     arenas: ComputeArenas,
     mut timestamp_writes: Option<ArcPassTimestampWrites>,
@@ -950,18 +1000,25 @@ pub(super) fn encode_compute_pass(
     // contrast, is consumed by reference (each `SetBindGroup` slices into it)
     // and so is still populated here; clear it (an O(1) `Vec<u32>` truncation,
     // no Drop glue) so only empty vectors reach the pool. Both then retain
-    // their grown capacity, which we recycle into the device pool so the next
-    // pass can reuse the storage instead of reallocating and re-faulting it.
-    // (On the error paths below the pass simply drops, freeing them, as before
-    // — not worth the complexity to recycle those rare cases.)
+    // their grown capacity, which we recycle into the encoder's pool so the
+    // next pass on this encoder can reuse the storage instead of reallocating
+    // and re-faulting it. (On the error paths below the pass simply drops,
+    // freeing them, as before — not worth the complexity to recycle those rare
+    // cases.)
+    //
+    // `base` and `arenas` are owned locals here, so both the command/offset
+    // vectors and the arena backing vectors are *moved* into the pool rather
+    // than reset with `mem::take` — the pass they came from is gone.
     base.dynamic_offsets.clear();
-    device.command_vec_pool.release_compute(
-        core::mem::take(&mut base.commands),
-        core::mem::take(&mut base.dynamic_offsets),
-    );
+    let BasePass {
+        commands,
+        dynamic_offsets,
+        ..
+    } = base;
+    pool.release_compute(commands, dynamic_offsets);
     // Recycle the arena backing vectors now that replay is complete; see the
     // render-pass equivalent for the lifetime argument.
-    device.command_vec_pool.release_compute_arenas(arenas);
+    pool.release_compute_arenas(arenas);
 
     if *state.pass.base.debug_scope_depth > 0 {
         Err(

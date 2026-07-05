@@ -405,6 +405,32 @@ fn forbidden_skip() {
     let _guard2 = lock2.lock();
 }
 
+/// Regression test for the encoder-vec-pool recycle path: the submit path
+/// returns a retiring encoder's [`command::EncoderVecPool`] into
+/// [`rank::COMMAND_ENCODER_VEC_POOL`] (via the pool's `Drop`) while holding both
+/// `Device::snatchable_lock` (read) and, more recently, `Device::command_indices`
+/// (write) — see `Queue::submit`. The youngest held lock is therefore
+/// `DEVICE_COMMAND_INDICES`, so `COMMAND_ENCODER_VEC_POOL` must be one of its
+/// followers. This reproduces that nesting against the real rank table; it
+/// panics if the follower edge is missing.
+///
+/// [`command::EncoderVecPool`]: crate::command::EncoderVecPool
+#[test]
+fn command_encoder_vec_pool_after_command_indices() {
+    use super::rank;
+
+    let snatchable = RwLock::new(rank::DEVICE_SNATCHABLE_LOCK, ());
+    let command_indices = RwLock::new(rank::DEVICE_COMMAND_INDICES, ());
+    let pool = Mutex::new(rank::COMMAND_ENCODER_VEC_POOL, ());
+
+    let snatch_guard = snatchable.read();
+    let command_index_guard = command_indices.write();
+    let pool_guard = pool.lock();
+    drop(pool_guard);
+    drop(command_index_guard);
+    drop(snatch_guard);
+}
+
 /// Locks can be acquired and released in a stack-like order.
 #[test]
 fn stack_like() {
@@ -421,24 +447,6 @@ fn stack_like() {
     let guard3 = lock3.lock();
     drop(guard3);
     drop(guard1);
-}
-
-/// Regression test for the command-vec pool release path: the submit path
-/// reclaims a pass's vectors into [`rank::COMMAND_VEC_POOL`] while holding
-/// `Device::snatchable_lock` (read), so `COMMAND_VEC_POOL` must be a follower
-/// of [`rank::DEVICE_SNATCHABLE_LOCK`]. This reproduces that nesting against
-/// the real rank table; it panics if the follower edge is missing.
-#[test]
-fn command_vec_pool_after_snatchable_read() {
-    use super::rank;
-
-    let snatchable = RwLock::new(rank::DEVICE_SNATCHABLE_LOCK, ());
-    let pool = Mutex::new(rank::COMMAND_VEC_POOL, ());
-
-    let snatch_guard = snatchable.read();
-    let pool_guard = pool.lock();
-    drop(pool_guard);
-    drop(snatch_guard);
 }
 
 /// Locks can only be acquired and released in a stack-like order.

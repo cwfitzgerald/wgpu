@@ -217,17 +217,26 @@ pub struct Device {
 
     pub(crate) command_allocator: command::CommandAllocator,
 
+    /// A small bounded pool of warm [`command::EncoderVecPool`]s, recycled
+    /// between command encoders.
+    ///
+    /// A command encoder owns its `EncoderVecPool` mutex-free while recording
+    /// (see [`command::EncoderVecPool`]); at teardown, rather than dropping the
+    /// pool (and freeing every warm vector, forcing the next encoder to
+    /// reallocate from empty), the pool returns itself here via
+    /// [`Self::recycle_vec_pool`], and a freshly created encoder seeds its pool
+    /// from here via [`Self::acquire_vec_pool`]. Bounded at
+    /// [`Self::MAX_POOLED_VEC_POOLS`].
+    ///
+    /// The critical section is a single push/pop; over-cap or empty pools are
+    /// dropped outside the lock.
+    pub(crate) command_vec_pool: Mutex<Vec<command::EncoderVecPool>>,
+
     /// Heuristic capacity hints used to pre-size the heap vectors of freshly
     /// opened render/compute passes, tracked separately per pass kind. See
     /// [`command::PassSizeHint`].
     pub(crate) render_pass_size_hint: command::PassSizeHint,
     pub(crate) compute_pass_size_hint: command::PassSizeHint,
-
-    /// A pool of empty-but-grown command/dynamic-offset vectors, recycled across
-    /// the render/compute passes of this device to avoid reallocating (and
-    /// re-faulting) their backing storage on every pass. See
-    /// [`command::CommandVecPool`].
-    pub(crate) command_vec_pool: command::CommandVecPool,
 
     pub(crate) command_indices: RwLock<CommandIndices>,
 
@@ -540,9 +549,9 @@ impl Device {
             ),
             label: desc.label.to_string(),
             command_allocator,
+            command_vec_pool: Mutex::new(rank::COMMAND_ENCODER_VEC_POOL, Vec::new()),
             render_pass_size_hint: command::PassSizeHint::default(),
             compute_pass_size_hint: command::PassSizeHint::default(),
-            command_vec_pool: command::CommandVecPool::new(),
             command_indices: RwLock::new(
                 rank::DEVICE_COMMAND_INDICES,
                 CommandIndices {
@@ -2809,6 +2818,60 @@ impl Device {
         };
 
         Ok(Arc::new(module))
+    }
+
+    /// Maximum number of warm [`command::EncoderVecPool`]s retained in
+    /// [`Self::command_vec_pool`].
+    ///
+    /// Sized for the frame-building pattern of several command encoders built
+    /// back-to-back before a single submit: as each encoder retires it recycles
+    /// its pool here and the next encoder seeds from it, so a whole frame's worth
+    /// of encoders keeps its vectors warm without churn. Eight covers the eight
+    /// encoders of the pass-overhead frame benchmark; excess pools are dropped
+    /// rather than retained, bounding device-wide retained memory (see the
+    /// memory bound documented on [`command::EncoderVecPool`]).
+    const MAX_POOLED_VEC_POOLS: usize = 8;
+
+    /// Take a warm [`command::EncoderVecPool`] to seed a freshly created command
+    /// encoder, reusing one recycled by a prior encoder if available and
+    /// otherwise starting empty. The returned pool carries this device so it
+    /// returns itself here at teardown (see [`Self::recycle_vec_pool`]).
+    ///
+    /// The critical section is a single `pop`; setting the owning device (an
+    /// `Arc` clone) happens outside the lock.
+    pub(crate) fn acquire_vec_pool(self: &Arc<Self>) -> command::EncoderVecPool {
+        let pooled = self.command_vec_pool.lock().pop();
+        let mut pool = pooled.unwrap_or_default();
+        pool.set_owning_device(self.clone());
+        pool
+    }
+
+    /// Return a warm [`command::EncoderVecPool`] to the device pool at encoder
+    /// teardown, to be handed to a future encoder by [`Self::acquire_vec_pool`].
+    ///
+    /// Only pools that still hold at least one warm vector are retained (empty
+    /// pools from encoders that never recorded a pass are dropped), and the pool
+    /// is capped at [`Self::MAX_POOLED_VEC_POOLS`]. The critical section is a
+    /// pure push; the incoming pool already carries no device handle (its
+    /// [`Drop`](command::EncoderVecPool) took it before calling here), and any
+    /// over-cap pool is dropped *after* the lock is released.
+    pub(crate) fn recycle_vec_pool(&self, pool: command::EncoderVecPool) {
+        if !pool.has_warm_vecs() {
+            // Nothing worth keeping; drop it (outside any lock).
+            return;
+        }
+        let mut over_cap = None;
+        {
+            let mut guard = self.command_vec_pool.lock();
+            if guard.len() < Self::MAX_POOLED_VEC_POOLS {
+                guard.push(pool);
+            } else {
+                // Hold the over-cap pool until the lock is released so its
+                // (potentially large) backing vectors drop outside the lock.
+                over_cap = Some(pool);
+            }
+        }
+        drop(over_cap);
     }
 
     pub(crate) fn create_command_encoder(

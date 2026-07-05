@@ -27,10 +27,11 @@ use crate::{
         render_command::ArcRenderCommand,
         ArcCommand, ArcPassTimestampWrites, BasePass, BindGroupArenaIndex, BindGroupStateChange,
         CommandBufferTextureMemoryActions, CommandEncoder, CommandEncoderError, DebugGroupError,
-        DrawCommandFamily, DrawError, DrawKind, EncoderStateError, EncodingState, ExecutionError,
-        InnerCommandEncoder, MapPassErr, PassErrorScope, PassStateError, PassTimestampWrites,
-        QuerySetArenaIndex, QueryUseError, Rect, RenderArenas, RenderCommandError,
-        RenderInternCaches, RenderPipelineArenaIndex, StateChange, TimestampWritesError,
+        DrawCommandFamily, DrawError, DrawKind, EncoderStateError, EncoderVecPool, EncodingState,
+        ExecutionError, InnerCommandEncoder, MapPassErr, PassErrorScope, PassStateError,
+        PassTimestampWrites, QuerySetArenaIndex, QueryUseError, Rect, RenderArenas,
+        RenderCommandError, RenderInternCaches, RenderPipelineArenaIndex, StateChange,
+        TimestampWritesError,
     },
     device::{
         AttachmentData, Device, DeviceError, MissingDownlevelFlags, MissingFeatures,
@@ -348,6 +349,12 @@ pub struct RenderPass {
     /// the cached arena index is reused with no resolve. Pure recording-time
     /// state, dropped at pass end.
     intern_caches: RenderInternCaches,
+
+    /// Whether this pass has acquired its pooled backing storage (`base` and
+    /// `arenas`) from the encoder's [`EncoderVecPool`] yet. `false` until the
+    /// first recorded command triggers [`Self::ensure_storage_acquired`]; a
+    /// pass that records nothing never acquires and so never touches the pool.
+    storage_acquired: bool,
 }
 
 impl_resource_type!(RenderPass);
@@ -368,14 +375,13 @@ impl RenderPass {
             multiview_mask,
         } = desc;
 
-        let (commands, dynamic_offsets) = parent
-            .device
-            .command_vec_pool
-            .acquire_render(&parent.device.render_pass_size_hint);
-        let arenas = parent.device.command_vec_pool.acquire_render_arenas();
-        let base = BasePass::from_pooled(label, commands, dynamic_offsets);
+        // Do not touch the encoder's pool here: the pass starts with fresh,
+        // empty (zero-capacity) storage and lazily acquires pooled, warm
+        // storage on its first recorded command (see
+        // `ensure_storage_acquired`). A pass that records nothing never touches
+        // the pool.
         Self {
-            base,
+            base: BasePass::new(label),
             parent: Some(parent),
             color_attachments,
             depth_stencil_attachment,
@@ -386,8 +392,9 @@ impl RenderPass {
             current_bind_groups: BindGroupStateChange::new(),
             current_pipeline: StateChange::new(),
 
-            arenas,
+            arenas: RenderArenas::default(),
             intern_caches: RenderInternCaches::new(),
+            storage_acquired: false,
         }
     }
 
@@ -405,6 +412,60 @@ impl RenderPass {
 
             arenas: RenderArenas::default(),
             intern_caches: RenderInternCaches::new(),
+            // An invalid pass never records, so it never acquires from the pool.
+            storage_acquired: false,
+        }
+    }
+
+    /// Lazily acquire this pass's pooled backing storage on its first recorded
+    /// command.
+    ///
+    /// Called through the `pass_base!` macro at the top of every recording
+    /// entry point, but only for an open, valid pass (an ended or invalid pass
+    /// returns early from `pass_base!` before reaching here, so it never
+    /// touches the pool). After the first call this is a cheap `bool` early-out.
+    ///
+    /// On the first call it briefly re-locks the parent encoder's `data` mutex
+    /// — the sole owner of the [`EncoderVecPool`] — pops warm, already-grown
+    /// `commands`/`dynamic_offsets` vectors and arena backing vectors out of it,
+    /// and swaps them into this pass's (still-empty) `base` and `arenas`. This
+    /// is the only place the pass touches the pool at record time, and it is
+    /// `#[cold]`: the common case is the already-acquired early-out.
+    ///
+    /// Nothing has been interned into `self.arenas` yet at this point (this runs
+    /// before the command that would intern), so replacing the arenas wholesale
+    /// is safe and no arena index is invalidated. The pooled arenas mint their
+    /// own generation via `from_pooled`, preserving generation uniqueness.
+    #[cold]
+    fn acquire_storage(&mut self) {
+        debug_assert!(self.base.commands.is_empty());
+        debug_assert!(self.base.dynamic_offsets.is_empty());
+
+        let parent = self
+            .parent
+            .as_ref()
+            .expect("open pass must have a parent encoder");
+        let device = &parent.device;
+        let mut status = parent.data.lock();
+        if let Some(pool) = status.vec_pool_mut() {
+            let (commands, dynamic_offsets) = pool.acquire_render(&device.render_pass_size_hint);
+            let arenas = pool.acquire_render_arenas();
+            drop(status);
+            self.base.commands = commands;
+            self.base.dynamic_offsets = dynamic_offsets;
+            self.arenas = arenas;
+        }
+        // If the encoder has since been invalidated (no pool available), keep
+        // the pass's fresh empty storage; its commands are discarded at finish.
+        self.storage_acquired = true;
+    }
+
+    /// Fast-path wrapper around [`Self::acquire_storage`]: a cheap already-
+    /// acquired check, deferring to the `#[cold]` acquire on the first command.
+    #[inline]
+    fn ensure_storage_acquired(&mut self) {
+        if !self.storage_acquired {
+            self.acquire_storage();
         }
     }
 
@@ -2324,6 +2385,11 @@ impl Global {
 
 pub(super) fn encode_render_pass(
     parent_state: &mut EncodingState<InnerCommandEncoder>,
+    // The encoder's own vector pool, into which this pass's drained backing
+    // vectors are recycled at the end of encoding. Passed as a separate
+    // parameter (not through `EncodingState`) so it stays independent of the
+    // field reborrows the inner `State` takes out of `parent_state`.
+    pool: &mut EncoderVecPool,
     mut base: BasePass<ArcRenderCommand, Infallible>,
     mut arenas: RenderArenas,
     color_attachments: ColorAttachments<Arc<TextureView>>,
@@ -2768,23 +2834,27 @@ pub(super) fn encode_render_pass(
         // `SetBindGroup` slices into it) and so is still populated here; clear
         // it (an O(1) `Vec<u32>` truncation, no Drop glue) so only empty
         // vectors reach the pool. Both then retain their grown capacity, which
-        // we recycle into the device pool so the next pass can reuse the
-        // storage instead of reallocating and re-faulting it. (On the error
-        // paths below the pass simply drops, freeing them, as before — not
-        // worth the complexity to recycle those rare cases.)
+        // we recycle into the encoder's pool so the next pass on this encoder
+        // can reuse the storage instead of reallocating and re-faulting it.
+        // (On the error paths below the pass simply drops, freeing them, as
+        // before — not worth the complexity to recycle those rare cases.)
+        //
+        // `base` and `arenas` are owned locals here, so both the command/offset
+        // vectors and the arena backing vectors are *moved* into the pool
+        // rather than reset with `mem::take` — the pass they came from is gone.
         base.dynamic_offsets.clear();
-        device.command_vec_pool.release_render(
-            core::mem::take(&mut base.commands),
-            core::mem::take(&mut base.dynamic_offsets),
-        );
+        let BasePass {
+            commands,
+            dynamic_offsets,
+            ..
+        } = base;
+        pool.release_render(commands, dynamic_offsets);
         // The command stream has been fully replayed, so nothing indexes the
         // arenas anymore; recycle their (potentially large) backing vectors,
         // dropping the interned `Arc`s. Barriers below are computed from the
         // usage scope / tracker, which hold their own references. (Error paths
         // below simply drop the arenas, as before.)
-        device
-            .command_vec_pool
-            .release_render_arenas(core::mem::take(&mut arenas));
+        pool.release_render_arenas(arenas);
 
         if *state.pass.base.debug_scope_depth > 0 {
             Err(

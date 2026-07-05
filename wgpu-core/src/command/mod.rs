@@ -462,6 +462,25 @@ impl CommandEncoderStatus {
         });
         err
     }
+
+    /// Borrow the encoder's per-encoder vector pool, if the encoder is still in
+    /// a state that holds a [`CommandBufferMutable`].
+    ///
+    /// A pass acquires its pooled storage lazily on its first recorded command
+    /// by re-locking the parent encoder's `data` mutex and calling this. An
+    /// open, valid pass's parent is normally [`Locked`](Self::Locked), but the
+    /// encoder can have been invalidated in the meantime (a `Locked` encoder
+    /// touched by any other operation invalidates into [`Error`](Self::Error),
+    /// which no longer holds a `CommandBufferMutable`); in that case this
+    /// returns `None` and the pass falls back to fresh (unpooled) storage. Its
+    /// recorded commands are ultimately discarded when the invalid encoder is
+    /// finished, so losing the pooling optimization there is harmless.
+    pub(crate) fn vec_pool_mut(&mut self) -> Option<&mut EncoderVecPool> {
+        match self {
+            Self::Recording(inner) | Self::Locked(inner) => Some(&mut inner.vec_pool),
+            _ => None,
+        }
+    }
 }
 
 /// A guard to enforce error reporting, for a [`CommandBuffer`] in the [`Recording`] state.
@@ -893,6 +912,15 @@ pub struct CommandBufferMutable {
     pub(crate) query_set_writes: query::QuerySetWrites,
     /// Query set resolves that had to be deferred to submit time.
     pub(crate) deferred_query_set_resolves: Vec<query::DeferredQuerySetResolve>,
+
+    /// Pool of empty-but-grown command/dynamic-offset/arena backing vectors,
+    /// recycled across the render/compute passes recorded on this encoder. See
+    /// [`EncoderVecPool`]. Access is serialized by this struct's owning `data`
+    /// [`Mutex`], so the pool holds no interior locks. Seeded from, and returned
+    /// to, the device's bounded pool at the encoder's lifecycle boundaries so
+    /// warm vectors survive across encoders (see [`Device::acquire_vec_pool`] /
+    /// [`Device::recycle_vec_pool`]).
+    pub(crate) vec_pool: EncoderVecPool,
 }
 
 impl CommandBufferMutable {
@@ -963,6 +991,11 @@ impl CommandEncoder {
                     commands: Vec::new(),
                     query_set_writes: Default::default(),
                     deferred_query_set_resolves: Default::default(),
+                    // Seed from the device pool so this encoder reuses warm
+                    // vectors left behind by a prior encoder rather than
+                    // allocating from empty. Sets the pool's `device` handle so
+                    // it returns itself to the device pool at teardown.
+                    vec_pool: device.acquire_vec_pool(),
                     #[cfg(feature = "trace")]
                     trace_commands: if device.trace.lock().is_some() {
                         Some(Vec::new())
@@ -1181,6 +1214,7 @@ impl CommandEncoder {
                         );
                         let res = render::encode_render_pass(
                             &mut state,
+                            &mut cmd_buf_data.vec_pool,
                             pass,
                             arenas,
                             color_attachments,
@@ -1210,6 +1244,7 @@ impl CommandEncoder {
                         );
                         let res = compute::encode_compute_pass(
                             &mut state,
+                            &mut cmd_buf_data.vec_pool,
                             pass,
                             arenas,
                             timestamp_writes,
@@ -1453,9 +1488,10 @@ crate::impl_parent_device!(CommandBuffer);
 crate::impl_storage_item!(CommandBuffer);
 
 /// A per-device heuristic for how large a freshly-opened pass's heap vectors are
-/// likely to grow, used to pre-size them at [`BasePass::with_capacity`] and avoid
-/// the repeated reallocation (`grow_amortized` doublings) that dominates recording
-/// of large passes.
+/// likely to grow, used to pre-size them when a pass lazily acquires its pooled
+/// storage (see [`EncoderVecPool::acquire_render`]) and avoid the repeated
+/// reallocation (`grow_amortized` doublings) that dominates recording of large
+/// passes.
 ///
 /// This is a plain high-water mark of the final sizes of *finished* passes of the
 /// same kind (render vs compute): each field records the largest length seen so
@@ -1521,9 +1557,10 @@ impl PassSizeHint {
     }
 }
 
-/// A per-device pool of empty-but-grown heap vectors, recycled across the
-/// render/compute passes of a device to avoid reallocating (and first-touching,
-/// i.e. page-faulting) their backing storage on every pass.
+/// A per-encoder pool of empty-but-grown heap vectors, recycled across the
+/// render/compute passes recorded on a single command encoder to avoid
+/// reallocating (and first-touching, i.e. page-faulting) their backing storage
+/// on every pass.
 ///
 /// # What is pooled
 ///
@@ -1534,8 +1571,11 @@ impl PassSizeHint {
 /// full grown capacity — as the pass is encoded into the HAL. This pool
 /// intercepts those drained-empty vectors at that point (see
 /// [`render::encode_render_pass`]/[`compute::encode_compute_pass`]) and hands
-/// them back out the next time a pass of the matching kind is opened (see
-/// [`RenderPass::new`]/[`ComputePass::new`]), in place of a fresh allocation.
+/// them back out the next time a pass of the matching kind is opened on the
+/// same encoder (lazily, on the pass's first recorded command — see
+/// [`RenderPass::ensure_storage_acquired`]/[`ComputePass::ensure_storage_acquired`]),
+/// in place of a fresh allocation. A pass that records no commands never
+/// touches the pool at all.
 ///
 /// A `Vec<ArcRenderCommand>` and a `Vec<ArcComputeCommand>` have different
 /// element types and cannot share backing storage in safe Rust, so `commands`
@@ -1576,113 +1616,162 @@ impl PassSizeHint {
 /// `ArcRenderCommand` 56 B, `ArcComputeCommand` 48 B), so the command pools are
 /// as before; the arenas add bounded growth on top.
 ///
-/// The worst-case retained memory per device is therefore:
+/// The worst-case retained memory per *`EncoderVecPool`* is therefore:
 ///
 /// | Pool                     | entries × cap × elem size               | ≈ bytes |
 /// |--------------------------|-----------------------------------------|---------|
-/// | render commands          | 16 × 8192 × 56 B (`ArcRenderCommand`)   | ~7.0 MiB |
-/// | compute commands         | 16 × 8192 × 48 B (`ArcComputeCommand`)  | ~6.0 MiB |
-/// | dynamic offsets          | 16 × 8192 × 4 B (`u32`)                 | ~0.5 MiB |
-/// | bind-group entries       | 16 × 8192 × 16 B (`BindGroupEntry`)     | ~2.0 MiB |
-/// | query-set entries        | 16 × 8192 × 8 B (`QuerySetEntry`)       | ~1.0 MiB |
-/// | render-pipeline entries  | 16 × 8192 × 8 B (`RenderPipelineEntry`) | ~1.0 MiB |
-/// | compute-pipeline entries | 16 × 8192 × 8 B (`ComputePipelineEntry`)| ~1.0 MiB |
+/// | render commands          | 4 × 8192 × 56 B (`ArcRenderCommand`)    | ~1.8 MiB |
+/// | compute commands         | 4 × 8192 × 48 B (`ArcComputeCommand`)   | ~1.5 MiB |
+/// | dynamic offsets          | 4 × 8192 × 4 B (`u32`)                   | ~0.1 MiB |
+/// | bind-group entries       | 4 × 8192 × 16 B (`BindGroupEntry`)      | ~0.5 MiB |
+/// | query-set entries        | 4 × 8192 × 8 B (`QuerySetEntry`)        | ~0.25 MiB |
+/// | render-pipeline entries  | 4 × 8192 × 8 B (`RenderPipelineEntry`)  | ~0.25 MiB |
+/// | compute-pipeline entries | 4 × 8192 × 8 B (`ComputePipelineEntry`) | ~0.25 MiB |
 ///
-/// i.e. a hard ceiling of roughly **18.5 MiB** per device, reached only after a
-/// device has run enough concurrently-outstanding, cap-sized passes to fill
-/// every pool.
+/// i.e. a theoretical hard ceiling of roughly **4.7 MiB** per pool, reached only
+/// after a pool has served enough cap-sized passes to fill every one of its
+/// sub-pools. This is a worst case: actual retention tracks the real high-water
+/// usage of the passes that flow through the pool, which for typical workloads
+/// is a tiny fraction of the cap.
 ///
-/// # Concurrency
+/// # Recycling: encoder-owned during recording, device-pooled between encoders
 ///
-/// All seven pools (the three command/offset pools plus the four arena-entry
-/// pools) each sit behind a [`Mutex`] (rank [`rank::COMMAND_VEC_POOL`]). A
-/// pass acquires its vectors once at pass begin and the pool reclaims them
-/// once at submit-time encode — on the order of a couple of dozen lock
-/// acquisitions per frame, never anything per-command.
-/// Nothing is held when acquiring at pass begin. At release the submit path
-/// holds `Device::snatchable_lock` (read), so `COMMAND_VEC_POOL` is ordered
-/// after [`rank::DEVICE_SNATCHABLE_LOCK`] in the lock-rank graph; the pool
-/// mutex itself is a leaf — no other `wgpu-core` lock is taken while it is
-/// held.
-#[derive(Debug)]
-pub(crate) struct CommandVecPool {
-    render_commands: Mutex<Vec<Vec<ArcRenderCommand>>>,
-    compute_commands: Mutex<Vec<Vec<ArcComputeCommand>>>,
-    dynamic_offsets: Mutex<Vec<Vec<wgt::DynamicOffset>>>,
+/// During recording the pool is owned exclusively by its
+/// [`CommandBufferMutable`] and needs no locking (see the section below). But
+/// dropping the pool together with its command buffer at submit would throw away
+/// every warm vector, forcing the next encoder to reallocate from empty — the
+/// single largest cost in the pass-encode/submit path. To keep vectors warm
+/// *across* encoders, a pool that still holds at least one warm (non-zero-
+/// capacity) vector is, at teardown, returned to a small bounded device-level
+/// pool ([`Device::recycle_vec_pool`]) instead of being dropped; a freshly
+/// created encoder seeds its pool from there ([`Device::acquire_vec_pool`]).
+/// This covers both teardown paths — submit-retire and drop-without-submit —
+/// because both ultimately drop the `EncoderVecPool`, and the return happens in
+/// its [`Drop`] (see [`EncoderVecPool::device`]).
+///
+/// The device pool retains at most [`Device::MAX_POOLED_VEC_POOLS`] pools. That
+/// cap is sized for the frame-building pattern of one submit per frame with
+/// several encoders built back-to-back (each recycling into the device pool as
+/// it retires, the next seeding from it), so a whole frame's worth of encoders
+/// recycles without churn. Device-wide retained memory is therefore bounded by
+/// `MAX_POOLED_VEC_POOLS` × the ~4.7 MiB theoretical per-pool ceiling above,
+/// with the same caveat that real retention tracks actual high-water usage, not
+/// the cap.
+///
+/// # Single-owner access, no locking during recording
+///
+/// While an encoder is recording, the pool lives on [`CommandBufferMutable`]
+/// behind the encoder's `data` [`Mutex`], which already serializes all
+/// recording, ending, and encoding of a given encoder. Acquire (a pass's lazy
+/// first-command
+/// [`ensure_storage_acquired`](RenderPass::ensure_storage_acquired), which
+/// briefly re-locks that `data` mutex) and release (submit-time encode, which
+/// holds a `&mut CommandBufferMutable`) therefore both happen under
+/// single-owner access — the pool itself needs no interior locking, so it holds
+/// plain `Vec<Vec<T>>` fields rather than the mutex-wrapped fields of the
+/// former per-device design. The only locking is on the *device* pool the pool
+/// is seeded from and returned to at the encoder's two lifecycle boundaries
+/// (creation and teardown), a single push/pop under one mutex.
+#[derive(Debug, Default)]
+pub(crate) struct EncoderVecPool {
+    render_commands: Vec<Vec<ArcRenderCommand>>,
+    compute_commands: Vec<Vec<ArcComputeCommand>>,
+    dynamic_offsets: Vec<Vec<wgt::DynamicOffset>>,
     // Per-type arena backing vectors. Bind groups and query sets share an
     // element type across render and compute passes, so a single pool each
     // serves both; pipeline entries differ, so they are pooled per kind.
     // (Buffers are not interned, so there is no buffer-entry pool.)
-    bind_group_entries: Mutex<Vec<Vec<arena::BindGroupEntry>>>,
-    query_set_entries: Mutex<Vec<Vec<arena::QuerySetEntry>>>,
-    render_pipeline_entries: Mutex<Vec<Vec<arena::RenderPipelineEntry>>>,
-    compute_pipeline_entries: Mutex<Vec<Vec<arena::ComputePipelineEntry>>>,
+    bind_group_entries: Vec<Vec<arena::BindGroupEntry>>,
+    query_set_entries: Vec<Vec<arena::QuerySetEntry>>,
+    render_pipeline_entries: Vec<Vec<arena::RenderPipelineEntry>>,
+    compute_pipeline_entries: Vec<Vec<arena::ComputePipelineEntry>>,
+
+    /// The owning device, set while this pool is live on an encoder, so that at
+    /// teardown the pool can return itself to the device's bounded pool
+    /// ([`Device::recycle_vec_pool`]) instead of being dropped — keeping its
+    /// warm vectors available to the next encoder. `None` while the pool sits
+    /// *in* the device pool (a `Some` here would form a `Device` -> pool ->
+    /// `Device` reference cycle and leak the device); [`Self::drop`] takes the
+    /// handle before recycling so recycled pools always carry `None`.
+    ///
+    /// A pool constructed via [`Default`] (e.g. an error encoder that never
+    /// records) carries `None` and so is simply dropped — never recycled — which
+    /// is correct: it holds no warm vectors worth keeping.
+    device: Option<Arc<Device>>,
 }
 
-impl CommandVecPool {
+impl Drop for EncoderVecPool {
+    fn drop(&mut self) {
+        // Take the device handle out first: a recycled pool must not carry it
+        // (see the `device` field docs), and we must not recurse through the
+        // `mem::take` below.
+        let Some(device) = self.device.take() else {
+            return;
+        };
+        // Move the (now `device: None`) pool out, leaving an empty default in
+        // its place for the impending drop. The critical section inside
+        // `recycle_vec_pool` is a pure push; any dropping of an over-cap or
+        // empty pool happens outside the device lock.
+        let pool = mem::take(self);
+        device.recycle_vec_pool(pool);
+    }
+}
+
+impl EncoderVecPool {
     /// Maximum number of recycled vectors held in each pool.
     ///
-    /// A single frame in the reference benchmark opens on the order of 28
-    /// passes, but they do not all overlap, so a small pool suffices to keep
-    /// them warm. See the type-level docs for the worst-case memory bound this
-    /// implies together with the per-entry capacity caps.
-    const MAX_ENTRIES: usize = 16;
-
-    pub(crate) fn new() -> Self {
-        Self {
-            render_commands: Mutex::new(rank::COMMAND_VEC_POOL, Vec::new()),
-            compute_commands: Mutex::new(rank::COMMAND_VEC_POOL, Vec::new()),
-            dynamic_offsets: Mutex::new(rank::COMMAND_VEC_POOL, Vec::new()),
-            bind_group_entries: Mutex::new(rank::COMMAND_VEC_POOL, Vec::new()),
-            query_set_entries: Mutex::new(rank::COMMAND_VEC_POOL, Vec::new()),
-            render_pipeline_entries: Mutex::new(rank::COMMAND_VEC_POOL, Vec::new()),
-            compute_pipeline_entries: Mutex::new(rank::COMMAND_VEC_POOL, Vec::new()),
-        }
-    }
+    /// The pool is now per-encoder, and a single encoder's passes are recorded
+    /// and encoded strictly in sequence, so at most one warm vector of each
+    /// kind is ever needed at a time; a small handful keeps a run of passes
+    /// warm without retaining more than the [documented](Self) bound. See the
+    /// type-level docs for the worst-case memory bound this implies together
+    /// with the per-entry capacity caps.
+    const MAX_ENTRIES: usize = 4;
 
     /// Acquire pooled (empty) backing vectors for a render pass's arenas.
-    pub(crate) fn acquire_render_arenas(&self) -> RenderArenas {
+    pub(crate) fn acquire_render_arenas(&mut self) -> RenderArenas {
         RenderArenas::from_pooled(
-            self.bind_group_entries.lock().pop().unwrap_or_default(),
-            self.render_pipeline_entries
-                .lock()
-                .pop()
-                .unwrap_or_default(),
-            self.query_set_entries.lock().pop().unwrap_or_default(),
+            self.bind_group_entries.pop().unwrap_or_default(),
+            self.render_pipeline_entries.pop().unwrap_or_default(),
+            self.query_set_entries.pop().unwrap_or_default(),
         )
     }
 
     /// Acquire pooled (empty) backing vectors for a compute pass's arenas.
-    pub(crate) fn acquire_compute_arenas(&self) -> ComputeArenas {
+    pub(crate) fn acquire_compute_arenas(&mut self) -> ComputeArenas {
         ComputeArenas::from_pooled(
-            self.bind_group_entries.lock().pop().unwrap_or_default(),
-            self.compute_pipeline_entries
-                .lock()
-                .pop()
-                .unwrap_or_default(),
-            self.query_set_entries.lock().pop().unwrap_or_default(),
+            self.bind_group_entries.pop().unwrap_or_default(),
+            self.compute_pipeline_entries.pop().unwrap_or_default(),
+            self.query_set_entries.pop().unwrap_or_default(),
         )
     }
 
     /// Return a replayed render pass's arena backing vectors to the pool. The
-    /// arenas are emptied (dropping their interned `Arc`s) first.
-    pub(crate) fn release_render_arenas(&self, mut arenas: RenderArenas) {
-        Self::push_bounded_entries(&self.bind_group_entries, arenas.bind_groups.take_entries());
-        Self::push_bounded_entries(
-            &self.render_pipeline_entries,
-            arenas.pipelines.take_entries(),
-        );
-        Self::push_bounded_entries(&self.query_set_entries, arenas.query_sets.take_entries());
+    /// arenas' entries are moved out by value (dropping their interned `Arc`s),
+    /// leaving already-empty backing vectors to pool.
+    pub(crate) fn release_render_arenas(&mut self, arenas: RenderArenas) {
+        let RenderArenas {
+            bind_groups,
+            pipelines,
+            query_sets,
+        } = arenas;
+        Self::push_bounded_entries(&mut self.bind_group_entries, bind_groups.into_entries());
+        Self::push_bounded_entries(&mut self.render_pipeline_entries, pipelines.into_entries());
+        Self::push_bounded_entries(&mut self.query_set_entries, query_sets.into_entries());
     }
 
-    /// Return a replayed compute pass's arena backing vectors to the pool.
-    pub(crate) fn release_compute_arenas(&self, mut arenas: ComputeArenas) {
-        Self::push_bounded_entries(&self.bind_group_entries, arenas.bind_groups.take_entries());
-        Self::push_bounded_entries(
-            &self.compute_pipeline_entries,
-            arenas.pipelines.take_entries(),
-        );
-        Self::push_bounded_entries(&self.query_set_entries, arenas.query_sets.take_entries());
+    /// Return a replayed compute pass's arena backing vectors to the pool. The
+    /// arenas' entries are moved out by value (dropping their interned `Arc`s),
+    /// leaving already-empty backing vectors to pool.
+    pub(crate) fn release_compute_arenas(&mut self, arenas: ComputeArenas) {
+        let ComputeArenas {
+            bind_groups,
+            pipelines,
+            query_sets,
+        } = arenas;
+        Self::push_bounded_entries(&mut self.bind_group_entries, bind_groups.into_entries());
+        Self::push_bounded_entries(&mut self.compute_pipeline_entries, pipelines.into_entries());
+        Self::push_bounded_entries(&mut self.query_set_entries, query_sets.into_entries());
     }
 
     /// Empty an arena backing vector (dropping its interned `Arc`s) and push it
@@ -1691,7 +1780,7 @@ impl CommandVecPool {
     /// Arena vectors are capped by [`PassSizeHint::MAX_COMMANDS`] because an
     /// arena never holds more entries than the command stream (worst case one
     /// interned resource per command).
-    fn push_bounded_entries<T>(pool: &Mutex<Vec<Vec<T>>>, mut vec: Vec<T>) {
+    fn push_bounded_entries<T>(pool: &mut Vec<Vec<T>>, mut vec: Vec<T>) {
         vec.clear();
         Self::push_bounded(pool, vec, PassSizeHint::MAX_COMMANDS);
     }
@@ -1701,18 +1790,16 @@ impl CommandVecPool {
     /// available and otherwise allocating fresh with the size hint's suggested
     /// capacities.
     fn acquire_render(
-        &self,
+        &mut self,
         size_hint: &PassSizeHint,
     ) -> (Vec<ArcRenderCommand>, Vec<wgt::DynamicOffset>) {
         let (commands_cap, dynamic_offsets_cap) = size_hint.suggested_capacities();
         let commands = self
             .render_commands
-            .lock()
             .pop()
             .unwrap_or_else(|| Vec::with_capacity(commands_cap));
         let dynamic_offsets = self
             .dynamic_offsets
-            .lock()
             .pop()
             .unwrap_or_else(|| Vec::with_capacity(dynamic_offsets_cap));
         (commands, dynamic_offsets)
@@ -1721,18 +1808,16 @@ impl CommandVecPool {
     /// Acquire an empty `commands` and `dynamic_offsets` vector for a
     /// freshly-opened compute pass. See [`Self::acquire_render`].
     fn acquire_compute(
-        &self,
+        &mut self,
         size_hint: &PassSizeHint,
     ) -> (Vec<ArcComputeCommand>, Vec<wgt::DynamicOffset>) {
         let (commands_cap, dynamic_offsets_cap) = size_hint.suggested_capacities();
         let commands = self
             .compute_commands
-            .lock()
             .pop()
             .unwrap_or_else(|| Vec::with_capacity(commands_cap));
         let dynamic_offsets = self
             .dynamic_offsets
-            .lock()
             .pop()
             .unwrap_or_else(|| Vec::with_capacity(dynamic_offsets_cap));
         (commands, dynamic_offsets)
@@ -1741,13 +1826,17 @@ impl CommandVecPool {
     /// Return a drained render pass's `commands` and `dynamic_offsets` vectors
     /// to the pool. Both vectors must already be empty.
     fn release_render(
-        &self,
+        &mut self,
         commands: Vec<ArcRenderCommand>,
         dynamic_offsets: Vec<wgt::DynamicOffset>,
     ) {
-        Self::push_bounded(&self.render_commands, commands, PassSizeHint::MAX_COMMANDS);
         Self::push_bounded(
-            &self.dynamic_offsets,
+            &mut self.render_commands,
+            commands,
+            PassSizeHint::MAX_COMMANDS,
+        );
+        Self::push_bounded(
+            &mut self.dynamic_offsets,
             dynamic_offsets,
             PassSizeHint::MAX_DYNAMIC_OFFSETS,
         );
@@ -1756,13 +1845,17 @@ impl CommandVecPool {
     /// Return a drained compute pass's `commands` and `dynamic_offsets` vectors
     /// to the pool. Both vectors must already be empty.
     fn release_compute(
-        &self,
+        &mut self,
         commands: Vec<ArcComputeCommand>,
         dynamic_offsets: Vec<wgt::DynamicOffset>,
     ) {
-        Self::push_bounded(&self.compute_commands, commands, PassSizeHint::MAX_COMMANDS);
         Self::push_bounded(
-            &self.dynamic_offsets,
+            &mut self.compute_commands,
+            commands,
+            PassSizeHint::MAX_COMMANDS,
+        );
+        Self::push_bounded(
+            &mut self.dynamic_offsets,
             dynamic_offsets,
             PassSizeHint::MAX_DYNAMIC_OFFSETS,
         );
@@ -1771,20 +1864,55 @@ impl CommandVecPool {
     /// Push a drained vector back into a pool, enforcing both bounding axes:
     /// the vector must be empty, and it is dropped rather than pooled if the
     /// pool is already full or the vector's capacity exceeds `capacity_cap`.
-    fn push_bounded<T>(pool: &Mutex<Vec<Vec<T>>>, vec: Vec<T>, capacity_cap: usize) {
+    ///
+    /// A zero-capacity vector is also dropped rather than pooled: such a vector
+    /// never came from a warm pool entry (nor grew), so it belongs to a pass
+    /// that never [acquired](Self::acquire_render) pooled storage — pooling it
+    /// would be pointless churn and would spuriously "touch" the pool for an
+    /// empty pass.
+    fn push_bounded<T>(pool: &mut Vec<Vec<T>>, vec: Vec<T>, capacity_cap: usize) {
         debug_assert!(
             vec.is_empty(),
             "only drained (empty) vectors may be returned to the command vec pool"
         );
-        if vec.capacity() > capacity_cap {
-            // Reject over-cap vectors so every pooled entry stays within the
-            // documented per-entry bound. Dropping an empty vec is cheap.
+        if vec.capacity() == 0 || vec.capacity() > capacity_cap {
+            // Reject zero-capacity vectors (never-acquired passes) and over-cap
+            // vectors (so every pooled entry stays within the documented
+            // per-entry bound). Dropping an empty vec is cheap.
             return;
         }
-        let mut pool = pool.lock();
         if pool.len() < Self::MAX_ENTRIES {
             pool.push(vec);
         }
+    }
+
+    /// Set the owning device so that this pool returns itself to the device's
+    /// bounded pool at teardown (see the [`device`](Self::device) field and
+    /// [`Self::drop`]). Called by [`Device::acquire_vec_pool`] when a pool is
+    /// handed to a freshly created encoder.
+    pub(crate) fn set_owning_device(&mut self, device: Arc<Device>) {
+        self.device = Some(device);
+    }
+
+    /// Whether this pool holds at least one warm (non-zero-capacity) vector in
+    /// any of its sub-pools.
+    ///
+    /// A pool that holds no warm vectors is not worth returning to the device
+    /// pool at teardown: every sub-pool already rejects zero-capacity vectors on
+    /// release (see [`Self::push_bounded`]), so a "hit" merely finds these
+    /// vectors have real backing allocations to reuse. This is used by
+    /// [`Device::recycle_vec_pool`] to avoid polluting the device pool with
+    /// empty pools from encoders that never recorded a pass.
+    pub(crate) fn has_warm_vecs(&self) -> bool {
+        // A vector only makes it into a sub-pool if it had non-zero capacity
+        // (see `push_bounded`), so a non-empty sub-pool means a warm vector.
+        !self.render_commands.is_empty()
+            || !self.compute_commands.is_empty()
+            || !self.dynamic_offsets.is_empty()
+            || !self.bind_group_entries.is_empty()
+            || !self.query_set_entries.is_empty()
+            || !self.render_pipeline_entries.is_empty()
+            || !self.compute_pipeline_entries.is_empty()
     }
 }
 
@@ -1853,34 +1981,6 @@ impl<C: Clone, E: Clone> BasePass<C, E> {
         }
     }
 
-    /// Build a fresh, empty pass from `commands` and `dynamic_offsets` vectors
-    /// acquired from a [`CommandVecPool`].
-    ///
-    /// The two vectors are either warm (recycled, already grown) entries from
-    /// the pool or freshly allocated with the [`PassSizeHint`]'s suggested
-    /// capacities; either way this both pre-sizes them (avoiding the
-    /// `grow_amortized` doubling churn while recording) and, on a pool hit,
-    /// avoids re-faulting their backing pages. The caller must pass empty
-    /// vectors. `string_data` and `immediates_data` are left freshly empty:
-    /// they are negligible in size and only touched by debug-marker/immediate
-    /// commands, so they are not pooled.
-    fn from_pooled(
-        label: &Label,
-        commands: Vec<C>,
-        dynamic_offsets: Vec<wgt::DynamicOffset>,
-    ) -> Self {
-        debug_assert!(commands.is_empty());
-        debug_assert!(dynamic_offsets.is_empty());
-        Self {
-            label: label.as_deref().map(str::to_owned),
-            error: None,
-            commands,
-            dynamic_offsets,
-            string_data: Vec::new(),
-            immediates_data: Vec::new(),
-        }
-    }
-
     fn new_invalid(label: &Label, err: E) -> Self {
         Self {
             label: label.as_deref().map(str::to_owned),
@@ -1936,16 +2036,25 @@ impl<C: Clone, E: Clone> BasePass<C, E> {
 /// conflicts when a reference to some other member of the pass struct is
 /// needed simultaneously with the base pass reference.
 macro_rules! pass_base {
-    ($pass:expr, $scope:expr $(,)?) => {
+    ($pass:expr, $scope:expr $(,)?) => {{
         match (&$pass.parent, &$pass.base.error) {
             // Pass is ended
             (&None, _) => return Err(EncoderStateError::Ended).map_pass_err($scope),
             // Pass is invalid
             (&Some(_), &Some(_)) => return Ok(()),
-            // Pass is open and valid
-            (&Some(_), &None) => &mut $pass.base,
-        }
-    };
+            // Pass is open and valid: fall through to acquire storage (below)
+            // and hand back the base pass. An ended or invalid pass never
+            // records, so it must never touch the pool.
+            (&Some(_), &None) => {}
+        };
+        // Lazily acquire the pass's pooled storage on its first recorded
+        // command. This is the single funnel every recording entry point goes
+        // through, so it covers them all; it is a cheap already-acquired
+        // early-out after the first command. A pass that records nothing never
+        // reaches here and so never touches the encoder's pool.
+        $pass.ensure_storage_acquired();
+        &mut $pass.base
+    }};
 }
 pub(crate) use pass_base;
 

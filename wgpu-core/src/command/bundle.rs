@@ -256,6 +256,17 @@ fn validate_render_bundle_encoder_descriptor(
 }
 
 impl RenderBundleEncoder {
+    /// No-op storage acquisition hook for the shared `pass_base!` macro.
+    ///
+    /// A render/compute pass lazily acquires its command/arena backing vectors
+    /// from the encoder's per-encoder [`EncoderVecPool`] on its first recorded
+    /// command via this hook. A render *bundle* encoder owns its `base` and
+    /// `arenas` outright (they are not pooled — a bundle outlives any single
+    /// pass, so there is no encoder pool to draw from), so its hook is a no-op;
+    /// it exists only so the shared macro type-checks against both.
+    #[inline]
+    fn ensure_storage_acquired(&mut self) {}
+
     /// Create a new `RenderBundleEncoder`.
     ///
     /// The underlying `device` is required to fully validate the descriptor.
@@ -645,7 +656,7 @@ impl RenderBundleEncoder {
         offset: wgt::BufferAddress,
         size: Option<wgt::BufferSize>,
     ) -> Result<(), PassStateError> {
-        pass_base!(self, PassErrorScope::SetIndexBuffer);
+        let _ = pass_base!(self, PassErrorScope::SetIndexBuffer);
         self.base.commands.push(RenderCommand::SetIndexBuffer {
             buffer,
             index_format,
@@ -661,7 +672,7 @@ impl RenderBundleEncoder {
         bind_group_id: Option<id::BindGroupId>,
         offsets: &[wgt::DynamicOffset],
     ) -> Result<(), PassStateError> {
-        pass_base!(self, PassErrorScope::SetBindGroup);
+        let _ = pass_base!(self, PassErrorScope::SetBindGroup);
         let redundant = self.current_bind_groups.set_and_check_redundant(
             bind_group_id,
             index,
@@ -685,7 +696,7 @@ impl RenderBundleEncoder {
         &mut self,
         pipeline_id: id::RenderPipelineId,
     ) -> Result<(), PassStateError> {
-        pass_base!(self, PassErrorScope::SetPipelineRender);
+        let _ = pass_base!(self, PassErrorScope::SetPipelineRender);
         if self.current_pipeline.set_and_check_redundant(pipeline_id) {
             return Ok(());
         }
@@ -703,7 +714,7 @@ impl RenderBundleEncoder {
         offset: wgt::BufferAddress,
         size: Option<wgt::BufferSize>,
     ) -> Result<(), PassStateError> {
-        pass_base!(self, PassErrorScope::SetVertexBuffer);
+        let _ = pass_base!(self, PassErrorScope::SetVertexBuffer);
         self.base.commands.push(RenderCommand::SetVertexBuffer {
             slot,
             buffer: buffer_id,
@@ -714,7 +725,7 @@ impl RenderBundleEncoder {
     }
 
     pub fn set_immediates(&mut self, offset: u32, data: &[u8]) -> Result<(), PassStateError> {
-        pass_base!(self, PassErrorScope::SetImmediate);
+        let _ = pass_base!(self, PassErrorScope::SetImmediate);
         let value_offset = self.base.immediates_data.len().try_into().expect(
             "Ran out of immediate data space. Don't set 4gb of immediates per RenderBundle.",
         );
@@ -738,7 +749,7 @@ impl RenderBundleEncoder {
         first_vertex: u32,
         first_instance: u32,
     ) -> Result<(), PassStateError> {
-        pass_base!(
+        let _ = pass_base!(
             self,
             PassErrorScope::Draw {
                 kind: DrawKind::Draw,
@@ -762,7 +773,7 @@ impl RenderBundleEncoder {
         base_vertex: i32,
         first_instance: u32,
     ) -> Result<(), PassStateError> {
-        pass_base!(
+        let _ = pass_base!(
             self,
             PassErrorScope::Draw {
                 kind: DrawKind::Draw,
@@ -784,7 +795,7 @@ impl RenderBundleEncoder {
         buffer_id: id::BufferId,
         offset: wgt::BufferAddress,
     ) -> Result<(), PassStateError> {
-        pass_base!(
+        let _ = pass_base!(
             self,
             PassErrorScope::Draw {
                 kind: DrawKind::DrawIndirect,
@@ -807,7 +818,7 @@ impl RenderBundleEncoder {
         buffer_id: id::BufferId,
         offset: wgt::BufferAddress,
     ) -> Result<(), PassStateError> {
-        pass_base!(
+        let _ = pass_base!(
             self,
             PassErrorScope::Draw {
                 kind: DrawKind::DrawIndirect,
@@ -826,19 +837,19 @@ impl RenderBundleEncoder {
     }
 
     pub fn push_debug_group(&mut self, _label: &str) -> Result<(), PassStateError> {
-        pass_base!(self, PassErrorScope::PushDebugGroup);
+        let _ = pass_base!(self, PassErrorScope::PushDebugGroup);
         //TODO
         Ok(())
     }
 
     pub fn pop_debug_group(&mut self) -> Result<(), PassStateError> {
-        pass_base!(self, PassErrorScope::PopDebugGroup);
+        let _ = pass_base!(self, PassErrorScope::PopDebugGroup);
         //TODO
         Ok(())
     }
 
     pub fn insert_debug_marker(&mut self, _label: &str) -> Result<(), PassStateError> {
-        pass_base!(self, PassErrorScope::InsertDebugMarker);
+        let _ = pass_base!(self, PassErrorScope::InsertDebugMarker);
         //TODO
         Ok(())
     }

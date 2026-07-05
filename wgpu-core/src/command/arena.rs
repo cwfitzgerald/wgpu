@@ -196,11 +196,13 @@ macro_rules! arena {
                 &mut self.entries[index]
             }
 
-            /// Take the backing `Vec`, leaving the arena empty, so its grown
-            /// storage can be returned to the pool.
+            /// Consume the arena, returning its backing `Vec` so its grown
+            /// storage can be returned to the pool. The arena is moved by value
+            /// (nothing indexes it anymore at release time), so no `mem::take`
+            /// reset is needed.
             #[allow(dead_code)]
-            pub(crate) fn take_entries(&mut self) -> Vec<$Entry> {
-                core::mem::take(&mut self.entries)
+            pub(crate) fn into_entries(self) -> Vec<$Entry> {
+                self.entries
             }
 
             /// Iterate the interned resources in insertion order.
@@ -209,7 +211,7 @@ macro_rules! arena {
                 self.entries.iter()
             }
 
-            #[cfg_attr(not(feature = "trace"), allow(dead_code))]
+            #[allow(dead_code)]
             pub(crate) fn len(&self) -> usize {
                 self.entries.len()
             }
@@ -485,13 +487,13 @@ mod tests {
     }
 
     #[test]
-    fn take_entries_empties_the_arena() {
+    fn into_entries_yields_the_backing_vec() {
         let mut arena = TestArena::from_pooled(Vec::new());
         arena.push(1);
         arena.push(2);
-        let taken = arena.take_entries();
+        assert_eq!(arena.len(), 2);
+        let taken = arena.into_entries();
         assert_eq!(taken.len(), 2);
-        assert_eq!(arena.len(), 0);
     }
 
     #[test]
