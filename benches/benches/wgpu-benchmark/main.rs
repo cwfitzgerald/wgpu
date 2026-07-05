@@ -7,6 +7,7 @@ mod bind_groups;
 mod compute_gpgpu;
 mod computepass;
 mod frame;
+mod pass_overhead;
 mod renderpass;
 mod resource_creation;
 mod shader;
@@ -147,6 +148,10 @@ fn main() {
         Benchmark {
             name: "Frame Encoding",
             func: frame::run_bench,
+        },
+        Benchmark {
+            name: "Pass Overhead Encoding",
+            func: pass_overhead::run_bench,
         },
     ];
 
