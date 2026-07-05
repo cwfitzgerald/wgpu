@@ -1085,13 +1085,17 @@ fn set_pipeline(
 
     state.pipeline = Some(pipeline.clone());
 
-    let pipeline = state
+    // Keep the pipeline alive for submission by cloning it into the submit
+    // tracker. The incoming `pipeline: &Arc<ComputePipeline>` borrow is valid
+    // for the rest of this function (it points into the pass's arena), so there
+    // is no need to also clone `insert_single`'s returned borrow — every read
+    // below goes through the original borrow.
+    state
         .pass
         .base
         .tracker
         .compute_pipelines
-        .insert_single(pipeline.clone())
-        .clone();
+        .insert_single(pipeline.clone());
 
     unsafe {
         state

@@ -2952,15 +2952,18 @@ fn set_pipeline(
 
     state.pipeline = Some(pipeline.clone());
 
-    // Keep the pipeline alive for submission. `same_device` was already checked
-    // when the pipeline was interned at record time.
-    let pipeline = state
+    // Keep the pipeline alive for submission by cloning it into the submit
+    // tracker. `same_device` was already checked when the pipeline was interned
+    // at record time. The incoming `pipeline: &Arc<RenderPipeline>` borrow is
+    // valid for the rest of this function (it points into the pass's arena), so
+    // there is no need to also clone `insert_single`'s returned borrow — every
+    // read below goes through the original borrow.
+    state
         .pass
         .base
         .tracker
         .render_pipelines
-        .insert_single(pipeline.clone())
-        .clone();
+        .insert_single(pipeline.clone());
 
     state
         .info
