@@ -4,6 +4,7 @@ use pollster::block_on;
 use wgpu_benchmark::Benchmark;
 
 mod bind_groups;
+mod compute_gpgpu;
 mod computepass;
 mod frame;
 mod renderpass;
@@ -65,11 +66,14 @@ impl DeviceState {
     /// Create a device on the noop backend, which runs all of wgpu-core's validation
     /// and tracking but issues no work to a GPU driver, isolating wgpu's CPU overhead
     /// from driver variance.
-    fn new_noop() -> Self {
+    ///
+    /// The noop adapter exposes every feature, so `desc` may request features that
+    /// real adapters would have to be probed for.
+    fn new_noop(desc: &wgpu::DeviceDescriptor) -> Self {
         #[cfg(feature = "tracy")]
         tracy_client::Client::start();
 
-        let (device, queue) = wgpu::Device::noop(&wgpu::DeviceDescriptor::default());
+        let (device, queue) = wgpu::Device::noop(desc);
         let adapter_info = device.adapter_info();
 
         println!(
@@ -81,6 +85,23 @@ impl DeviceState {
             adapter_info,
             device,
             queue,
+        }
+    }
+
+    /// Create a device on the noop backend unless `WGPU_BACKEND` or
+    /// `WGPU_ADAPTER_NAME` selects a real backend.
+    ///
+    /// The noop backend runs all of wgpu-core's validation and tracking without any
+    /// driver work, so it is the default, most consistent way to run the benchmarks
+    /// that use this. `desc` only applies to the noop device; a real backend requests
+    /// all of its adapter's features and limits like [`DeviceState::new`] always does.
+    fn new_noop_or_env(desc: &wgpu::DeviceDescriptor) -> Self {
+        let backend = std::env::var("WGPU_BACKEND").unwrap_or_default();
+        let adapter_name = std::env::var("WGPU_ADAPTER_NAME").unwrap_or_default();
+        if (backend.is_empty() || backend.eq_ignore_ascii_case("noop")) && adapter_name.is_empty() {
+            Self::new_noop(desc)
+        } else {
+            Self::new()
         }
     }
 }
@@ -118,6 +139,10 @@ fn main() {
         Benchmark {
             name: "Computepass Encoding",
             func: computepass::run_bench,
+        },
+        Benchmark {
+            name: "GPGPU Compute Encoding",
+            func: compute_gpgpu::run_bench,
         },
         Benchmark {
             name: "Frame Encoding",

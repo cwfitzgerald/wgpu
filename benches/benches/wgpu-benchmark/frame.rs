@@ -1,7 +1,13 @@
 //! Emulates the CPU-side, single-threaded encoding work of one frame of an advanced
-//! "bindful" (non-bindless) game renderer: a depth prepass, shadow cascade passes, a
-//! g-buffer pass, an SSAO compute chain, a lighting pass, a transparency pass, a bloom
-//! downsample/upsample chain, and a few post-processing passes.
+//! game renderer: a depth prepass, shadow cascade passes, a g-buffer pass, an SSAO
+//! compute chain, a lighting pass, a transparency pass, a bloom downsample/upsample
+//! chain, and a few post-processing passes.
+//!
+//! The frame is encoded in three configurations per run (see [`FrameConfig`]), so a
+//! single invocation produces directly comparable numbers for bindful rendering with
+//! per-object vertex buffers, bindful rendering with one shared vertex/index buffer,
+//! and (when the device supports binding arrays) bindless materials with the shared
+//! buffers.
 //!
 //! All resources are 1x1 and the shaders are trivial — the benchmark measures command
 //! encoding, bind group / pipeline state tracking, pass setup/teardown, and submission,
@@ -10,7 +16,7 @@
 //! `WGPU_ADAPTER_NAME`) to run against a real backend like the other benchmarks.
 
 use std::{
-    num::NonZeroU64,
+    num::{NonZeroU32, NonZeroU64},
     time::{Duration, Instant},
 };
 
@@ -137,6 +143,42 @@ impl FrameParams {
     }
 }
 
+/// One of the three configurations the frame is encoded in each run.
+///
+/// All configurations encode the same draw streams through the same passes; they
+/// differ only in which vertex/index buffers each draw binds and in how material
+/// textures reach the material-using passes (g-buffer and transparency).
+#[derive(Clone, Copy, PartialEq)]
+enum FrameConfig {
+    /// Bindful materials, a distinct vertex/index buffer per object — the baseline,
+    /// where the tracker sees new buffers on every draw.
+    BindfulPerObject,
+    /// Bindful materials, with one shared vertex/index buffer bound once per pass,
+    /// eliminating all per-draw vertex/index buffer traffic.
+    BindfulShared,
+    /// Shared vertex/index buffer, and all material textures bound at once in a
+    /// single `binding_array` bind group per pass instead of per-draw material
+    /// rebinds. Only runs when the device supports binding arrays.
+    BindlessShared,
+}
+
+impl FrameConfig {
+    /// Label prefix grouping this configuration's sub-results in the output.
+    fn tag(self) -> &'static str {
+        match self {
+            Self::BindfulPerObject => "[Bindful, per-object VB]",
+            Self::BindfulShared => "[Bindful, shared VB]",
+            Self::BindlessShared => "[Bindless, shared VB]",
+        }
+    }
+
+    /// Whether the shared vertex/index buffer is bound once per pass instead of
+    /// per-object buffers on every draw.
+    fn shared_buffers(self) -> bool {
+        !matches!(self, Self::BindfulPerObject)
+    }
+}
+
 /// A single draw within a pass, precomputed at setup so the timed encoding loop
 /// performs no random-number generation or other data-dependent work.
 struct DrawCommand {
@@ -252,6 +294,17 @@ fn depth_state(
     }
 }
 
+/// Resources for the bindless configuration, present only when the device supports
+/// the required binding-array features. Only the material-using passes (g-buffer and
+/// transparency) differ from the bindful configurations.
+struct BindlessState {
+    /// One bind group holding every material texture in a `binding_array`, bound
+    /// once per pass instead of rebinding materials per draw.
+    material_bind_group: wgpu::BindGroup,
+    gbuffer_pipelines: Vec<wgpu::RenderPipeline>,
+    transparent_pipelines: Vec<wgpu::RenderPipeline>,
+}
+
 struct FrameState {
     device_state: DeviceState,
 
@@ -261,6 +314,10 @@ struct FrameState {
 
     vertex_buffers: Vec<wgpu::Buffer>,
     index_buffers: Vec<wgpu::Buffer>,
+    shared_vertex_buffer: wgpu::Buffer,
+    shared_index_buffer: wgpu::Buffer,
+
+    bindless: Option<BindlessState>,
 
     prepass_pipelines: Vec<wgpu::RenderPipeline>,
     shadow_pipelines: Vec<wgpu::RenderPipeline>,
@@ -296,19 +353,21 @@ struct FrameState {
 impl FrameState {
     /// Create and prepare all the resources needed for the frame benchmark.
     fn new(params: FrameParams) -> Self {
-        // The noop backend runs all of wgpu-core's validation and tracking without any
-        // driver work, so it is the default, most consistent way to run this benchmark.
-        // Setting WGPU_BACKEND or WGPU_ADAPTER_NAME selects a real backend like the
-        // other benchmarks do.
-        let backend = std::env::var("WGPU_BACKEND").unwrap_or_default();
-        let adapter_name = std::env::var("WGPU_ADAPTER_NAME").unwrap_or_default();
-        let device_state = if (backend.is_empty() || backend.eq_ignore_ascii_case("noop"))
-            && adapter_name.is_empty()
-        {
-            DeviceState::new_noop()
-        } else {
-            DeviceState::new()
-        };
+        // The noop device would otherwise default to no features at all, so request
+        // the binding-array features the bindless configuration needs (the noop
+        // adapter exposes every feature); a real backend selected through the env
+        // vars requests all of its adapter's features instead. Either way, whether
+        // the bindless configuration runs is detected from `device.features()` below.
+        let device_state = DeviceState::new_noop_or_env(&wgpu::DeviceDescriptor {
+            required_features: wgpu::Features::TEXTURE_BINDING_ARRAY
+                | wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
+            required_limits: wgpu::Limits {
+                max_binding_array_elements_per_shader_stage: params.materials
+                    * TEXTURES_PER_MATERIAL,
+                ..wgpu::Limits::default()
+            },
+            ..Default::default()
+        });
         let device = &device_state.device;
 
         // Performance gets considerably worse if the resources are shuffled.
@@ -601,6 +660,25 @@ impl FrameState {
         }
         random.shuffle(&mut index_buffers);
 
+        // Shared geometry for the shared-VB configurations, bound once per pass the
+        // way an engine with suballocated meshes would. Contents are irrelevant; the
+        // measured difference is the per-draw buffer binds and their tracker churn
+        // disappearing entirely.
+        let shared_vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Shared Vertex Buffer"),
+            size: 3 * 16,
+            usage: wgpu::BufferUsages::VERTEX,
+            mapped_at_creation: true,
+        });
+        shared_vertex_buffer.unmap();
+        let shared_index_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Shared Index Buffer"),
+            size: 3 * 4,
+            usage: wgpu::BufferUsages::INDEX,
+            mapped_at_creation: true,
+        });
+        shared_index_buffer.unmap();
+
         // Attachments and pass intermediates.
         let attachment =
             wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
@@ -890,6 +968,114 @@ impl FrameState {
             })
             .collect();
 
+        // Bindless variants of the material-using passes. Prepass, shadows, SSAO,
+        // lighting, bloom, and post are material-free and shared with the bindful
+        // configurations.
+        let supports_bindless = device.features().contains(
+            wgpu::Features::TEXTURE_BINDING_ARRAY
+                | wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
+        )
+        // TODO: as of writing llvmpipe segfaults the bindless benchmark on ci
+        && device_state.adapter_info.driver != "llvmpipe";
+
+        let bindless = supports_bindless.then(|| {
+            let texture_count = params.materials * TEXTURES_PER_MATERIAL;
+
+            let mut bindless_bgl_entries = vec![wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: filterable,
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: Some(NonZeroU32::new(texture_count).unwrap()),
+            }];
+            for i in 0..material_samplers.len() as u32 {
+                bindless_bgl_entries.push(sampler_entry(
+                    1 + i,
+                    wgpu::ShaderStages::FRAGMENT,
+                    wgpu::SamplerBindingType::Filtering,
+                ));
+            }
+            let bindless_material_bgl =
+                device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("Bindless Material BGL"),
+                    entries: &bindless_bgl_entries,
+                });
+
+            let material_texture_view_refs: Vec<_> = material_texture_views.iter().collect();
+            let mut bindless_bg_entries = vec![wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureViewArray(&material_texture_view_refs),
+            }];
+            for (i, sampler) in material_samplers.iter().enumerate() {
+                bindless_bg_entries.push(wgpu::BindGroupEntry {
+                    binding: 1 + i as u32,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                });
+            }
+            let material_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Bindless Material BG"),
+                layout: &bindless_material_bgl,
+                entries: &bindless_bg_entries,
+            });
+
+            // The bindless module can only be created when the features are present,
+            // so it lives in its own file rather than as extra entry points in
+            // frame.wgsl.
+            let bindless_module =
+                device.create_shader_module(wgpu::include_wgsl!("frame-bindless.wgsl"));
+            let bindless_geometry_layout = pipeline_layout(
+                "Bindless Geometry",
+                &[&frame_bgl, &bindless_material_bgl, &object_bgl],
+            );
+
+            let gbuffer_pipelines: Vec<_> = (0..params.gbuffer_pipelines)
+                .map(|i| {
+                    create_render_pipeline(
+                        device,
+                        &bindless_module,
+                        RenderPipelineArgs {
+                            label: &format!("Bindless G-Buffer Pipeline {i}"),
+                            layout: &bindless_geometry_layout,
+                            vertex_entry: "vs_geometry",
+                            fragment_entry: Some("fs_gbuffer"),
+                            vertex_buffers: &geometry_vertex_buffers,
+                            targets: &gbuffer_targets,
+                            depth_stencil: Some(depth_state(false, wgpu::CompareFunction::Equal)),
+                        },
+                    )
+                })
+                .collect();
+            let transparent_pipelines: Vec<_> = (0..params.transparent_pipelines)
+                .map(|i| {
+                    create_render_pipeline(
+                        device,
+                        &bindless_module,
+                        RenderPipelineArgs {
+                            label: &format!("Bindless Transparent Pipeline {i}"),
+                            layout: &bindless_geometry_layout,
+                            vertex_entry: "vs_geometry",
+                            fragment_entry: Some("fs_color"),
+                            vertex_buffers: &geometry_vertex_buffers,
+                            targets: &hdr_target(Some(wgpu::BlendState::ALPHA_BLENDING)),
+                            depth_stencil: Some(depth_state(
+                                false,
+                                wgpu::CompareFunction::LessEqual,
+                            )),
+                        },
+                    )
+                })
+                .collect();
+
+            BindlessState {
+                material_bind_group,
+                gbuffer_pipelines,
+                transparent_pipelines,
+            }
+        });
+
         let lighting_pipeline = create_render_pipeline(
             device,
             &module,
@@ -1030,6 +1216,10 @@ impl FrameState {
 
             vertex_buffers,
             index_buffers,
+            shared_vertex_buffer,
+            shared_index_buffer,
+
+            bindless,
 
             prepass_pipelines,
             shadow_pipelines,
@@ -1065,38 +1255,73 @@ impl FrameState {
 
     /// Encode one pass's draw stream, rebinding only the state each draw actually
     /// changes, the way a state-sorted engine would.
+    ///
+    /// Config decisions are hoisted out of the per-draw loop as far as possible so
+    /// the timed loop measures the configuration, not extra per-draw branching.
     fn encode_draw_stream(
         &self,
         render_pass: &mut wgpu::RenderPass<'_>,
         stream: &[DrawCommand],
         pipelines: &[wgpu::RenderPipeline],
         has_materials: bool,
+        config: FrameConfig,
     ) {
         render_pass.set_bind_group(0, &self.frame_bind_group, &[]);
         let object_slot = if has_materials { 2 } else { 1 };
+        let materials_per_draw = has_materials && config != FrameConfig::BindlessShared;
+        if has_materials && config == FrameConfig::BindlessShared {
+            // Every material texture lives in the one binding_array bind group,
+            // bound once here instead of rebinding materials per draw.
+            render_pass.set_bind_group(
+                1,
+                &self.bindless.as_ref().unwrap().material_bind_group,
+                &[],
+            );
+        }
+        let per_draw_buffers = !config.shared_buffers();
+        if !per_draw_buffers {
+            // The shared geometry is bound once and stays bound for the whole pass;
+            // draws index into it, so no further buffer binds are needed.
+            for i in 0..VERTEX_BUFFERS_PER_DRAW {
+                render_pass.set_vertex_buffer(i, self.shared_vertex_buffer.slice(..));
+            }
+            render_pass.set_index_buffer(
+                self.shared_index_buffer.slice(..),
+                wgpu::IndexFormat::Uint32,
+            );
+        }
         for command in stream {
             if let Some(pipeline) = command.pipeline {
                 render_pass.set_pipeline(&pipelines[pipeline as usize]);
             }
-            if let Some(material) = command.material {
-                render_pass.set_bind_group(1, &self.material_bind_groups[material as usize], &[]);
+            if materials_per_draw {
+                if let Some(material) = command.material {
+                    render_pass.set_bind_group(
+                        1,
+                        &self.material_bind_groups[material as usize],
+                        &[],
+                    );
+                }
             }
             render_pass.set_bind_group(
                 object_slot,
                 &self.object_bind_group,
                 &[command.object * OBJECT_STRIDE],
             );
-            for i in 0..VERTEX_BUFFERS_PER_DRAW {
-                render_pass.set_vertex_buffer(
-                    i,
-                    self.vertex_buffers[(command.object * VERTEX_BUFFERS_PER_DRAW + i) as usize]
-                        .slice(..),
+            if per_draw_buffers {
+                for i in 0..VERTEX_BUFFERS_PER_DRAW {
+                    render_pass.set_vertex_buffer(
+                        i,
+                        self.vertex_buffers
+                            [(command.object * VERTEX_BUFFERS_PER_DRAW + i) as usize]
+                            .slice(..),
+                    );
+                }
+                render_pass.set_index_buffer(
+                    self.index_buffers[command.object as usize].slice(..),
+                    wgpu::IndexFormat::Uint32,
                 );
             }
-            render_pass.set_index_buffer(
-                self.index_buffers[command.object as usize].slice(..),
-                wgpu::IndexFormat::Uint32,
-            );
             render_pass.draw_indexed(0..3, 0, 0..1);
         }
     }
@@ -1143,7 +1368,7 @@ impl FrameState {
         })
     }
 
-    fn encode_prepass(&self) -> wgpu::CommandBuffer {
+    fn encode_prepass(&self, config: FrameConfig) -> wgpu::CommandBuffer {
         profiling::scope!("Depth Prepass");
 
         let mut encoder = self.encoder("Depth Prepass");
@@ -1157,12 +1382,13 @@ impl FrameState {
                 &self.prepass_stream,
                 &self.prepass_pipelines,
                 false,
+                config,
             );
         }
         encoder.finish()
     }
 
-    fn encode_shadows(&self) -> wgpu::CommandBuffer {
+    fn encode_shadows(&self, config: FrameConfig) -> wgpu::CommandBuffer {
         profiling::scope!("Shadows");
 
         let mut encoder = self.encoder("Shadows");
@@ -1175,12 +1401,13 @@ impl FrameState {
                 &self.shadow_streams[cascade],
                 &self.shadow_pipelines,
                 false,
+                config,
             );
         }
         encoder.finish()
     }
 
-    fn encode_gbuffer(&self) -> wgpu::CommandBuffer {
+    fn encode_gbuffer(&self, config: FrameConfig) -> wgpu::CommandBuffer {
         profiling::scope!("G-Buffer");
 
         let mut encoder = self.encoder("G-Buffer");
@@ -1203,17 +1430,23 @@ impl FrameState {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+            let pipelines = if config == FrameConfig::BindlessShared {
+                &self.bindless.as_ref().unwrap().gbuffer_pipelines
+            } else {
+                &self.gbuffer_pipelines
+            };
             self.encode_draw_stream(
                 &mut render_pass,
                 &self.gbuffer_stream,
-                &self.gbuffer_pipelines,
+                pipelines,
                 true,
+                config,
             );
         }
         encoder.finish()
     }
 
-    fn encode_ssao(&self) -> wgpu::CommandBuffer {
+    fn encode_ssao(&self, _config: FrameConfig) -> wgpu::CommandBuffer {
         profiling::scope!("SSAO");
 
         let mut encoder = self.encoder("SSAO");
@@ -1235,7 +1468,7 @@ impl FrameState {
         encoder.finish()
     }
 
-    fn encode_lighting(&self) -> wgpu::CommandBuffer {
+    fn encode_lighting(&self, _config: FrameConfig) -> wgpu::CommandBuffer {
         profiling::scope!("Lighting");
 
         let mut encoder = self.encoder("Lighting");
@@ -1259,7 +1492,7 @@ impl FrameState {
         encoder.finish()
     }
 
-    fn encode_transparency(&self) -> wgpu::CommandBuffer {
+    fn encode_transparency(&self, config: FrameConfig) -> wgpu::CommandBuffer {
         profiling::scope!("Transparency");
 
         let mut encoder = self.encoder("Transparency");
@@ -1276,11 +1509,17 @@ impl FrameState {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+            let pipelines = if config == FrameConfig::BindlessShared {
+                &self.bindless.as_ref().unwrap().transparent_pipelines
+            } else {
+                &self.transparent_pipelines
+            };
             self.encode_draw_stream(
                 &mut render_pass,
                 &self.transparent_stream,
-                &self.transparent_pipelines,
+                pipelines,
                 true,
+                config,
             );
         }
         encoder.finish()
@@ -1308,7 +1547,7 @@ impl FrameState {
         render_pass.draw(0..3, 0..1);
     }
 
-    fn encode_bloom(&self) -> wgpu::CommandBuffer {
+    fn encode_bloom(&self, _config: FrameConfig) -> wgpu::CommandBuffer {
         profiling::scope!("Bloom");
 
         let mut encoder = self.encoder("Bloom");
@@ -1336,7 +1575,7 @@ impl FrameState {
         encoder.finish()
     }
 
-    fn encode_post(&self) -> wgpu::CommandBuffer {
+    fn encode_post(&self, _config: FrameConfig) -> wgpu::CommandBuffer {
         profiling::scope!("Post Process");
 
         let mut encoder = self.encoder("Post Process");
@@ -1411,7 +1650,7 @@ pub fn run_bench(ctx: BenchmarkContext) -> anyhow::Result<Vec<wgpu_benchmark::Su
         params.post_passes,
     );
 
-    type PhaseEncoder = fn(&FrameState) -> wgpu::CommandBuffer;
+    type PhaseEncoder = fn(&FrameState, FrameConfig) -> wgpu::CommandBuffer;
     let phases: [(&str, PhaseEncoder); 8] = [
         ("Encode: Depth Prepass", FrameState::encode_prepass),
         ("Encode: Shadows", FrameState::encode_shadows),
@@ -1423,35 +1662,54 @@ pub fn run_bench(ctx: BenchmarkContext) -> anyhow::Result<Vec<wgpu_benchmark::Su
         ("Encode: Post Process", FrameState::encode_post),
     ];
 
-    let mut labels = vec!["Total Encoding".to_string()];
-    labels.extend(phases.iter().map(|&(name, _)| name.to_string()));
-    labels.push("Submit".to_string());
-
-    let results = iter_many(&ctx, labels, "draws", params.total_commands(), || {
-        let mut durations = Vec::with_capacity(phases.len() + 2);
-        durations.push(Duration::ZERO); // Placeholder for total encoding time.
-        let mut buffers = Vec::with_capacity(phases.len());
-
-        let encoding_start = Instant::now();
-        for &(_, encode) in &phases {
-            let phase_start = Instant::now();
-            buffers.push(encode(&state));
-            durations.push(phase_start.elapsed());
+    let mut results = Vec::new();
+    for config in [
+        FrameConfig::BindfulPerObject,
+        FrameConfig::BindfulShared,
+        FrameConfig::BindlessShared,
+    ] {
+        // Without binding-array support only the bindful configurations report.
+        if config == FrameConfig::BindlessShared && state.bindless.is_none() {
+            continue;
         }
-        durations[0] = encoding_start.elapsed();
 
-        let submit_start = Instant::now();
-        state.device_state.queue.submit(buffers);
-        durations.push(submit_start.elapsed());
+        let tag = config.tag();
+        let mut labels = vec![format!("{tag} Total Encoding")];
+        labels.extend(phases.iter().map(|&(name, _)| format!("{tag} {name}")));
+        labels.push(format!("{tag} Submit"));
 
-        state
-            .device_state
-            .device
-            .poll(wgpu::PollType::wait_indefinitely())
-            .unwrap();
+        results.extend(iter_many(
+            &ctx,
+            labels,
+            "draws",
+            params.total_commands(),
+            || {
+                let mut durations = Vec::with_capacity(phases.len() + 2);
+                durations.push(Duration::ZERO); // Placeholder for total encoding time.
+                let mut buffers = Vec::with_capacity(phases.len());
 
-        durations
-    });
+                let encoding_start = Instant::now();
+                for &(_, encode) in &phases {
+                    let phase_start = Instant::now();
+                    buffers.push(encode(&state, config));
+                    durations.push(phase_start.elapsed());
+                }
+                durations[0] = encoding_start.elapsed();
+
+                let submit_start = Instant::now();
+                state.device_state.queue.submit(buffers);
+                durations.push(submit_start.elapsed());
+
+                state
+                    .device_state
+                    .device
+                    .poll(wgpu::PollType::wait_indefinitely())
+                    .unwrap();
+
+                durations
+            },
+        ));
+    }
 
     Ok(results)
 }
