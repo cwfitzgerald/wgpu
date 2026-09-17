@@ -52,11 +52,18 @@ jobs:
           EOF
 
       - name: Caching
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: kunobi-ninja/kache-action@78ff455251aa37139061201a39113a1924994035 # v1
         with:
-          key: publish-build
-          env-vars: ImageVersion
-          save-if: ${{ github.ref == 'refs/heads/trunk' }}
+          version: v0.23.1
+          github-cache: true
+          cache-dir: ${{ runner.temp }}/kache
+          cache-key-prefix: kache-experiment-v1-${{ github.workflow }}-${{ github.job }}-publish-build
+          cache-executables: ${{ runner.os != 'Windows' }}
+          save-cache: true
+          pr-comment: false
+
+      - name: Verify kache
+        run: kache --version
 
       - name: Build examples
         run: cargo xtask run-wasm --no-serve

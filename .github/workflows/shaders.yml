@@ -7,6 +7,9 @@ on:
     - cron: "0 6 * * *"
   workflow_dispatch:
 
+env:
+  CARGO_INCREMENTAL: false
+
 # Every time a PR is pushed to, cancel any previous jobs. This
 # makes us behave nicer to github and get faster turnaround times
 # on PRs that are pushed to multiple times in rapid succession.
@@ -34,10 +37,18 @@ jobs:
             debug = "line-tables-only"
           EOF
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: kunobi-ninja/kache-action@78ff455251aa37139061201a39113a1924994035 # v1
         with:
-          env-vars: ImageVersion
-          save-if: ${{ github.ref == 'refs/heads/trunk' }}
+          version: v0.23.1
+          github-cache: true
+          cache-dir: ${{ runner.temp }}/kache
+          cache-key-prefix: kache-experiment-v1-${{ github.workflow }}-${{ github.job }}
+          cache-executables: ${{ runner.os != 'Windows' }}
+          save-cache: true
+          pr-comment: false
+
+      - name: Verify kache
+        run: kache --version
 
       # We must have the FXC job before the DXC job, so the DXC PATH has priority
       # over the FXC PATH. This is because the windows kits also include an older
@@ -84,10 +95,18 @@ jobs:
             debug = "line-tables-only"
           EOF
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: kunobi-ninja/kache-action@78ff455251aa37139061201a39113a1924994035 # v1
         with:
-          env-vars: ImageVersion
-          save-if: ${{ github.ref == 'refs/heads/trunk' }}
+          version: v0.23.1
+          github-cache: true
+          cache-dir: ${{ runner.temp }}/kache
+          cache-key-prefix: kache-experiment-v1-${{ github.workflow }}-${{ github.job }}
+          cache-executables: ${{ runner.os != 'Windows' }}
+          save-cache: true
+          pr-comment: false
+
+      - name: Verify kache
+        run: kache --version
 
       # In theory this shouldn't be necessary, but sometimes it is
       # not available. <https://github.com/gfx-rs/wgpu/issues/9514>
@@ -123,10 +142,18 @@ jobs:
             debug = "line-tables-only"
           EOF
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: kunobi-ninja/kache-action@78ff455251aa37139061201a39113a1924994035 # v1
         with:
-          env-vars: ImageVersion
-          save-if: ${{ github.ref == 'refs/heads/trunk' }}
+          version: v0.23.1
+          github-cache: true
+          cache-dir: ${{ runner.temp }}/kache
+          cache-key-prefix: kache-experiment-v1-${{ github.workflow }}-${{ github.job }}
+          cache-executables: ${{ runner.os != 'Windows' }}
+          save-cache: true
+          pr-comment: false
+
+      - name: Verify kache
+        run: kache --version
 
       - run: cd naga; cargo xtask validate spv
 

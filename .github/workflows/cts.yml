@@ -104,15 +104,24 @@ jobs:
           tool: cargo-llvm-cov
 
       - name: caching
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: kunobi-ninja/kache-action@78ff455251aa37139061201a39113a1924994035 # v1
         with:
-          # The version number can be incremented for cache busting.
-          prefix-key: v3-rust-${{ hashFiles('cts_runner/revision.txt') }}
-          env-vars: ImageVersion
-          cache-directories: cts
-          # Save the cache from the `other` job because it also runs the cts_runner
-          # integration tests.
-          save-if: ${{ github.ref == 'refs/heads/trunk' && matrix.suite == 'other' }}
+          version: v0.23.1
+          github-cache: true
+          cache-dir: ${{ runner.temp }}/kache
+          cache-key-prefix: kache-experiment-v1-${{ github.workflow }}-${{ github.job }}-${{ matrix.platform }}-${{ matrix.suite }}
+          cache-executables: ${{ runner.os != 'Windows' }}
+          save-cache: true
+          pr-comment: false
+
+      - name: Verify kache
+        run: kache --version
+
+      - name: Cache CTS checkout
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: cts
+          key: kache-experiment-cts-${{ runner.os }}-${{ hashFiles('cts_runner/revision.txt') }}
 
       # We enable line numbers for panics, but that's it
       - name: disable debug

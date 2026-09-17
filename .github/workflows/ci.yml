@@ -64,8 +64,7 @@ concurrency:
 # only for ones where we run tests.
 #
 # Additionally, we disable incremental builds entirely
-# as our caching system doesn't actually cache our crates.
-# It adds overhead to the build and another point of failure.
+# so kache can reuse compiler outputs.
 
 jobs:
   check:
@@ -257,11 +256,18 @@ jobs:
           EOF
 
       - name: Caching
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: kunobi-ninja/kache-action@78ff455251aa37139061201a39113a1924994035 # v1
         with:
-          key: clippy-${{ matrix.target }}-${{ matrix.kind }}-${{ env.CACHE_SUFFIX }}
-          env-vars: ImageVersion
-          save-if: ${{ github.ref == 'refs/heads/trunk' }}
+          version: v0.23.1
+          github-cache: true
+          cache-dir: ${{ runner.temp }}/kache
+          cache-key-prefix: kache-experiment-v1-${{ github.workflow }}-${{ github.job }}-clippy-${{ matrix.target }}-${{ matrix.kind }}-${{ env.CACHE_SUFFIX }}
+          cache-executables: ${{ runner.os != 'Windows' }}
+          save-cache: true
+          pr-comment: false
+
+      - name: Verify kache
+        run: kache --version
 
       - name: (Linux `aarch64`) Install `aarch64-linux-gnu` `g++`
         if: matrix.target == 'aarch64-unknown-linux-gnu'
@@ -448,11 +454,18 @@ jobs:
           EOF
 
       - name: Caching
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: kunobi-ninja/kache-action@78ff455251aa37139061201a39113a1924994035 # v1
         with:
-          key: wgpu-msrv-check-${{ matrix.target }}-${{ env.CACHE_SUFFIX }}
-          env-vars: ImageVersion
-          save-if: ${{ github.ref == 'refs/heads/trunk' }}
+          version: v0.23.1
+          github-cache: true
+          cache-dir: ${{ runner.temp }}/kache
+          cache-key-prefix: kache-experiment-v1-${{ github.workflow }}-${{ github.job }}-wgpu-msrv-check-${{ matrix.target }}-${{ env.CACHE_SUFFIX }}
+          cache-executables: ${{ runner.os != 'Windows' }}
+          save-cache: true
+          pr-comment: false
+
+      - name: Verify kache
+        run: kache --version
 
       - name: Reduce MSRV on dependencies
         shell: bash
@@ -526,11 +539,18 @@ jobs:
           EOF
 
       - name: Caching
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: kunobi-ninja/kache-action@78ff455251aa37139061201a39113a1924994035 # v1
         with:
-          key: core-msrv-check-${{ matrix.target }}-${{ env.CACHE_SUFFIX }}
-          env-vars: ImageVersion
-          save-if: ${{ github.ref == 'refs/heads/trunk' }}
+          version: v0.23.1
+          github-cache: true
+          cache-dir: ${{ runner.temp }}/kache
+          cache-key-prefix: kache-experiment-v1-${{ github.workflow }}-${{ github.job }}-core-msrv-check-${{ matrix.target }}-${{ env.CACHE_SUFFIX }}
+          cache-executables: ${{ runner.os != 'Windows' }}
+          save-cache: true
+          pr-comment: false
+
+      - name: Verify kache
+        run: kache --version
 
       - name: Reduce MSRV on dependencies
         shell: bash
@@ -693,16 +713,20 @@ jobs:
             debug = "line-tables-only"
           EOF
 
-        # Cache step must go before warp and mesa install on windows as they write into the
-        # target directory, and rust-cache will overwrite the entirety of the target directory.
+        # The kache store is separate from the target directory used by WARP and Mesa.
       - name: Caching
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: kunobi-ninja/kache-action@78ff455251aa37139061201a39113a1924994035 # v1
         with:
-          key: test-${{ matrix.os }}-${{ env.CACHE_SUFFIX }}
-          env-vars: ImageVersion
-          save-if: ${{ github.ref == 'refs/heads/trunk' }}
-          workspaces: |
-            . -> target
+          version: v0.23.1
+          github-cache: true
+          cache-dir: ${{ runner.temp }}/kache
+          cache-key-prefix: kache-experiment-v1-${{ github.workflow }}-${{ github.job }}-test-${{ matrix.os }}-${{ env.CACHE_SUFFIX }}
+          cache-executables: ${{ runner.os != 'Windows' }}
+          save-cache: true
+          pr-comment: false
+
+      - name: Verify kache
+        run: kache --version
 
       - name: (Windows) Install DXC
         if: matrix.os == 'windows-2022'
@@ -815,11 +839,18 @@ jobs:
           cargo -V
 
       - name: Caching
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: kunobi-ninja/kache-action@78ff455251aa37139061201a39113a1924994035 # v1
         with:
-          key: doctests-${{ env.CACHE_SUFFIX }}
-          env-vars: ImageVersion
-          save-if: ${{ github.ref == 'refs/heads/trunk' }}
+          version: v0.23.1
+          github-cache: true
+          cache-dir: ${{ runner.temp }}/kache
+          cache-key-prefix: kache-experiment-v1-${{ github.workflow }}-${{ github.job }}-doctests-${{ env.CACHE_SUFFIX }}
+          cache-executables: ${{ runner.os != 'Windows' }}
+          save-cache: true
+          pr-comment: false
+
+      - name: Verify kache
+        run: kache --version
 
       - name: Run doctests
         shell: bash
@@ -852,11 +883,18 @@ jobs:
           cargo -V
 
       - name: Caching
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: kunobi-ninja/kache-action@78ff455251aa37139061201a39113a1924994035 # v1
         with:
-          key: miri-${{ env.CACHE_SUFFIX }}
-          env-vars: ImageVersion
-          save-if: ${{ github.ref == 'refs/heads/trunk' }}
+          version: v0.23.1
+          github-cache: true
+          cache-dir: ${{ runner.temp }}/kache
+          cache-key-prefix: kache-experiment-v1-${{ github.workflow }}-${{ github.job }}-miri-${{ env.CACHE_SUFFIX }}
+          cache-executables: ${{ runner.os != 'Windows' }}
+          save-cache: true
+          pr-comment: false
+
+      - name: Verify kache
+        run: kache --version
 
       - name: Run Miri on selected tests
         shell: bash
@@ -937,11 +975,18 @@ jobs:
           EOF
 
       - name: Caching
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: kunobi-ninja/kache-action@78ff455251aa37139061201a39113a1924994035 # v1
         with:
-          key: cts-runner-${{ env.CACHE_SUFFIX }}
-          env-vars: ImageVersion
-          save-if: ${{ github.ref == 'refs/heads/trunk' }}
+          version: v0.23.1
+          github-cache: true
+          cache-dir: ${{ runner.temp }}/kache
+          cache-key-prefix: kache-experiment-v1-${{ github.workflow }}-${{ github.job }}-cts-runner-${{ env.CACHE_SUFFIX }}
+          cache-executables: ${{ runner.os != 'Windows' }}
+          save-cache: true
+          pr-comment: false
+
+      - name: Verify kache
+        run: kache --version
 
       - name: Build Deno
         run: |
