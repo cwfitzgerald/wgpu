@@ -7,7 +7,13 @@ use wgpu_test::{
 };
 
 pub fn all_tests(vec: &mut Vec<GpuTestInitializer>) {
-    vec.extend([PARTIAL_UPDATE, RENDER_PASS_TEST, NESTED_STRUCT]);
+    vec.extend([
+        PARTIAL_UPDATE,
+        RENDER_PASS_TEST,
+        NESTED_STRUCT,
+        BEYOND_LAYOUT_SIZE,
+        LARGER_LAYOUT_AFTER_DRAW,
+    ]);
 }
 
 const TARGET_FORMAT: TextureFormat = TextureFormat::Rgba8Unorm;
@@ -421,4 +427,153 @@ async fn nested_struct_test(ctx: TestingContext) {
         cpass.dispatch_workgroups(1, 1, 1);
     }
     assert_eq!(output.read::<u32>(&ctx, encoder).await, [0, 1, 2, 3]);
+}
+
+/// Shader for tests that write more immediates than a pipeline layout holds.
+///
+/// `fs_write` copies the immediates to `output`. The other entry points use nothing.
+const LAYOUT_SIZE_SHADER: &str = r#"
+    var<immediate> data: vec2u;
+
+    @group(0) @binding(0)
+    var<storage, read_write> output: vec2u;
+
+    @compute @workgroup_size(1)
+    fn cs_main() {}
+
+    @vertex
+    fn vs_main() -> @builtin(position) vec4f {
+        return vec4f(0.0, 0.0, 0.0, 1.0);
+    }
+
+    @fragment
+    fn fs_empty() -> @location(0) vec4f {
+        return vec4f();
+    }
+
+    @fragment
+    fn fs_write() -> @location(0) vec4f {
+        output = data;
+        return vec4f();
+    }
+"#;
+
+/// `set_immediates` is limited by `max_immediate_size`, not by the pipeline layout.
+///
+/// Write immediates that are empty or larger than the pipeline layout immediate size,
+/// including layouts with no immediates, then dispatch and draw.
+#[apply(gpu_test!)]
+static BEYOND_LAYOUT_SIZE: GpuTestConfiguration = GpuTestConfiguration::new()
+    .parameters(
+        TestParameters::default()
+            .features(Features::IMMEDIATES)
+            .limits(Limits {
+                max_immediate_size: 16,
+                ..Default::default()
+            }),
+    )
+    .run_async(beyond_layout_size_test);
+
+async fn beyond_layout_size_test(ctx: TestingContext) {
+    let module = create_wgsl_module(&ctx, LAYOUT_SIZE_SHADER);
+    let view = create_target(&ctx);
+    let data = [0_u8; 16];
+
+    for immediate_size in [0, 4] {
+        let layout = create_pipeline_layout(&ctx, &[], immediate_size);
+        let compute_pipeline = create_compute_pipeline(&ctx, &module, &layout);
+        let render_pipeline = create_point_pipeline(&ctx, &module, &layout, "fs_empty");
+
+        for data in [&data[..0], &data[..]] {
+            let mut bundle_encoder = create_bundle_encoder(&ctx);
+            bundle_encoder.set_pipeline(&render_pipeline);
+            bundle_encoder.set_immediates(0, data);
+            bundle_encoder.draw(0..1, 0..1);
+            let bundle = bundle_encoder.finish(&RenderBundleDescriptor::default());
+
+            let mut encoder = create_command_encoder(&ctx);
+            {
+                let mut cpass = encoder.begin_compute_pass(&ComputePassDescriptor::default());
+                cpass.set_pipeline(&compute_pipeline);
+                cpass.set_immediates(0, data);
+                cpass.dispatch_workgroups(1, 1, 1);
+            }
+            {
+                let mut rpass = begin_render_pass(&mut encoder, &view);
+                rpass.set_pipeline(&render_pipeline);
+                rpass.set_immediates(0, data);
+                rpass.draw(0..1, 0..1);
+                rpass.execute_bundles([&bundle]);
+            }
+            ctx.queue.submit([encoder.finish()]);
+        }
+    }
+
+    ctx.async_poll(PollType::wait_indefinitely()).await.unwrap();
+}
+
+/// Immediates set while a pipeline with a smaller immediate size is bound must reach a
+/// later pipeline with a larger immediate size.
+#[apply(gpu_test!)]
+static LARGER_LAYOUT_AFTER_DRAW: GpuTestConfiguration = GpuTestConfiguration::new()
+    .parameters(
+        TestParameters::default()
+            .features(Features::IMMEDIATES)
+            .limits(Limits {
+                max_immediate_size: 8,
+                ..Default::default()
+            }),
+    )
+    .run_async(|ctx| async move {
+        for use_render_bundle in [false, true] {
+            larger_layout_after_draw_test(&ctx, use_render_bundle).await;
+        }
+    });
+
+async fn larger_layout_after_draw_test(ctx: &TestingContext, use_render_bundle: bool) {
+    let module = create_wgsl_module(ctx, LAYOUT_SIZE_SHADER);
+    let view = create_target(ctx);
+    let output = Output::new(ctx, ShaderStages::FRAGMENT, 8);
+    let small_layout = create_pipeline_layout(ctx, &[], 4);
+    let large_layout = create_pipeline_layout(ctx, &[Some(&output.bind_group_layout)], 8);
+    let small_pipeline = create_point_pipeline(ctx, &module, &small_layout, "fs_empty");
+    let large_pipeline = create_point_pipeline(ctx, &module, &large_layout, "fs_write");
+
+    fn do_encoding<'a>(
+        encoder: &mut dyn RenderEncoder<'a>,
+        small_pipeline: &'a RenderPipeline,
+        large_pipeline: &'a RenderPipeline,
+        bind_group: &'a BindGroup,
+    ) {
+        encoder.set_pipeline(small_pipeline);
+        encoder.set_immediates(0, bytemuck::bytes_of(&[1_u32, 2]));
+        encoder.draw(0..1, 0..1);
+        encoder.set_pipeline(large_pipeline);
+        encoder.set_bind_group(0, Some(bind_group), &[]);
+        encoder.draw(0..1, 0..1);
+    }
+
+    let mut encoder = create_command_encoder(ctx);
+    {
+        let mut rpass = begin_render_pass(&mut encoder, &view);
+        if use_render_bundle {
+            let mut bundle_encoder = create_bundle_encoder(ctx);
+            do_encoding(
+                &mut bundle_encoder,
+                &small_pipeline,
+                &large_pipeline,
+                &output.bind_group,
+            );
+            let bundle = bundle_encoder.finish(&RenderBundleDescriptor::default());
+            rpass.execute_bundles([&bundle]);
+        } else {
+            do_encoding(
+                &mut rpass,
+                &small_pipeline,
+                &large_pipeline,
+                &output.bind_group,
+            );
+        }
+    }
+    assert_eq!(output.read::<u32>(ctx, encoder).await, [1, 2]);
 }
