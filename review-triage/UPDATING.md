@@ -17,7 +17,7 @@
 
 1. **Header.** The date of the update, the PR counts, what the pass does not do, and the order of the file.
 2. **Attention first.** The few items that the maintainer must see before all others.
-3. **Land before the release.** Ready PRs with the verdict "Land as is" or one small step, sorted by Opened. A PR in this table also has its row in a priority section.
+3. **Land before the release.** Ready PRs with the verdict "Land as is", one small step, or only small fixes that an agent can make, sorted by Opened. A small agent fix is a changelog entry, a docs line, a typo, a rebase, a test, or a small code fix with a test. It is not a design decision, a hardware test or a large rework. Start the step of such a PR with "Agent fix:". A PR in this table also has its row in a priority section.
 4. **Priority 1.** Ready PRs that are assigned to cwfitzgerald, not by cwfitzgerald.
 5. **Priority 2.** Ready PRs that are not assigned to cwfitzgerald and not by cwfitzgerald.
 6. **Priority 3.** cwfitzgerald's own PRs, drafts, and the issues assigned to cwfitzgerald.
