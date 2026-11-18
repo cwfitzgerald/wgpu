@@ -15,13 +15,18 @@
 
 ## Structure of `triage.md`
 
-1. **Header.** The date of the update, the PR counts, and what the pass does not do.
+1. **Header.** The date of the update, the PR counts, what the pass does not do, and the order of the file.
 2. **Attention first.** The few items that the maintainer must see before all others.
-3. **Part A: your review queue.** The PRs that are assigned to cwfitzgerald or that request a review from cwfitzgerald, and the issues assigned to cwfitzgerald. Tables by verdict.
-4. **Part B: all other open PRs.** Sections by the next action: merge, decision, reviewer, author, highest-severity findings, agent-written PR policy, the maintainer's own PRs, drafts, dependencies and landing order, CI infrastructure problems, limits of the pass.
-5. **Details.** One entry for each open PR and each assigned issue, grouped by area and sorted by number.
+3. **Land before the release.** Ready PRs with the verdict "Land as is" or one small step, sorted by Opened. A PR in this table also has its row in a priority section.
+4. **Priority 1.** Ready PRs that are assigned to cwfitzgerald, not by cwfitzgerald.
+5. **Priority 2.** Ready PRs that are not assigned to cwfitzgerald and not by cwfitzgerald.
+6. **Priority 3.** cwfitzgerald's own PRs, drafts, and the issues assigned to cwfitzgerald.
+7. **Cross-cutting notes.** Decisions, highest-severity findings, agent-written PR policy, dependencies and landing order, CI infrastructure problems, limits of the pass.
+8. **Details.** One entry for each open PR and each assigned issue, grouped by area and sorted by number.
 
-Each open PR has one entry in the details and one place in the summary.
+In priorities 1 and 2, use two tables: "Waiting on a maintainer" first, then "Waiting on the author". Sort each table by the wait, oldest first. The wait starts at the last maintainer reply, or at "Opened" if no maintainer replied. A maintainer reply is a comment or review by a user with the member, owner or collaborator association who is not the author. An assignment is not a reply. The `gh api graphql` fields `authorAssociation` on `comments` and `reviews` give this.
+
+Each open PR has one entry in the details and one place in the priority sections.
 
 ## Entry format
 
@@ -58,7 +63,7 @@ Drafts, Renovate PRs and PRs by cwfitzgerald get a **Status note**: state, CI, w
    - **Unchanged:** all other PRs. Keep the entry.
 4. For every open PR, read the merge state and the check runs (`gh pr view N --json mergeable,statusCheckRollup`), and write the **State** line again. GitHub computes `mergeable` on demand; if it is `UNKNOWN`, ask a second time.
 5. For red CI on a new or changed PR, read the failed job log and find out if the PR or the infrastructure caused the failure.
-6. Write the summary (header, Attention first, Part A, Part B) again from the entries. Check each row of a gone or changed PR, each count in a heading, and each cross-reference in "Dependencies and landing order".
+6. Write the summary (header, Attention first, Land before the release, priorities 1 to 3, cross-cutting notes) again from the entries. Check each row of a gone or changed PR, each count in a heading, and each cross-reference in "Dependencies and landing order".
 7. Run `python3 linkify.py triage.md`. It adds links to PR, issue and user references and keeps links that exist.
 8. Check the result: each open PR has one entry and is in the summary; no entry is for a PR that is not open.
 9. Commit to the branch `claude/wgpu-review-queue-triage-iw4rg6` and push to the `cwfitzgerald` remote.

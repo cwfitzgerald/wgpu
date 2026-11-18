@@ -1,250 +1,284 @@
 # wgpu PR triage
 
-Last update: 2026-11-14.
+Last update: 2026-11-18.
 
-This is a pre-review pass over the open PRs in gfx-rs/wgpu: 126 open PRs (77 ready for review, 49 drafts), and the 3 issues assigned to [@cwfitzgerald](https://github.com/cwfitzgerald). Merge queue PRs from Mergify are not counted. PRs that a member approved and sent to the merge queue are not in this file, merged or not. It is read only. No code was built or tested, and nothing was posted to GitHub. CI status comes from GitHub check runs. Findings that are reasoned from code, not run, are marked as such in the details.
+This is a pre-review pass over the open PRs in gfx-rs/wgpu: 127 open PRs (78 ready for review, 49 drafts), and the 3 issues assigned to [@cwfitzgerald](https://github.com/cwfitzgerald). Merge queue PRs from Mergify are not counted. PRs that a member approved and sent to the merge queue are not in this file, merged or not. It is read only. No code was built or tested, and nothing was posted to GitHub. CI status comes from GitHub check runs. Findings that are reasoned from code, not run, are marked as such in the details.
 
-This file shows the current state only. It is updated in place; `UPDATING.md` gives the procedure. In the tables, "Last update" is the date of the last GitHub activity on the PR.
+This file shows the current state only. It is updated in place; `UPDATING.md` gives the procedure.
+
+**Order of this file.** The summary is in priority order for the release in about one week:
+
+1. Ready PRs that are assigned to you, oldest wait first.
+2. Ready PRs by other people that are not assigned to you, oldest wait first.
+3. All other items: your own PRs, drafts, issues.
+
+In each priority, the PRs that wait on a maintainer come first, because a maintainer can move them. The PRs that wait on the author come after them. "Last maintainer reply" is the date of the last comment or review by a member or collaborator who is not the author. An assignment is not a reply. "never" means that no member replied after the PR was opened; the wait then starts at "Opened".
 
 ## Attention first
 
-- **Three PRs need the `TextureDescriptor::texture_binding_view_dimension` field** that [#8014](https://github.com/gfx-rs/wgpu/issues/8014) added. GitHub shows no conflict for them. [#10776](https://github.com/gfx-rs/wgpu/issues/10776) is confirmed: its Clippy jobs fail with E0063 at `tests/tests/wgpu-validation/api/texture.rs:824`. [#10862](https://github.com/gfx-rs/wgpu/issues/10862) and [#10839](https://github.com/gfx-rs/wgpu/issues/10839) are reasoned from code, not built.
-- **[#10890](https://github.com/gfx-rs/wgpu/issues/10890) exposes unvalidated count draws to Deno JS** on Vulkan and DX12. Decide the validation question for [#9679](https://github.com/gfx-rs/wgpu/issues/9679) and [#10890](https://github.com/gfx-rs/wgpu/issues/10890) together.
-- **Approvals from inner-daemons do not satisfy branch protection.** [#10821](https://github.com/gfx-rs/wgpu/issues/10821), [#10820](https://github.com/gfx-rs/wgpu/issues/10820), [#10796](https://github.com/gfx-rs/wgpu/issues/10796), [#10897](https://github.com/gfx-rs/wgpu/issues/10897), [#10891](https://github.com/gfx-rs/wgpu/issues/10891), [#10901](https://github.com/gfx-rs/wgpu/issues/10901), [#10343](https://github.com/gfx-rs/wgpu/issues/10343) and [#10546](https://github.com/gfx-rs/wgpu/issues/10546) have such an approval and show `REVIEW_REQUIRED`. Each needs an approval from a member with write access.
-- **5andr0 has 5 agent-written PRs open** ([#10908](https://github.com/gfx-rs/wgpu/issues/10908), [#10921](https://github.com/gfx-rs/wgpu/issues/10921), [#10922](https://github.com/gfx-rs/wgpu/issues/10922), [#10926](https://github.com/gfx-rs/wgpu/issues/10926) and draft [#10928](https://github.com/gfx-rs/wgpu/issues/10928)) and wrote on [#9295](https://github.com/gfx-rs/wgpu/issues/9295) that maintainers should treat them as "issues with suggested fixes". Needs one policy answer.
-- **[#8014](https://github.com/gfx-rs/wgpu/issues/8014) is merged with an unchecked finding:** the review of 2026-11-06 said that core does not check the view-dimension field against the texture dimension, and that the GLES HAL allocates from it. Check it on trunk.
+- **Release sweep: 23 ready PRs need one approval or one small step.** "Land before the release" below lists them. 12 of them were opened before 2026-11-01. Most wait on an approval from a member with write access.
+- **The v31 milestone has 2 open PRs:** [#10675](https://github.com/gfx-rs/wgpu/issues/10675) (core lock fix, land as is; has conflicts; waits on a member approval since 2026-11-02 and on the agent-written PR policy) and [#10871](https://github.com/gfx-rs/wgpu/issues/10871) (Vecvec approved, which satisfies branch protection; decide if v31 takes its untested Vulkan path). [#10984](https://github.com/gfx-rs/wgpu/issues/10984) waits for v31 to ship.
+- **[#10982](https://github.com/gfx-rs/wgpu/issues/10982) is a breaking change for every WGSL shader that uses `f64`:** it requires `enable wgpu_f64;`. Decide before the release if this goes in v31. The author also asks 4 questions that need a maintainer answer.
+- **[#10901](https://github.com/gfx-rs/wgpu/issues/10901) has an approval from inner-daemons but a medium finding (from code):** the stride check that the PR adds rejects `coopStore(m, p, 16)`, because a plain literal stride is `i32`. Do not land it as is.
+- **[#10964](https://github.com/gfx-rs/wgpu/issues/10964) (Rust 1.97) cannot pass CI as is:** `REPO_MSRV` in `.github/workflows/ci.yml` must change with `rust-toolchain.toml`. Decide if the toolchain bump goes in before or after the release.
+- **Approvals that GitHub does not count.** [#10960](https://github.com/gfx-rs/wgpu/issues/10960), [#10980](https://github.com/gfx-rs/wgpu/issues/10980), [#10901](https://github.com/gfx-rs/wgpu/issues/10901), [#10897](https://github.com/gfx-rs/wgpu/issues/10897), [#10891](https://github.com/gfx-rs/wgpu/issues/10891), [#10821](https://github.com/gfx-rs/wgpu/issues/10821), [#10546](https://github.com/gfx-rs/wgpu/issues/10546), [#10343](https://github.com/gfx-rs/wgpu/issues/10343), [#10585](https://github.com/gfx-rs/wgpu/issues/10585) and [#10837](https://github.com/gfx-rs/wgpu/issues/10837) have an approval from inner-daemons, who has read permission, and show `REVIEW_REQUIRED`. [#10974](https://github.com/gfx-rs/wgpu/issues/10974) has an approval from JMS55 (read access only). [#10675](https://github.com/gfx-rs/wgpu/issues/10675) has an approval from sagudev. Each needs an approval from a member with write access.
+- **Agent-written PRs opened in the last week:** [#10981](https://github.com/gfx-rs/wgpu/issues/10981) (code and description) and [#10979](https://github.com/gfx-rs/wgpu/issues/10979) (code; Claude drafted the description). See "Policy: agent-written PRs".
+
+## Land before the release
+
+These ready PRs have the verdict "Land as is", or need one small step. Sorted by Opened.
+
+| PR | Title | Opened | Step |
+|---|---|---|---|
+| [#10212](https://github.com/gfx-rs/wgpu/issues/10212) (yours) | Pass first-use tracking | 2026-08-31 | andyleiserson review. |
+| [#10229](https://github.com/gfx-rs/wgpu/issues/10229) | glsl-out: no `invariant gl_FragCoord` on ES | 2026-09-01 | Add a changelog line, approve. jimblandy is assigned and never reviewed. |
+| [#10343](https://github.com/gfx-rs/wgpu/issues/10343) | hlsl: unbounded `[]` binding arrays | 2026-09-14 | Member approval (inner-daemons approved). |
+| [#10546](https://github.com/gfx-rs/wgpu/issues/10546) | vk: `VK_COLOR_SPACE_PASS_THROUGH_EXT` | 2026-10-06 | Resolve the conflict, member approval. The author pinged jimblandy twice. |
+| [#10585](https://github.com/gfx-rs/wgpu/issues/10585) | hlsl-out: 64-bit literal suffixes | 2026-10-11 | Resolve the changelog conflict yourself, member approval. CI red is unrelated (Windows timeouts). |
+| [#10600](https://github.com/gfx-rs/wgpu/issues/10600) | spv-out: wrapped function preamble helper | 2026-10-12 | jimblandy review. Refactor, CI green. Lands before [#10697](https://github.com/gfx-rs/wgpu/issues/10697). |
+| [#10638](https://github.com/gfx-rs/wgpu/issues/10638) | hal: link API docs from dyn methods | 2026-10-16 | Review (docs only). |
+| [#10675](https://github.com/gfx-rs/wgpu/issues/10675) | core: hold `command_indices` around surface (un)configure | 2026-10-20 | Resolve the conflict, member approval. v31 milestone. Blocked by the agent-written PR policy: an agent wrote the code and the description. |
+| [#10694](https://github.com/gfx-rs/wgpu/issues/10694) | wgsl-in: rayQueryGenerateIntersection scope fix | 2026-10-21 | Rerun the SPIR-V validate job (curl failure), review. |
+| [#10739](https://github.com/gfx-rs/wgpu/issues/10739) | renovate `rebaseWhen = conflicted` | 2026-10-26 | Review. Low risk. |
+| [#10776](https://github.com/gfx-rs/wgpu/issues/10776) | Multi-planar texture copy validation | 2026-10-28 | Only if your review is quick: 1200 lines of core. CI green. |
+| [#10784](https://github.com/gfx-rs/wgpu/issues/10784) | CTS: non-const `modf` f32 tests | 2026-10-30 | Review. teoxoy is assigned. |
+| [#10837](https://github.com/gfx-rs/wgpu/issues/10837) | vk: pass-begin timestamp at TOP_OF_PIPE | 2026-11-04 | You approve and queue. |
+| [#10897](https://github.com/gfx-rs/wgpu/issues/10897) | wgsl-in: reject composite `const_assert` conditions | 2026-11-09 | Resolve the changelog conflict yourself, member approval. Fixes a fuzzer panic. |
+| [#10903](https://github.com/gfx-rs/wgpu/issues/10903) (yours) | Immediates fix (panic) | 2026-11-10 | andyleiserson review. |
+| [#10959](https://github.com/gfx-rs/wgpu/issues/10959) (yours) | Fix indirect draw validation panic on noop | 2026-11-15 | Approved by andyleiserson. Queue it. |
+| [#10960](https://github.com/gfx-rs/wgpu/issues/10960) | vk: fence race without timeline semaphores | 2026-11-15 | Member approval. Land before or with [#10840](https://github.com/gfx-rs/wgpu/issues/10840). |
+| [#10961](https://github.com/gfx-rs/wgpu/issues/10961) | MSL: bitcast of a packed vec3 field | 2026-11-15 | The author adds one `typos.toml` line, then review. |
+| [#10963](https://github.com/gfx-rs/wgpu/issues/10963) | Renovate: install-action v2.90.6 | 2026-11-16 | Approve. |
+| [#10966](https://github.com/gfx-rs/wgpu/issues/10966) | Doc on `Device::from_core` | 2026-11-16 | The author fixes the title and description, then approve and squash. |
+| [#10972](https://github.com/gfx-rs/wgpu/issues/10972) | core: build failure with `--no-default-features` | 2026-11-17 | Your approval. |
+| [#10974](https://github.com/gfx-rs/wgpu/issues/10974) | Docs for `AccelerationStructureGeometryFlags` | 2026-11-17 | The author fixes one typo, then a member approval. |
+| [#10980](https://github.com/gfx-rs/wgpu/issues/10980) | wgsl-in: `continuing` block shadowing | 2026-11-18 | Member approval (inner-daemons approved). |
 
 ---
 
-# Part A: your review queue
+# Priority 1: ready PRs assigned to you (34)
 
-These are the 18 open PRs that are assigned to you or that request your review (15 ready, 3 drafts), and 3 issues.
+### Waiting on a maintainer (20)
 
-### Ready after one step (1)
+| PR | Title | Opened | Last maintainer reply | Verdict | Next step |
+|---|---|---|---|---|---|
+| [#10505](https://github.com/gfx-rs/wgpu/issues/10505) | gles/wgl: pump messages while awaiting shutdown | 2026-09-29 | never | Needs a bit of work | Post the findings: the loop does not dispatch the messages it removes, and the thread and window leak if `PostMessageA` fails. |
+| [#10506](https://github.com/gfx-rs/wgpu/issues/10506) | Metal: one command buffer for many passes **[Mac CI cancelled]** | 2026-09-30 | never | Needs a bit of work | Your design sign-off. **High, confirmed:** with indirect validation off, ICB setup for multi-draws is encoded after the pass that uses it. Has conflicts. |
+| [#10438](https://github.com/gfx-rs/wgpu/issues/10438) | create_*_pipeline_async | 2026-09-23 | 2026-10-04 (sagudev approved) | Needs a bit of work | Sign off on the public API shape. The author asked you for review on 2026-10-24. Has conflicts. |
+| [#10609](https://github.com/gfx-rs/wgpu/issues/10609) | naga GLSL matrix interfaces | 2026-10-13 | 2026-10-14 | Needs a bit of work | Review it or move it from inner-daemons. Open items: an unmentioned SPIR-V-frontend sampling change, a false overflow at `u32::MAX`, Std430 default for in/out blocks. |
+| [#10591](https://github.com/gfx-rs/wgpu/issues/10591) | core: SmallVec for single-region texture copies | 2026-10-12 | 2026-10-14 | Needs a bit of work | Decide if you want it. inner-daemons said "very low importance". |
+| [#10776](https://github.com/gfx-rs/wgpu/issues/10776) | Multi-planar texture copy validation | 2026-10-28 | never | Land as is | Review. CI green. |
+| [#10778](https://github.com/gfx-rs/wgpu/issues/10778) | Make `wayland-sys` `dlopen` togglable | 2026-10-29 | never | Needs a lot of work | Decide if compile-time libwayland linking is wanted. As written it breaks macOS, iOS and Android builds (CI red, 15 jobs). If no, close. |
+| [#10802](https://github.com/gfx-rs/wgpu/issues/10802) | deno: report external memory size | 2026-11-01 | never | Needs a bit of work | Review. Small, CI green. |
+| [#10840](https://github.com/gfx-rs/wgpu/issues/10840) | Vulkan: no timeline semaphores on Arm Mali | 2026-11-05 | never | Needs a bit of work | Decide: turn off on every Mali driver version (one version tested). The workaround bit `1 << 3` is taken on trunk. Land [#10960](https://github.com/gfx-rs/wgpu/issues/10960) first: it fixes the FencePool path that this PR selects. Has conflicts. |
+| [#10862](https://github.com/gfx-rs/wgpu/issues/10862) | Pool command-encoder and pass trackers | 2026-11-06 | 2026-11-09 | Needs a bit of work | Decide the agent-disclosure question (both boxes checked), then inner-daemons reviews. rowanG077's `ResourceMetadata::clear` change is a performance follow-up. Safer after the release. |
+| [#10837](https://github.com/gfx-rs/wgpu/issues/10837) | vk: pass-begin timestamp at TOP_OF_PIPE | 2026-11-04 | 2026-11-12 (inner-daemons approved) | Land as is | Approve and queue. |
+| [#10871](https://github.com/gfx-rs/wgpu/issues/10871) | Ray tracing invocation reordering feature | 2026-11-06 | 2026-11-14 (Vecvec approved) | Needs a bit of work | Vecvec has write access, so GitHub shows APPROVED. Decide if v31 takes a Vulkan path that no CI adapter or hardware tested. v31 milestone. |
+| [#10957](https://github.com/gfx-rs/wgpu/issues/10957) | naga: bitcast in the constant evaluator | 2026-11-14 | never | Needs a bit of work | Review. A const bitcast that gives NaN or infinity is an error with the PR (correct per spec), with no test and no changelog entry. |
+| [#10960](https://github.com/gfx-rs/wgpu/issues/10960) | vk: fence race without timeline semaphores | 2026-11-15 | 2026-11-16 (inner-daemons approved) | Land as is | Approve. The PR holds the pool lock across `vkQueueSubmit`. |
+| [#10963](https://github.com/gfx-rs/wgpu/issues/10963) | Renovate: install-action v2.90.6 | 2026-11-16 | never | Status note | Approve. |
+| [#10964](https://github.com/gfx-rs/wgpu/issues/10964) | Renovate: Rust 1.97.0 | 2026-11-16 | never | Needs a bit of work | Decide before or after the release. If before, push `REPO_MSRV = 1.97.0` to the branch. |
+| [#10972](https://github.com/gfx-rs/wgpu/issues/10972) | core: build failure with `--no-default-features` | 2026-11-17 | never | Land as is | Approve. No CI job catches this failure. |
+| [#10981](https://github.com/gfx-rs/wgpu/issues/10981) | GLES: prefer an 8-bit EGL config | 2026-11-18 | never | Needs a bit of work | First review and agent policy. Medium (from code): asking for 8-bit channel sizes changes the EGL sort, so 10-bit configs can come first on every EGL platform. |
+| [#10982](https://github.com/gfx-rs/wgpu/issues/10982) | naga: `wgpu_f64` enable extension | 2026-11-18 | never | Needs a bit of work | Decide the breaking change before the release, and answer the author's 4 questions. No changelog entry, docs or negative tests. |
+| [#10890](https://github.com/gfx-rs/wgpu/issues/10890) | deno: expose `chromium-experimental-multi-draw-indirect` | 2026-11-09 | 2026-11-18 | Needs a bit of work | Decide. **High:** wgpu-core does not validate count-draw arguments, and this makes them reachable from JS on Vulkan and DX12. inner-daemons objects to using Chrome's tests for an API that wgpu does not match, and suggests splitting out the new validation. Recommended: split and land the validation; hold the feature. |
 
-| PR | Title | Step | Note |
-|---|---|---|---|
-| [#10837](https://github.com/gfx-rs/wgpu/issues/10837) | vk: pass-begin timestamp at TOP_OF_PIPE | author rebases (has conflicts), then you approve | You are an assignee from 11-14, with inner-daemons. inner-daemons approved on 11-12, before the last push, which only added the doc comment that the reviewer suggested. |
+### Waiting on the author (14)
 
-### Needs a bit of work (12)
-
-| PR | Title | Waiting on | Main item |
-|---|---|---|---|
-| [#10871](https://github.com/gfx-rs/wgpu/issues/10871) | Ray tracing invocation reordering feature and adapter property | you (review requested) | Exposes naga hit objects as a wgpu feature with the Vulkan EXT and a reorder-mode adapter query. Vecvec approved on 11-14. CI green. The FFI structs match the Vulkan headers. The Vulkan path is not tested on any CI adapter or hardware. |
-| [#10506](https://github.com/gfx-rs/wgpu/issues/10506) | Metal: one command buffer for many passes **[Mac CI cancelled]** | you (design) | Has conflicts. **High, confirmed:** with indirect validation off, ICB setup for multi-draws is encoded after the pass that uses it, which is UB even with valid draw arguments. Medium: a timestamp written between passes attaches to the next pass. Needs your design sign-off. |
-| [#9679](https://github.com/gfx-rs/wgpu/issues/9679) | Metal ICBs for multi-draw indirect count | author | Conflicts in `wgpu-hal/src/metal/mod.rs`. Core does not validate count-draw arguments and Metal clamps only the count. Fallback cost. The [#10506](https://github.com/gfx-rs/wgpu/issues/10506) ordering bug also affects its count-draw setup. No error-path tests. The deno part is in [#10890](https://github.com/gfx-rs/wgpu/issues/10890). |
-| [#10609](https://github.com/gfx-rs/wgpu/issues/10609) | naga GLSL matrix interfaces | inner-daemons | CI green. The SPIR-V-frontend sampling change has no mention or test. A false overflow at `u32::MAX`. In/out blocks default to Std430 without explanation. No CHANGELOG attribution. |
-| [#10505](https://github.com/gfx-rs/wgpu/issues/10505) | gles/wgl: pump messages while awaiting shutdown | author | The findings are not posted to the PR: the loop does not dispatch the messages it removes, and the thread and window leak if `PostMessageA` fails. No CHANGELOG attribution. |
-| [#10596](https://github.com/gfx-rs/wgpu/issues/10596) | BF16 + cooperative matrix | author (kvark) | inner-daemons requested changes on 11-13 and asks whether the planned `subgroup_matrix` extension replaces cooperative matrices. The const evaluator folds bf16 comparisons that the validator rejects. No snapshot inputs. Medium: the validator accepts `As` from a matrix to bf16. [#10901](https://github.com/gfx-rs/wgpu/issues/10901) fixes the same capability bug in another way. Has conflicts. |
-| [#10414](https://github.com/gfx-rs/wgpu/issues/10414) | naga non-square cooperative matrix tiles | author | Shape validation ignores the scalar type and mixes configurations. Has conflicts; a rebased branch exists from infosave2007. If [#10901](https://github.com/gfx-rs/wgpu/issues/10901) lands first, regenerate the snapshot. |
-| [#10511](https://github.com/gfx-rs/wgpu/issues/10511) | dx12: 1 s hang for dropped SurfaceTextures | you | You merged trunk on 11-14; CI is pending. Keep `pending_present_count` on resize and reset it only for a new swapchain. The details have a probe that the author can run. Land before [#10548](https://github.com/gfx-rs/wgpu/issues/10548). |
-| [#10548](https://github.com/gfx-rs/wgpu/issues/10548) | dx12: DXGI_PRESENT_RESTART | you | You merged trunk on 11-14; CI is pending. Hard-codes `Present(1, RESTART)`, which forces vsync and drops tearing. Combined fix: one `Present(interval, flags \| RESTART)`, then `pending_present_count += 1`. Depends on [#10511](https://github.com/gfx-rs/wgpu/issues/10511). |
-| [#10438](https://github.com/gfx-rs/wgpu/issues/10438) | create_*_pipeline_async | you | Has conflicts. The public API shape needs your sign-off. `create_*_pipeline_or_error` traces and logs, which also affects Firefox and Deno. |
-| [#10591](https://github.com/gfx-rs/wgpu/issues/10591) | core: SmallVec for single-region texture copies | you (wanted or not?) | The `len()==1` branch is not needed. The benchmark's value is disputed. |
-| [#9757](https://github.com/gfx-rs/wgpu/issues/9757) | Xcode ray tracing detection | inner-daemons | The CHANGELOG leaves out the user-visible fix. A `// others...?` placeholder is in the code. |
-
-### Needs a lot of work (2)
-
-| PR | Title | Waiting on | Main item |
-|---|---|---|---|
-| [#9295](https://github.com/gfx-rs/wgpu/issues/9295) | naga/spv layoutless workgroup types | you, then kvark | Has conflicts. Two confirmed bugs: pointer types are emitted before the workgroup copies, and the mesh output wrapper uses the default type IDs. Draft [#10928](https://github.com/gfx-rs/wgpu/issues/10928) (agent-written, no human owner) is a rework that fixes the pointer-order bug, handles SPIR-V below 1.4 and adds `spirv-val` tests, but keeps the mesh-wrapper bug. Recommended: ask kvark to take the [#10928](https://github.com/gfx-rs/wgpu/issues/10928) commit into [#9295](https://github.com/gfx-rs/wgpu/issues/9295), then fix the mesh wrapper and add a pointer-parameter test. |
-| [#10098](https://github.com/gfx-rs/wgpu/issues/10098) | Immediates on WebGPU, remove Features::IMMEDIATES | author (inactive since 09-18) | Removes the feature that you asked to keep. The WebGPU path cannot work. Has conflicts. Consider closing it. |
-
-### Drafts (3)
-
-| PR | State | Waiting on | Recommended action |
-|---|---|---|---|
-| [#10016](https://github.com/gfx-rs/wgpu/issues/10016) | Stalled since 09-27 | you, then kvark | Decide whether the Vulkan memory model is split out (inner-daemons wants it split, kvark does not). |
-| [#9053](https://github.com/gfx-rs/wgpu/issues/9053) | Not close | inner-daemons | None of your 12 findings from 08-14 is addressed. |
-| [#8653](https://github.com/gfx-rs/wgpu/issues/8653) | Not close | inner-daemons | Not split as asked. Park it, and decide whether you want this suite in addition to the CTS. |
-
-### Issues (3)
-
-| Issue | Recommended action |
-|---|---|
-| [#10622](https://github.com/gfx-rs/wgpu/issues/10622) Encourage PR rationales | Act: ask kpreid to send the PR, and link CONTRIBUTING "designing new features". |
-| [#9125](https://github.com/gfx-rs/wgpu/issues/9125) Actions job limits | GitHub raised the limit to 40 on 09-17. Reply with the result, then keep the issue open for 60 plus cache storage, or close it as partly resolved. |
-| [#8354](https://github.com/gfx-rs/wgpu/issues/8354) DXGI swapchain for Vulkan | Keep it open. Tick [#8356](https://github.com/gfx-rs/wgpu/issues/8356) (merged). [#8388](https://github.com/gfx-rs/wgpu/issues/8388) waits on andyleiserson; see section 7. |
+| PR | Title | Opened | Last maintainer reply | Verdict | Next step |
+|---|---|---|---|---|---|
+| [#10098](https://github.com/gfx-rs/wgpu/issues/10098) | Immediates on WebGPU, remove `Features::IMMEDIATES` | 2026-08-18 | 2026-09-18 (you) | Needs a lot of work | Inactive since 2026-09-18. Removes the feature that you asked to keep. Close. |
+| [#10414](https://github.com/gfx-rs/wgpu/issues/10414) | naga non-square cooperative matrix tiles | 2026-09-21 | 2026-09-24 | Needs a bit of work | Rebase (conflicts; one with [#10901](https://github.com/gfx-rs/wgpu/issues/10901) in `naga/src/valid/expression.rs`). Shape validation ignores the scalar type. |
+| [#10800](https://github.com/gfx-rs/wgpu/issues/10800) | Metal: remove the `wg_memory_sizes` logic | 2026-11-01 | never | Needs a bit of work | inner-daemons answers matthargett's A10X crash report. CI green. |
+| [#10838](https://github.com/gfx-rs/wgpu/issues/10838) | Sparse TLAS instance indices | 2026-11-04 | never | Needs a bit of work | CI red: the new test segfaults lavapipe (a Mesa bug); skip or expect it. Medium: the empty BLAS reads the zero buffer, which has no BLAS-input usage and gets no barrier. Has conflicts. |
+| [#9679](https://github.com/gfx-rs/wgpu/issues/9679) | Metal ICBs for multi-draw indirect count | 2026-06-15 | 2026-11-05 (you, changes requested) | Needs a bit of work | Rebase. Core does not validate count-draw arguments. The [#10506](https://github.com/gfx-rs/wgpu/issues/10506) ordering bug also affects it. |
+| [#10821](https://github.com/gfx-rs/wgpu/issues/10821) | Release the surface texture on device loss | 2026-11-03 | 2026-11-09 | Needs a bit of work | sagudev's question about [#10296](https://github.com/gfx-rs/wgpu/issues/10296) has no answer since 2026-11-03. Trunk already releases the texture. If no answer, close. |
+| [#9295](https://github.com/gfx-rs/wgpu/issues/9295) | naga/spv layoutless workgroup types | 2026-03-24 | 2026-11-12 | Needs a lot of work | kvark must say if he continues. Two confirmed bugs (pointer type order, mesh output wrapper). [#10928](https://github.com/gfx-rs/wgpu/issues/10928) (the agent-written rework) is closed, so its fixes are not available as a PR. |
+| [#10596](https://github.com/gfx-rs/wgpu/issues/10596) | BF16 + cooperative matrix | 2026-10-12 | 2026-11-13 (inner-daemons, changes requested) | Needs a bit of work | kvark answers inner-daemons (does `subgroup_matrix` replace cooperative matrices?). Has conflicts. |
+| [#10966](https://github.com/gfx-rs/wgpu/issues/10966) | Doc on `Device::from_core` | 2026-11-16 | 2026-11-16 | Needs a bit of work | Fix the title and description: the tests were removed, and the diff is a 5-line doc. Then approve and squash. |
+| [#10901](https://github.com/gfx-rs/wgpu/issues/10901) | naga cooperative matrix store order | 2026-11-10 | 2026-11-16 (inner-daemons approved) | Needs a bit of work | Fix the stride literal type (medium, from code). Then a member approval. |
+| [#10860](https://github.com/gfx-rs/wgpu/issues/10860) | Metal watchOS MSL profiles | 2026-11-05 | 2026-11-16 | Needs a bit of work | Rebase onto [#10927](https://github.com/gfx-rs/wgpu/issues/10927) (move the 32-bit watchOS skip into `render_icb_probe_allowed`), add the promised version comments. Indirect dispatch and base vertex are enabled with evidence for indirect draws only. No CI on the head. |
+| [#10979](https://github.com/gfx-rs/wgpu/issues/10979) | Quest 1 (Adreno 540) debug builds, GPU tests, CTS | 2026-11-18 | 2026-11-18 | Needs a bit of work | Answer inner-daemons' OOM-test concern: the OOM tests return early and look like a pass on every device without `VK_EXT_memory_budget`. Maybe split the HAL retry out. Agent-written code. |
+| [#10974](https://github.com/gfx-rs/wgpu/issues/10974) | Docs for `AccelerationStructureGeometryFlags` | 2026-11-17 | 2026-11-18 | Needs a bit of work | Fix the typo "flag in present"; inner-daemons resolves the thread. |
+| [#10880](https://github.com/gfx-rs/wgpu/issues/10880) | Vulkan: trim command pools over a window | 2026-11-08 | 2026-11-18 | Needs a bit of work | The trim uses a window of resets. The author promised a `VulkanBackendOptions` window field on 2026-11-18 (not pushed). Decide if you accept a new public backend option. matthargett's changes-requested review is open. |
 
 ---
 
-# Part B: all other open PRs
+# Priority 2: ready PRs by other people, not assigned to you (39)
 
-Each PR appears once below, in the section for its main action.
+### Waiting on a maintainer (28)
 
-## 1. Merge now, or after one mechanical step (8)
+| PR | Title | Opened | Last maintainer reply | Assignee | Verdict | Next step |
+|---|---|---|---|---|---|---|
+| [#10229](https://github.com/gfx-rs/wgpu/issues/10229) | glsl-out: no `invariant gl_FragCoord` on ES | 2026-09-01 | never | jimblandy | Needs a bit of work | Add the changelog line and merge, or take it over. |
+| [#10343](https://github.com/gfx-rs/wgpu/issues/10343) | hlsl: unbounded `[]` binding arrays | 2026-09-14 | 2026-09-25 | jimblandy | Land as is | Member approval. |
+| [#9876](https://github.com/gfx-rs/wgpu/issues/9876) | Metal: query subgroup size | 2026-07-15 | 2026-10-06 | jimblandy | Needs a bit of work | Decide if `ComputePipeline::get_subgroup_size` is wanted as non-WebGPU API. Has conflicts. |
+| [#10561](https://github.com/gfx-rs/wgpu/issues/10561) | spv-in DebugPrintf | 2026-10-07 | never | jimblandy | Needs a bit of work | Review (about 100 lines, looks correct). Has a conflict. CI red on Windows, cause not found. |
+| [#10600](https://github.com/gfx-rs/wgpu/issues/10600) | spv-out: wrapped function preamble helper | 2026-10-12 | 2026-10-13 | jimblandy | Land as is | Review. |
+| [#10638](https://github.com/gfx-rs/wgpu/issues/10638) | hal: link API docs from dyn methods | 2026-10-16 | never | jimblandy | Land as is | Review. |
+| [#10585](https://github.com/gfx-rs/wgpu/issues/10585) | hlsl-out: 64-bit literal suffixes | 2026-10-11 | 2026-10-17 (inner-daemons approved) | jimblandy | Needs a bit of work | Resolve the changelog conflict yourself, then member approval. |
+| [#10694](https://github.com/gfx-rs/wgpu/issues/10694) | wgsl-in: rayQueryGenerateIntersection scope fix | 2026-10-21 | never | jimblandy | Land as is | Rerun the SPIR-V validate job, review. |
+| [#10546](https://github.com/gfx-rs/wgpu/issues/10546) | vk: `VK_COLOR_SPACE_PASS_THROUGH_EXT` | 2026-10-06 | 2026-10-22 (inner-daemons approved) | jimblandy | Land as is | Resolve the conflict, member approval. |
+| [#10554](https://github.com/gfx-rs/wgpu/issues/10554) | WGL explicit GL version | 2026-10-07 | 2026-10-25 | Wumpf | Needs a bit of work | The author asked "anything else?" on 2026-10-25 with no reply. CI fails on Claude co-author trailers. Take over with one clean commit and credit. |
+| [#10731](https://github.com/gfx-rs/wgpu/issues/10731), [#10743](https://github.com/gfx-rs/wgpu/issues/10743) | Metal: workarounds for OCLP-only Intel compiler bugs | 2026-10-26 | never | andyleiserson | Needs a lot of work | Decide if OCLP-only workarounds are supported. If no, close both. If yes, fold [#10743](https://github.com/gfx-rs/wgpu/issues/10743) into [#10731](https://github.com/gfx-rs/wgpu/issues/10731). |
+| [#10739](https://github.com/gfx-rs/wgpu/issues/10739) | renovate `rebaseWhen = conflicted` | 2026-10-26 | never | jimblandy | Land as is | Review. |
+| [#10750](https://github.com/gfx-rs/wgpu/issues/10750) | VK_EXT_hdr_metadata | 2026-10-27 | never | jimblandy | Needs a lot of work | Fully agent-written; the API returns a bare bool. Close under the agentic-PR policy. |
+| [#10775](https://github.com/gfx-rs/wgpu/issues/10775) | `Extensions<T>` for backend options | 2026-10-28 | never | jimblandy, teoxoy | Needs a bit of work | Decide the extension pattern. andyleiserson asked on 2026-11-03. Rebase only since the last review. |
+| [#10697](https://github.com/gfx-rs/wgpu/issues/10697) | `rayQueryGetCurrentTMax` builtin | 2026-10-22 | 2026-10-28 | jimblandy | Needs a bit of work | Decide if the non-standard builtin is accepted. After [#10600](https://github.com/gfx-rs/wgpu/issues/10600) lands, it must adapt to the new helper signature. |
+| [#10784](https://github.com/gfx-rs/wgpu/issues/10784) | CTS: non-const `modf` f32 tests | 2026-10-30 | never | teoxoy | Land as is | Review. |
+| [#10675](https://github.com/gfx-rs/wgpu/issues/10675) | core: hold `command_indices` around surface (un)configure | 2026-10-20 | 2026-11-02 (sagudev approved) | jimblandy | Land as is | Resolve the conflict, member approval, policy decision (agent-written). v31 milestone. |
+| [#10812](https://github.com/gfx-rs/wgpu/issues/10812) | Child textures in `Arc` | 2026-11-02 | never | teoxoy | Needs a lot of work | teoxoy reviews. **High:** child and parent textures share clear views, and every `Texture::drop` destroys them. Has conflicts. |
+| [#10839](https://github.com/gfx-rs/wgpu/issues/10839) | Render bundle resource lifetimes | 2026-11-05 | never | teoxoy | Needs a bit of work | inner-daemons review (requested on 2026-11-09). The test literal may need the [#8014](https://github.com/gfx-rs/wgpu/issues/8014) field (from code). |
+| [#10866](https://github.com/gfx-rs/wgpu/issues/10866) | GLES: detach renderbuffers on framebuffer reuse | 2026-11-06 | never | teoxoy | Needs a bit of work | Review; add a changelog entry. The red Mac job is a Metal poll timeout. |
+| [#10873](https://github.com/gfx-rs/wgpu/issues/10873) | spv-out: external texture plumbing | 2026-11-06 | never | jimblandy | Needs a bit of work | Review. Low findings only. Rebased on 2026-11-17. |
+| [#10831](https://github.com/gfx-rs/wgpu/issues/10831) | Fix truncated trace playback | 2026-11-03 | 2026-11-09 | andyleiserson | Needs a bit of work | Opened by an agent account. Ask the named human to own it, or close. |
+| [#10891](https://github.com/gfx-rs/wgpu/issues/10891) | Enforce 2047 elements in array constructors | 2026-11-09 | 2026-11-09 (inner-daemons approved) | teoxoy, inner-daemons | Needs a bit of work | Decide: the WGSL spec gives 2047 as a minimum to support, not a limit. The change rejects native shaders with 2048 or more elements. |
+| [#10897](https://github.com/gfx-rs/wgpu/issues/10897) | wgsl-in: reject composite `const_assert` conditions | 2026-11-09 | 2026-11-09 (inner-daemons approved) | inner-daemons, andyleiserson | Land as is | Resolve the changelog conflict yourself, member approval. Fixes a fuzzer panic. |
+| [#10583](https://github.com/gfx-rs/wgpu/issues/10583) | msl-out: dedup array aliases | 2026-10-11 | 2026-11-10 | jimblandy, inner-daemons | Needs a bit of work | Choose the approach (kpreid suggests a shared `naga::proc` helper). Nested aliases are missed. |
+| [#10725](https://github.com/gfx-rs/wgpu/issues/10725) | Metal: MSL version probing | 2026-10-26 | 2026-11-16 | andyleiserson | Needs a lot of work | Decide probing at the maintainers meeting of 2026-11-18. andyleiserson proposed opt-in probing (OCLP plist or an environment variable). Conflicts in four files. |
+| [#10980](https://github.com/gfx-rs/wgpu/issues/10980) | wgsl-in: `continuing` block shadowing | 2026-11-18 | 2026-11-18 (inner-daemons approved) | teoxoy | Land as is | Member approval. |
 
-"Member approval" means an approval from a member with write access.
+### Waiting on the author (11)
 
-| PR | Title | Step before merge | Last update | Note |
+| PR | Title | Opened | Last maintainer reply | Next step |
 |---|---|---|---|---|
-| [#10897](https://github.com/gfx-rs/wgpu/issues/10897) | wgsl-in: reject composite `const_assert` conditions | CHANGELOG rebase, member approval | 11-09 | Fixes a panic that the fuzzer found. Approved by inner-daemons. |
-| [#10675](https://github.com/gfx-rs/wgpu/issues/10675) | core: hold `command_indices` around surface (un)configure | member approval; agentic-PR policy check | 11-12 | Approved by sagudev. Two users report the crash. |
-| [#10546](https://github.com/gfx-rs/wgpu/issues/10546) | vk: VK_COLOR_SPACE_PASS_THROUGH_EXT | rebase (has conflicts) | 11-03 | Approved by inner-daemons. The author has pinged jimblandy twice. |
-| [#10343](https://github.com/gfx-rs/wgpu/issues/10343) | hlsl: unbounded `[]` binding arrays | member approval | 10-17 | Approved by inner-daemons. |
-| [#10638](https://github.com/gfx-rs/wgpu/issues/10638) | hal: link API docs from dyn methods | review | 10-21 | Docs only. jimblandy self-assigned and has not reviewed. |
-| [#10739](https://github.com/gfx-rs/wgpu/issues/10739) | renovate `rebaseWhen = conflicted` | review | 11-02 | The author is not sure it is needed. Low risk. |
-| [#10694](https://github.com/gfx-rs/wgpu/issues/10694) | wgsl-in: rayQueryGenerateIntersection scope fix | rerun SPIR-V validate job (curl failure) | 10-28 | jimblandy assigned, no review. First in the ray query order. |
-| [#10784](https://github.com/gfx-rs/wgpu/issues/10784) | CTS: non-const `modf` f32 tests | confirm the 24 CTS cases pass | 10-30 | PR CI does not run the CTS. |
+| [#9645](https://github.com/gfx-rs/wgpu/issues/9645) | Metal AS build sync | 2026-06-04 | 2026-06-23 | Vecvec asked for a race fix on 2026-06-23, no answer. Land this before a split [#10292](https://github.com/gfx-rs/wgpu/issues/10292). Ping once, then close. |
+| [#10155](https://github.com/gfx-rs/wgpu/issues/10155) | Reuse the AS build scratch buffer | 2026-08-23 | 2026-10-06 | Silent since 2026-09-03. Close. |
+| [#10629](https://github.com/gfx-rs/wgpu/issues/10629) | Vulkan multi-planar DMA-buf import | 2026-10-15 | never | No tests; changelog `#TODO`; jakobkukla notes a `pub` item that is not reachable. Ask if it is ready for review. |
+| [#9940](https://github.com/gfx-rs/wgpu/issues/9940) | naga: more vector flattening | 2026-07-24 | 2026-10-21 (jimblandy, changes requested) | andyleiserson fixes the exponential SPIR-V constant writer (**high, DoS**) and the matrix-column const-eval panic. |
+| [#10661](https://github.com/gfx-rs/wgpu/issues/10661) | naga: process_overrides panic on anonymous overrides | 2026-10-18 | 2026-10-23 | The author rebased and asked for review on 2026-11-16 without the requested snapshot test. Take over (about 50 lines). |
+| [#10515](https://github.com/gfx-rs/wgpu/issues/10515) | Emscripten via `web-sys` | 2026-10-02 | 2026-10-27 (changes requested) | Silent since 2026-10-09. CI red from the PR. Close; DouglasDwyer has a prototype. |
+| [#10673](https://github.com/gfx-rs/wgpu/issues/10673) | Metal: threadgroup memory for passthrough shaders | 2026-10-20 | 2026-11-01 | Superseded by [#10800](https://github.com/gfx-rs/wgpu/issues/10800). Close after [#10800](https://github.com/gfx-rs/wgpu/issues/10800) merges. |
+| [#10820](https://github.com/gfx-rs/wgpu/issues/10820) | Remove `F16_IN_F32` | 2026-11-03 | 2026-11-10 | Add a breaking-change changelog entry and fix the comment at `naga/src/valid/mod.rs:247`, or add them on merge. |
+| [#10875](https://github.com/gfx-rs/wgpu/issues/10875) | Metal: lose the device on command buffer failure | 2026-11-07 | 2026-11-13 | Answer andyleiserson's questions ([#9579](https://github.com/gfx-rs/wgpu/issues/9579), [#9278](https://github.com/gfx-rs/wgpu/issues/9278), split). Medium: the iOS background error also loses the device. Has conflicts. |
+| [#10676](https://github.com/gfx-rs/wgpu/issues/10676) | naga: runtime check for out-of-bounds `let` indices | 2026-10-20 | 2026-11-14 | The author is silent since 2026-10-28. Medium: with an override in the module, valid WGSL can fail pipeline creation. |
+| [#10961](https://github.com/gfx-rs/wgpu/issues/10961) | MSL: bitcast of a packed vec3 field | 2026-11-15 | never | The fix is correct. CI red from the PR: `typos` reads `@IsseW` as a misspelling; add the name to `typos.toml`. Then review. |
 
-## 2. Waiting on a decision from you (or another maintainer)
+---
 
-| PR | Question | Last update |
-|---|---|---|
-| [#10890](https://github.com/gfx-rs/wgpu/issues/10890) | Expose `chromium-experimental-multi-draw-indirect` in Deno? **High:** wgpu-core does not validate count-draw arguments, and this PR makes them reachable from JS on Vulkan and DX12. It keeps the feature under `STRICT_WEBGPU_COMPLIANCE`. Medium: when the feature is missing, the encoder is not invalidated, so `finish()` succeeds. Duplicates the [#9679](https://github.com/gfx-rs/wgpu/issues/9679) alignment change; land [#9679](https://github.com/gfx-rs/wgpu/issues/9679) first. | 11-09 |
-| [#10891](https://github.com/gfx-rs/wgpu/issues/10891) | Enforce 2047 elements in array constructors? Approved by inner-daemons. The CHANGELOG says the spec requires the limit; the WGSL spec gives 2047 only as a minimum that implementations must support. The change rejects native shaders with const arrays of 2048 or more elements. | 11-13 |
-| [#10886](https://github.com/gfx-rs/wgpu/issues/10886), [#10888](https://github.com/gfx-rs/wgpu/issues/10888) | Renovate: libloading 0.9 and bincode 3. Both need code changes. libloading: renamed error variants, an `AsFilename` bound, and a cargo-deny duplicate. bincode: v3 has no `serde` feature, which `wgpu-benchmark` uses. Port them or tell Renovate to ignore them. | 11-13 |
-| [#10597](https://github.com/gfx-rs/wgpu/issues/10597) | Make `naga::Handle::from_usize` public? jimblandy against, inner-daemons for. Marked fully agent-created. | 10-31 |
-| [#10583](https://github.com/gfx-rs/wgpu/issues/10583) | Is per-backend dedup of array aliases the accepted direction? kpreid suggests a shared `naga::proc` helper. Nested aliases are missed. | 11-10 |
-| [#10697](https://github.com/gfx-rs/wgpu/issues/10697) | Accept the non-standard `rayQueryGetCurrentTMax` builtin? Has conflicts and an unanswered init-tracking comment. | 10-28 |
-| [#10840](https://github.com/gfx-rs/wgpu/issues/10840) | Turn off timeline semaphores on every Arm Mali driver version (one version tested)? Also adds a 297-line repro crate. | 11-05 |
-| [#10775](https://github.com/gfx-rs/wgpu/issues/10775) | Is the `Extensions<T>` unsafe token plus separate `request_adapters` argument the extension pattern? andyleiserson asked on 11-03. Has conflicts. | 11-04 |
-| [#9876](https://github.com/gfx-rs/wgpu/issues/9876) | Want `ComputePipeline::get_subgroup_size` as non-WebGPU public API? jimblandy is assigned and has not engaged. | 10-30 |
-| [#10725](https://github.com/gfx-rs/wgpu/issues/10725) | MSL version probing: opt-in only, and keep the version settings? (andyleiserson to decide.) A tester reports that the fallback works on OCLP Kepler with a 1.6 ms probe. Conflicts in four files. | 11-11 |
-| [#10731](https://github.com/gfx-rs/wgpu/issues/10731), [#10743](https://github.com/gfx-rs/wgpu/issues/10743) | Support workarounds for OCLP-only (patched macOS) Intel compiler bugs at all? If no, close both. If yes, fold [#10743](https://github.com/gfx-rs/wgpu/issues/10743) into [#10731](https://github.com/gfx-rs/wgpu/issues/10731). Both have conflicts. | 10-28 |
-| [#10778](https://github.com/gfx-rs/wgpu/issues/10778) | Offer compile-time libwayland linking at all? As written it breaks macOS, iOS and Android builds. CI red. | 10-29 |
-| [#9645](https://github.com/gfx-rs/wgpu/issues/9645) | Metal AS build sync. Recommended: land [#9645](https://github.com/gfx-rs/wgpu/issues/9645) first (rebase, add the same-command-buffer tests, say it covers only that case), then ask acoliver to split [#10292](https://github.com/gfx-rs/wgpu/issues/10292). | 08-07 |
-| [#10812](https://github.com/gfx-rs/wgpu/issues/10812) | Child textures in `Arc` ([#5138](https://github.com/gfx-rs/wgpu/issues/5138)). teoxoy is assigned. The confirmed double free (section 5) is unfixed. Has conflicts. Suggested instead: one `Arc<TextureShared>` that destroys the HAL objects once. | 11-09 |
+# Priority 3: everything else
 
-## 3. Waiting on a reviewer: ping or reassign
-
-| PR | Reviewer | Last update | Note |
-|---|---|---|---|
-| [#8388](https://github.com/gfx-rs/wgpu/issues/8388) (yours) | andyleiserson | 11-13 | DXGI swapchain on Vulkan. You answered the review threads on 11-13; the fixes are in fixup commits to squash after approval. CI green. |
-| [#10903](https://github.com/gfx-rs/wgpu/issues/10903) (yours) | none | 11-13 | Fix for binding more immediate data than the pipeline supports ([#10902](https://github.com/gfx-rs/wgpu/issues/10902)). CI green. Touches wgpu-core and wgpu-hal. Request a reviewer. |
-| [#10873](https://github.com/gfx-rs/wgpu/issues/10873) | none | 11-07 | External texture plumbing in spv-out (andyleiserson). Clean, CI green. Low findings only. Needs a small rebase on `writer.rs`. |
-| [#10866](https://github.com/gfx-rs/wgpu/issues/10866) | none | 11-06 | GLES: detach renderbuffers when the draw framebuffer is reused (Android Emulator). Small and correct, with a regression test. Needs a CHANGELOG entry. The red Mac job is a Metal poll timeout. |
-| [#10862](https://github.com/gfx-rs/wgpu/issues/10862) | inner-daemons | 11-09 | Pools command-encoder and pass trackers. The logic looks correct. Both agent-disclosure boxes are checked. The test needs the [#8014](https://github.com/gfx-rs/wgpu/issues/8014) field. |
-| [#10860](https://github.com/gfx-rs/wgpu/issues/10860) | inner-daemons | 11-09 | Metal watchOS MSL profiles. It enables indirect draw and dispatch and base vertex/first instance on Apple5 watchOS 11+, with evidence for indirect draws only. |
-| [#10839](https://github.com/gfx-rs/wgpu/issues/10839) | inner-daemons | 11-09 | Render bundle resource lifetimes. CI green. Open: unused `'a` on `RenderEncoder`, bloated tests, the [#8014](https://github.com/gfx-rs/wgpu/issues/8014) field. |
-| [#10561](https://github.com/gfx-rs/wgpu/issues/10561) | jimblandy | 10-28 | spv-in DebugPrintf, about 100 lines, looks correct. Has a conflict. |
-| [#10229](https://github.com/gfx-rs/wgpu/issues/10229) | jimblandy | 10-20 | glsl: no `invariant gl_FragCoord` on ES. Only a CHANGELOG line is missing; take over and merge. |
-| [#10554](https://github.com/gfx-rs/wgpu/issues/10554) | Wumpf | 10-25 | WGL explicit GL version. CI fails on Claude co-author trailers; has conflicts. Take over with one clean commit and credit. |
-| [#10802](https://github.com/gfx-rs/wgpu/issues/10802) | none | 11-01 | deno: external memory size. Small, CI green. |
-
-## 4. Waiting on the author: ping, take over, or close
-
-| PR | Last update | Ask | If no answer |
-|---|---|---|---|
-| [#10776](https://github.com/gfx-rs/wgpu/issues/10776) | 11-13 | Multi-planar copy validation (andyleiserson). **CI is red from the PR:** the test literal at `tests/tests/wgpu-validation/api/texture.rs:824` lacks the [#8014](https://github.com/gfx-rs/wgpu/issues/8014) field. No reviewer. | n/a |
-| [#10600](https://github.com/gfx-rs/wgpu/issues/10600) | 11-07 | **CI is red from the PR:** convert the 5 `write_function_signature` calls in `spv/ray/hit_object.rs`, and fix the snapshot conflicts. The author wants review first; jimblandy has not reviewed. | n/a (andyleiserson) |
-| [#10838](https://github.com/gfx-rs/wgpu/issues/10838) | 11-14 | Sparse TLAS instance indices. CI is red because the test segfaults lavapipe (a Mesa bug); skip or expect it. Medium: the empty BLAS reads the zero buffer, which has no BLAS-input usage and gets no barrier. | n/a (Vecvec, active) |
-| [#10875](https://github.com/gfx-rs/wgpu/issues/10875) | 11-13 | Metal: lose the device when a command buffer fails. andyleiserson asked how it interacts with `release_gpu_resources`, [#9579](https://github.com/gfx-rs/wgpu/issues/9579) and [#9278](https://github.com/gfx-rs/wgpu/issues/9278), and suggested a split. Medium: every Metal error code loses the device, including the iOS error for work submitted in the background. Has conflicts. | ping |
-| [#10522](https://github.com/gfx-rs/wgpu/issues/10522) | 11-13 | GLES DMA-BUF import. andyleiserson requested changes on 11-13 with minor notes (GL error reporting, require `GL_OES_EGL_image`, CHANGELOG attribution). | ping |
-| [#10901](https://github.com/gfx-rs/wgpu/issues/10901) | 11-13 | Cooperative matrix store emit order and missing SPIR-V extensions. Both fixes are correct; approved by inner-daemons, who asked for a validator check on the store stride. Overlaps [#10596](https://github.com/gfx-rs/wgpu/issues/10596). CHANGELOG conflict. | n/a |
-| [#10880](https://github.com/gfx-rs/wgpu/issues/10880) | 11-10 | Vulkan: trim command pools to what the last submission used. Correct, but the keep-last-count rule can churn when large and small submissions alternate. inner-daemons asked for benchmarks. The self-review box is unchecked. | ping |
-| [#10820](https://github.com/gfx-rs/wgpu/issues/10820) | 11-11 | Remove `F16_IN_F32`. Approved by inner-daemons. Add a breaking-change CHANGELOG entry and fix the stale comment at `naga/src/valid/mod.rs:247`. | add them on merge |
-| [#10629](https://github.com/gfx-rs/wgpu/issues/10629) | 11-07 | Vulkan multi-planar DMA-buf import (andyleiserson). No tests; CHANGELOG `#TODO`; one error names the wrong extension. | n/a |
-| [#10800](https://github.com/gfx-rs/wgpu/issues/10800) **[Mac CI cancelled]** | 11-06 | Answer matthargett's A10X crash. Rebase so Mac CI runs. Also carries the [#10801](https://github.com/gfx-rs/wgpu/issues/10801) SDK bump commit. | n/a (inner-daemons) |
-| [#10821](https://github.com/gfx-rs/wgpu/issues/10821) | 11-09 | inner-daemons approved, but trunk already releases the texture, and sagudev's [#10296](https://github.com/gfx-rs/wgpu/issues/10296) question has no answer. Ask the author to reproduce on trunk. | close |
-| [#10926](https://github.com/gfx-rs/wgpu/issues/10926) | 11-12 | Vulkan: filter buffer memory types by available budget. The logic looks correct. The "fifteen CPU cases" in the description are not in the PR. Agent-written description, self-review box unchecked. | close under the agentic-PR policy |
-| [#10922](https://github.com/gfx-rs/wgpu/issues/10922) | 11-11 | DX12-only public option for DXC `-denorm`. No use case; agent-written draft description; an explicit mode below shader model 6.2 fails only at pipeline creation. | close |
-| [#10908](https://github.com/gfx-rs/wgpu/issues/10908), [#10921](https://github.com/gfx-rs/wgpu/issues/10921) | 11-12 | Agent-written IR field for SPIR-V `NoContraction`, and a stacked one-op `Exp2` control. [#10908](https://github.com/gfx-rs/wgpu/issues/10908) makes SPIR-V that loads on trunk fail in the frontend, in validation, and on MSL, WGSL, WebGL2 and SM5 output (from code). The author says that no human owns them. | close both |
-| [#10155](https://github.com/gfx-rs/wgpu/issues/10155) | 10-06 | Policy for releasing the cached AS scratch buffer (Vecvec). The author is silent since 09-03. Has conflicts. | close |
-| [#10515](https://github.com/gfx-rs/wgpu/issues/10515) | 10-27 | Is grovesNL's option 1 (Emscripten built like wasm32-unknown-unknown) the plan? CI red from the PR. | close; DouglasDwyer has a prototype |
-| [#9940](https://github.com/gfx-rs/wgpu/issues/9940) | 10-21 | jimblandy's CHANGES_REQUESTED: exponential SPIR-V constant writer and a panic in matrix-column const eval. | n/a (andyleiserson) |
-| [#10661](https://github.com/gfx-rs/wgpu/issues/10661) | 10-23 | Snapshot test requested by inner-daemons. Has a conflict. | take over (about 50 lines) |
-| [#10676](https://github.com/gfx-rs/wgpu/issues/10676) | 10-28 | Answer inner-daemons' LLM-policy question. Has conflicts. Medium: with an override in the module, pipeline-constant processing const-folds `let i = 9; arr[i]` and fails pipeline creation for valid WGSL. | close |
-| [#10585](https://github.com/gfx-rs/wgpu/issues/10585) | 10-17 | Rebase (CHANGELOG). Approved by inner-daemons. | resolve the conflict yourself and merge |
-| [#10673](https://github.com/gfx-rs/wgpu/issues/10673) | 11-01 | Mark draft or close: superseded by [#10800](https://github.com/gfx-rs/wgpu/issues/10800). | close after [#10800](https://github.com/gfx-rs/wgpu/issues/10800) merges |
-| [#10750](https://github.com/gfx-rs/wgpu/issues/10750) | 11-09 | VK_EXT_hdr_metadata. CI green. Fully agent-written, the API returns a bare bool, and it has a conflict in `wgpu-core/src/instance.rs`. | close under the agentic-PR policy |
-| [#10796](https://github.com/gfx-rs/wgpu/issues/10796) | 11-09 | Approved by inner-daemons. The fix is incomplete (summed constant offsets wrap, for example `4294967292+8`), and the PR is agent-created by its own disclosure. | close under the agentic-PR policy |
-| [#10831](https://github.com/gfx-rs/wgpu/issues/10831) | 11-09 | Opened by an agent account. teoxoy asked ErichDonGubler who reviews it; no answer. Ask the named human to own it. | close under the agentic-PR policy |
-
-## 5. Highest-severity findings
-
-- **[#10890](https://github.com/gfx-rs/wgpu/issues/10890) (high, untrusted input):** count draws reach wgpu-core from Deno JS without argument validation on Vulkan and DX12.
-- **[#10812](https://github.com/gfx-rs/wgpu/issues/10812) (high, safe-API UB):** child and parent textures share clear views, but every `Texture::drop` destroys them.
-- **[#10506](https://github.com/gfx-rs/wgpu/issues/10506) (high, UB; your queue):** ICB setup for multi-draws is encoded after the pass that uses it when indirect validation is off.
-- **[#9940](https://github.com/gfx-rs/wgpu/issues/9940) (high, DoS):** the SPIR-V constant writer is exponential in nesting depth. Already found by jimblandy.
-- **[#10908](https://github.com/gfx-rs/wgpu/issues/10908) (high, regression):** SPIR-V with `NoContraction` that translates on trunk fails with this PR (from code).
-- **[#10289](https://github.com/gfx-rs/wgpu/issues/10289) (high, from code; draft):** raising the per-stage acceleration structure limit from 1 to 8 overflows Metal's 31-slot buffer budget in the vertex stage.
-- **[#10838](https://github.com/gfx-rs/wgpu/issues/10838) (medium):** the empty BLAS reads the zero buffer without BLAS-input usage or a barrier.
-- **[#10875](https://github.com/gfx-rs/wgpu/issues/10875) (medium):** every Metal command buffer error loses the device, including the iOS background error.
-- **[#10796](https://github.com/gfx-rs/wgpu/issues/10796) (medium):** HLSL storage offsets can wrap.
-- **[#10812](https://github.com/gfx-rs/wgpu/issues/10812) (medium):** parent and children share one tracker index.
-- **[#10676](https://github.com/gfx-rs/wgpu/issues/10676) (medium):** valid WGSL with an override can fail pipeline creation.
-- **[#10731](https://github.com/gfx-rs/wgpu/issues/10731) (medium, performance):** a compile-and-pipeline probe on every Intel Mac at enumeration.
-
-## 6. Policy: agent-written PRs
-
-AGENTS.md does not allow fully agentic PRs. These need a policy call, ideally one consistent answer (draft [#10751](https://github.com/gfx-rs/wgpu/issues/10751) proposes a stricter policy and also waits on you):
-
-- **5andr0:** [#10908](https://github.com/gfx-rs/wgpu/issues/10908), [#10921](https://github.com/gfx-rs/wgpu/issues/10921), [#10922](https://github.com/gfx-rs/wgpu/issues/10922), [#10926](https://github.com/gfx-rs/wgpu/issues/10926) and draft [#10928](https://github.com/gfx-rs/wgpu/issues/10928). The author wrote on [#9295](https://github.com/gfx-rs/wgpu/issues/9295) that maintainers should treat these PRs as issues with suggested fixes, and declined to write the [#10928](https://github.com/gfx-rs/wgpu/issues/10928) description by hand when inner-daemons asked.
-- Marked or apparently fully agent-created: [#10796](https://github.com/gfx-rs/wgpu/issues/10796), [#10597](https://github.com/gfx-rs/wgpu/issues/10597), [#10750](https://github.com/gfx-rs/wgpu/issues/10750), [#10831](https://github.com/gfx-rs/wgpu/issues/10831), [#10675](https://github.com/gfx-rs/wgpu/issues/10675) (the fix itself is good), [#10862](https://github.com/gfx-rs/wgpu/issues/10862).
-- Mostly LLM-written with unticked self-review or an open policy question: [#10676](https://github.com/gfx-rs/wgpu/issues/10676), [#10725](https://github.com/gfx-rs/wgpu/issues/10725), [#10839](https://github.com/gfx-rs/wgpu/issues/10839), [#10880](https://github.com/gfx-rs/wgpu/issues/10880).
-- [#10554](https://github.com/gfx-rs/wgpu/issues/10554) fails the typos check because of Claude co-author trailers. The fix itself is reviewed and wanted.
-- Your own [#10869](https://github.com/gfx-rs/wgpu/issues/10869) has the self-review box unchecked.
-
-## 7. Your own PRs
+## Your own PRs
 
 | PR | State | Next step |
 |---|---|---|
-| [#8388](https://github.com/gfx-rs/wgpu/issues/8388) | DXGI swapchain on Vulkan. CI green. You answered the review threads on 11-13 | Wait for andyleiserson, then squash the fixup commits. |
-| [#10903](https://github.com/gfx-rs/wgpu/issues/10903) | Immediates fix ([#10902](https://github.com/gfx-rs/wgpu/issues/10902)). CI green, no reviewer | Request a reviewer. |
-| [#10869](https://github.com/gfx-rs/wgpu/issues/10869) | KosmicKrisp test expectations. CI green, no review. Your comment on [#10801](https://github.com/gfx-rs/wgpu/issues/10801) says that the SDK update is rolled up here; the last commit is from 11-06 | Tick the self-review box; request a reviewer. |
-| [#10212](https://github.com/gfx-rs/wgpu/issues/10212) | Ready for review. **CI red from the PR:** the regression test makes a D2 view of a D2Array texture, which fails on GL/llvmpipe | Fix the test. |
+| [#10959](https://github.com/gfx-rs/wgpu/issues/10959) | Indirect draw validation panic on noop. Approved by andyleiserson, CI green | Queue it. His question about where the test lives has no reply. |
+| [#10212](https://github.com/gfx-rs/wgpu/issues/10212) | Pass first-use tracking. CI green with the D2Array test | andyleiserson (assigned on 2026-11-18) reviews. Can land before the release. |
+| [#10903](https://github.com/gfx-rs/wgpu/issues/10903) | Immediates fix ([#10902](https://github.com/gfx-rs/wgpu/issues/10902)). CI green | andyleiserson (assigned on 2026-11-18) reviews. A panic fix; can land before the release. |
+| [#8388](https://github.com/gfx-rs/wgpu/issues/8388) | DXGI swapchain on Vulkan. CI green. The `pending_present_count` fixup is correct from code and matches [#10511](https://github.com/gfx-rs/wgpu/issues/10511). 3 of 46 threads are unresolved | andyleiserson re-reviews (his only review is changes-requested from 2026-10-07; no pending request shows for him). Squash the fixups after approval. |
+| [#10869](https://github.com/gfx-rs/wgpu/issues/10869) | KosmicKrisp test expectations. CI green | The differences may come from macOS 27, not the SDK. Add an OS-version condition (at least for `subgroup_operations`) or a macOS 27 baseline. Tick the self-review box. |
+| [#10983](https://github.com/gfx-rs/wgpu/issues/10983) (draft) | Changelog fragment tooling. CI green | Mark ready; inner-daemons is requested. Can land before v31. |
+| [#10984](https://github.com/gfx-rs/wgpu/issues/10984) (draft) | Switch to changelog fragments after v31. Mac CI red from a Metal poll timeout (infrastructure) | After v31 and [#10983](https://github.com/gfx-rs/wgpu/issues/10983). |
 | [#10354](https://github.com/gfx-rs/wgpu/issues/10354) (draft) | `debug_printf_output` times out on Mac aarch64 Metal | Skip or expect the test on Metal. Waits on [#9389](https://github.com/gfx-rs/wgpu/issues/9389). |
 | [#9794](https://github.com/gfx-rs/wgpu/issues/9794), [#9853](https://github.com/gfx-rs/wgpu/issues/9853), [#10396](https://github.com/gfx-rs/wgpu/issues/10396) (drafts) | Stalled | [#10396](https://github.com/gfx-rs/wgpu/issues/10396) has the empty template description. |
 
-## 8. Drafts (42 not written by you and not in your queue)
+## Drafts assigned to you (3)
+
+| PR | State | Recommended action |
+|---|---|---|
+| [#10016](https://github.com/gfx-rs/wgpu/issues/10016) | Stalled since 2026-09-27 | Decide whether the Vulkan memory model is split out (inner-daemons wants it split, kvark does not). |
+| [#9053](https://github.com/gfx-rs/wgpu/issues/9053) | Not close | None of your 12 findings from 2026-08-14 is addressed. |
+| [#8653](https://github.com/gfx-rs/wgpu/issues/8653) | Not close | Not split as asked. Park it, and decide whether you want this suite in addition to the CTS. |
+
+## Other drafts (40)
 
 **Close candidates (7):** [#6584](https://github.com/gfx-rs/wgpu/issues/6584) (empty `todo!()` stub), [#9897](https://github.com/gfx-rs/wgpu/issues/9897) (DO NOT MERGE repro for a fixed issue), [#9128](https://github.com/gfx-rs/wgpu/issues/9128) (jimblandy does not need it), [#9659](https://github.com/gfx-rs/wgpu/issues/9659) (superseded by [#9679](https://github.com/gfx-rs/wgpu/issues/9679), close once [#9679](https://github.com/gfx-rs/wgpu/issues/9679) lands), [#10114](https://github.com/gfx-rs/wgpu/issues/10114) (stale experiment), [#9427](https://github.com/gfx-rs/wgpu/issues/9427) (ping or close), [#9523](https://github.com/gfx-rs/wgpu/issues/9523) (pinged twice, ping once more then close).
 
 **Close to ready; ask the author to undraft (5):** [#9512](https://github.com/gfx-rs/wgpu/issues/9512) (approved by andyleiserson in May; has a conflict), [#9909](https://github.com/gfx-rs/wgpu/issues/9909) (two approvals; CI red from July; needs a rebase), [#10409](https://github.com/gfx-rs/wgpu/issues/10409) (naga compaction reorder; decide if the about 70% slowdown when it reorders is acceptable), [#10790](https://github.com/gfx-rs/wgpu/issues/10790) (dx12 driver-reported size; decide if the `texture_from_raw` signature change is acceptable), [#10811](https://github.com/gfx-rs/wgpu/issues/10811) (msl mesh clip distances; **CI shows a real failure**; also a conflict).
 
-**Need your decision (10):**
+**Need your decision (9):**
 - [#8480](https://github.com/gfx-rs/wgpu/issues/8480): is `set_web_canvas_size` the accepted API?
 - [#8849](https://github.com/gfx-rs/wgpu/issues/8849): do you want an `AnyError`-style wrapper?
 - [#8954](https://github.com/gfx-rs/wgpu/issues/8954): which Metal import fix? kvark was asked and never answered.
-- [#9353](https://github.com/gfx-rs/wgpu/issues/9353): opt-in flag for explicit passthrough binding indices, or wait for precompiled shaders?
+- [#9353](https://github.com/gfx-rs/wgpu/issues/9353): opt-in flag for explicit passthrough binding indices, or wait for precompiled shaders? 5andr0 hit [#9326](https://github.com/gfx-rs/wgpu/issues/9326) and offered an agent-written redraft on 2026-11-15.
 - [#9809](https://github.com/gfx-rs/wgpu/issues/9809): `WriteOnly` volatile writes without `const fn`?
 - [#9888](https://github.com/gfx-rs/wgpu/issues/9888): policy on repro examples that CI cannot run
 - [#9975](https://github.com/gfx-rs/wgpu/issues/9975): does the CTS time budget allow it?
 - [#10355](https://github.com/gfx-rs/wgpu/issues/10355): an inline pass in naga (stacked on [#10409](https://github.com/gfx-rs/wgpu/issues/10409))
 - [#10852](https://github.com/gfx-rs/wgpu/issues/10852): accept a new download action and Mergify retry change, or ask for a smaller PR?
-- [#10928](https://github.com/gfx-rs/wgpu/issues/10928): agent-written rework of [#9295](https://github.com/gfx-rs/wgpu/issues/9295) with no human owner; see [#9295](https://github.com/gfx-rs/wgpu/issues/9295) in Part A.
 
 **Ping the author (10):** [#9023](https://github.com/gfx-rs/wgpu/issues/9023), [#9380](https://github.com/gfx-rs/wgpu/issues/9380), [#9485](https://github.com/gfx-rs/wgpu/issues/9485), [#9894](https://github.com/gfx-rs/wgpu/issues/9894), [#10008](https://github.com/gfx-rs/wgpu/issues/10008), [#10282](https://github.com/gfx-rs/wgpu/issues/10282), [#10804](https://github.com/gfx-rs/wgpu/issues/10804), [#10288](https://github.com/gfx-rs/wgpu/issues/10288), [#10289](https://github.com/gfx-rs/wgpu/issues/10289), [#10774](https://github.com/gfx-rs/wgpu/issues/10774).
 
-**Metal ray tracing stack:** [#10292](https://github.com/gfx-rs/wgpu/issues/10292) is the base, then [#10287](https://github.com/gfx-rs/wgpu/issues/10287), [#10288](https://github.com/gfx-rs/wgpu/issues/10288) and [#10289](https://github.com/gfx-rs/wgpu/issues/10289). None of the four has workflow runs, and all four have conflicts. The author last pushed on 09-09. [#10292](https://github.com/gfx-rs/wgpu/issues/10292) should be split (see [#9645](https://github.com/gfx-rs/wgpu/issues/9645) in section 2).
+**Metal ray tracing stack:** [#10292](https://github.com/gfx-rs/wgpu/issues/10292) is the base, then [#10287](https://github.com/gfx-rs/wgpu/issues/10287), [#10288](https://github.com/gfx-rs/wgpu/issues/10288) and [#10289](https://github.com/gfx-rs/wgpu/issues/10289). None of the four has workflow runs, and all four have conflicts. The author last pushed on 2026-09-09. [#10292](https://github.com/gfx-rs/wgpu/issues/10292) should be split (see [#9645](https://github.com/gfx-rs/wgpu/issues/9645)).
 
-**Nothing to do (7):** [#9843](https://github.com/gfx-rs/wgpu/issues/9843), [#9863](https://github.com/gfx-rs/wgpu/issues/9863) (blocked upstream), [#10304](https://github.com/gfx-rs/wgpu/issues/10304) (author splitting it), [#10403](https://github.com/gfx-rs/wgpu/issues/10403) (waits on a glow release), [#10783](https://github.com/gfx-rs/wgpu/issues/10783) (waits on [gpuweb/cts#4723](https://github.com/gpuweb/cts/issues/4723)), [#10803](https://github.com/gfx-rs/wgpu/issues/10803), [#10806](https://github.com/gfx-rs/wgpu/issues/10806).
+**Nothing to do (7):** [#9843](https://github.com/gfx-rs/wgpu/issues/9843), [#9863](https://github.com/gfx-rs/wgpu/issues/9863) (blocked upstream), [#10304](https://github.com/gfx-rs/wgpu/issues/10304) (author splitting it), [#10403](https://github.com/gfx-rs/wgpu/issues/10403) (waits on a glow release), [#10783](https://github.com/gfx-rs/wgpu/issues/10783) (waits on [gpuweb/cts#4723](https://github.com/gpuweb/cts/issues/4723); reduced to a one-line expectation change on 2026-11-18), [#10803](https://github.com/gfx-rs/wgpu/issues/10803), [#10806](https://github.com/gfx-rs/wgpu/issues/10806).
 
-**Policy (1):** [#10751](https://github.com/gfx-rs/wgpu/issues/10751) (contributor policy update).
+## Issues assigned to you (3)
 
-## 9. Dependencies and landing order
+| Issue | Recommended action |
+|---|---|
+| [#10622](https://github.com/gfx-rs/wgpu/issues/10622) Encourage PR rationales | Ask kpreid to send the PR, and link CONTRIBUTING "designing new features". |
+| [#9125](https://github.com/gfx-rs/wgpu/issues/9125) Actions job limits | GitHub raised the limit to 40 on 2026-09-17. Reply with the result, then keep the issue open for 60 plus cache storage, or close it as partly resolved. |
+| [#8354](https://github.com/gfx-rs/wgpu/issues/8354) DXGI swapchain for Vulkan | Keep it open. Tick [#8356](https://github.com/gfx-rs/wgpu/issues/8356) (merged). [#8388](https://github.com/gfx-rs/wgpu/issues/8388) waits on andyleiserson. |
 
-- **[#8014](https://github.com/gfx-rs/wgpu/issues/8014) field:** [#10776](https://github.com/gfx-rs/wgpu/issues/10776), [#10862](https://github.com/gfx-rs/wgpu/issues/10862) and [#10839](https://github.com/gfx-rs/wgpu/issues/10839) each need `texture_binding_view_dimension` in their test literals.
-- **Multi-planar chain:** [#10910](https://github.com/gfx-rs/wgpu/issues/10910) is approved and queued. [#10776](https://github.com/gfx-rs/wgpu/issues/10776) needs a rebase and the [#8014](https://github.com/gfx-rs/wgpu/issues/8014) field.
-- **naga ray query:** [#10694](https://github.com/gfx-rs/wgpu/issues/10694), then [#10600](https://github.com/gfx-rs/wgpu/issues/10600) (convert the `hit_object.rs` calls), then [#10697](https://github.com/gfx-rs/wgpu/issues/10697) (adapt to the [#10600](https://github.com/gfx-rs/wgpu/issues/10600) helper signature).
-- **naga cooperative matrix:** [#10901](https://github.com/gfx-rs/wgpu/issues/10901) and [#10596](https://github.com/gfx-rs/wgpu/issues/10596) fix the same capability bug in two ways; land one fix. The [#10414](https://github.com/gfx-rs/wgpu/issues/10414) snapshot may change after [#10901](https://github.com/gfx-rs/wgpu/issues/10901).
-- **naga workgroup layouts:** [#9295](https://github.com/gfx-rs/wgpu/issues/9295) and draft [#10928](https://github.com/gfx-rs/wgpu/issues/10928) compete; see Part A.
-- **naga NoContraction:** [#10921](https://github.com/gfx-rs/wgpu/issues/10921) is stacked on [#10908](https://github.com/gfx-rs/wgpu/issues/10908).
+---
+
+# Cross-cutting notes
+
+## Decisions that only a maintainer can make
+
+- **Before the release:** [#10982](https://github.com/gfx-rs/wgpu/issues/10982) (f64 break), [#10964](https://github.com/gfx-rs/wgpu/issues/10964) (toolchain bump timing), [#10871](https://github.com/gfx-rs/wgpu/issues/10871) and [#10675](https://github.com/gfx-rs/wgpu/issues/10675) (v31 milestone).
+- **API and design:** [#10438](https://github.com/gfx-rs/wgpu/issues/10438) (async pipeline API), [#10506](https://github.com/gfx-rs/wgpu/issues/10506) (Metal pass merging), [#10775](https://github.com/gfx-rs/wgpu/issues/10775) (extension pattern), [#10880](https://github.com/gfx-rs/wgpu/issues/10880) (public trim-window option), [#9876](https://github.com/gfx-rs/wgpu/issues/9876) (subgroup size API), [#10697](https://github.com/gfx-rs/wgpu/issues/10697) (non-standard builtin), [#10583](https://github.com/gfx-rs/wgpu/issues/10583) (alias dedup approach), [#10591](https://github.com/gfx-rs/wgpu/issues/10591) (wanted or not).
+- **Validation and spec:** [#10890](https://github.com/gfx-rs/wgpu/issues/10890) (count draws from JS), [#10891](https://github.com/gfx-rs/wgpu/issues/10891) (2047 limit as a hard error), [#10840](https://github.com/gfx-rs/wgpu/issues/10840) (all Mali versions).
+- **Scope:** [#10778](https://github.com/gfx-rs/wgpu/issues/10778) (compile-time libwayland), [#10731](https://github.com/gfx-rs/wgpu/issues/10731) and [#10743](https://github.com/gfx-rs/wgpu/issues/10743) (OCLP workarounds), [#10725](https://github.com/gfx-rs/wgpu/issues/10725) (probing; at the meeting of 2026-11-18).
+
+## Highest-severity findings
+
+- **[#10890](https://github.com/gfx-rs/wgpu/issues/10890) (high, untrusted input):** count draws reach wgpu-core from Deno JS without argument validation on Vulkan and DX12.
+- **[#10812](https://github.com/gfx-rs/wgpu/issues/10812) (high, safe-API UB):** child and parent textures share clear views, but every `Texture::drop` destroys them.
+- **[#10506](https://github.com/gfx-rs/wgpu/issues/10506) (high, UB; your queue):** ICB setup for multi-draws is encoded after the pass that uses it when indirect validation is off.
+- **[#9940](https://github.com/gfx-rs/wgpu/issues/9940) (high, DoS):** the SPIR-V constant writer is exponential in nesting depth. Already found by jimblandy.
+- **[#10289](https://github.com/gfx-rs/wgpu/issues/10289) (high, from code; draft):** raising the per-stage acceleration structure limit from 1 to 8 overflows Metal's 31-slot buffer budget in the vertex stage.
+- **[#10982](https://github.com/gfx-rs/wgpu/issues/10982) (medium, breaking):** every WGSL shader that uses `f64` needs `enable wgpu_f64;`.
+- **[#10901](https://github.com/gfx-rs/wgpu/issues/10901) (medium, from code):** the new stride check rejects a plain literal stride.
+- **[#10981](https://github.com/gfx-rs/wgpu/issues/10981) (medium, from code):** 10-bit EGL configs can sort first on every EGL platform.
+- **[#10979](https://github.com/gfx-rs/wgpu/issues/10979) (medium):** OOM tests look like a pass on every Vulkan device without `VK_EXT_memory_budget`.
+- **[#10838](https://github.com/gfx-rs/wgpu/issues/10838) (medium):** the empty BLAS reads the zero buffer without BLAS-input usage or a barrier.
+- **[#10875](https://github.com/gfx-rs/wgpu/issues/10875) (medium):** every Metal command buffer error loses the device, including the iOS background error.
+- **[#10812](https://github.com/gfx-rs/wgpu/issues/10812) (medium):** parent and children share one tracker index.
+- **[#10676](https://github.com/gfx-rs/wgpu/issues/10676) (medium):** valid WGSL with an override can fail pipeline creation.
+- **[#10731](https://github.com/gfx-rs/wgpu/issues/10731) (medium, performance):** a compile-and-pipeline probe on every Intel Mac at enumeration.
+
+## Policy: agent-written PRs
+
+AGENTS.md does not allow fully agentic PRs. These need a policy call, ideally one consistent answer:
+
+- **Agent wrote the code and the description:** [#10981](https://github.com/gfx-rs/wgpu/issues/10981) (first-time contributor), [#10750](https://github.com/gfx-rs/wgpu/issues/10750), [#10831](https://github.com/gfx-rs/wgpu/issues/10831) (agent account), [#10675](https://github.com/gfx-rs/wgpu/issues/10675) (the fix itself is good), [#10862](https://github.com/gfx-rs/wgpu/issues/10862).
+- **Agent wrote the code, Claude drafted the description:** [#10979](https://github.com/gfx-rs/wgpu/issues/10979).
+- **Mostly LLM-written with unticked self-review or an open policy question:** [#10676](https://github.com/gfx-rs/wgpu/issues/10676), [#10725](https://github.com/gfx-rs/wgpu/issues/10725), [#10839](https://github.com/gfx-rs/wgpu/issues/10839), [#10880](https://github.com/gfx-rs/wgpu/issues/10880).
+- [#10554](https://github.com/gfx-rs/wgpu/issues/10554) fails the typos check because of Claude co-author trailers. The fix itself is reviewed and wanted.
+- [#9353](https://github.com/gfx-rs/wgpu/issues/9353): 5andr0 offered an agent-written redraft.
+- Your own [#10869](https://github.com/gfx-rs/wgpu/issues/10869) and [#10983](https://github.com/gfx-rs/wgpu/issues/10983) have the self-review box unchecked.
+
+## Dependencies and landing order
+
+- **naga ray query:** [#10694](https://github.com/gfx-rs/wgpu/issues/10694) and [#10600](https://github.com/gfx-rs/wgpu/issues/10600) in any order, then [#10697](https://github.com/gfx-rs/wgpu/issues/10697) (adapt to the [#10600](https://github.com/gfx-rs/wgpu/issues/10600) helper signature).
+- **naga snapshots:** [#10600](https://github.com/gfx-rs/wgpu/issues/10600) and [#10957](https://github.com/gfx-rs/wgpu/issues/10957) conflict in `naga/tests/out/spv/wgsl-operators.spvasm`; the PR that lands second regenerates it.
+- **naga cooperative matrix:** [#10901](https://github.com/gfx-rs/wgpu/issues/10901) first. Then [#10596](https://github.com/gfx-rs/wgpu/issues/10596) rebases its capability arm onto `require_cooperative_matrix()`, and [#10414](https://github.com/gfx-rs/wgpu/issues/10414) resolves a conflict in `naga/src/valid/expression.rs` (both carry the same "report the failing operand" fix).
+- **Vulkan semaphores:** [#10960](https://github.com/gfx-rs/wgpu/issues/10960) before or with [#10840](https://github.com/gfx-rs/wgpu/issues/10840). [#10840](https://github.com/gfx-rs/wgpu/issues/10840) sends Arm Mali drivers to the FencePool path, whose race [#10960](https://github.com/gfx-rs/wgpu/issues/10960) fixes. [#10840](https://github.com/gfx-rs/wgpu/issues/10840) also needs a new workaround bit (trunk uses `1 << 3`).
 - **Metal multi-draw:** land [#9679](https://github.com/gfx-rs/wgpu/issues/9679) before [#10890](https://github.com/gfx-rs/wgpu/issues/10890), then drop the duplicate alignment change from [#10890](https://github.com/gfx-rs/wgpu/issues/10890). The [#10506](https://github.com/gfx-rs/wgpu/issues/10506) ordering bug also affects [#9679](https://github.com/gfx-rs/wgpu/issues/9679).
-- **Metal adapter:** [#10860](https://github.com/gfx-rs/wgpu/issues/10860) edits the ICB expression in `wgpu-hal/src/metal/adapter.rs` that [#10927](https://github.com/gfx-rs/wgpu/issues/10927) (merged) changed; it needs a rebase. [#10875](https://github.com/gfx-rs/wgpu/issues/10875) and [#9679](https://github.com/gfx-rs/wgpu/issues/9679) both change `wgpu-hal/src/metal/mod.rs` (not checked for a conflict).
+- **Metal adapter:** [#10860](https://github.com/gfx-rs/wgpu/issues/10860) must rebase onto [#10927](https://github.com/gfx-rs/wgpu/issues/10927) (merged). [#10875](https://github.com/gfx-rs/wgpu/issues/10875) and [#9679](https://github.com/gfx-rs/wgpu/issues/9679) both change `wgpu-hal/src/metal/mod.rs` (not checked for a conflict).
 - **Metal MSL / Intel:** [#10725](https://github.com/gfx-rs/wgpu/issues/10725), then [#10731](https://github.com/gfx-rs/wgpu/issues/10731), then [#10743](https://github.com/gfx-rs/wgpu/issues/10743) (or squash [#10743](https://github.com/gfx-rs/wgpu/issues/10743) into [#10731](https://github.com/gfx-rs/wgpu/issues/10731)).
-- **Metal workgroup memory:** [#10800](https://github.com/gfx-rs/wgpu/issues/10800) supersedes [#10673](https://github.com/gfx-rs/wgpu/issues/10673). [#10800](https://github.com/gfx-rs/wgpu/issues/10800) also contains the [#10801](https://github.com/gfx-rs/wgpu/issues/10801) SDK commit. [#10800](https://github.com/gfx-rs/wgpu/issues/10800) does not cover passthrough MSL with `[[threadgroup(n)]]` arguments, which [#10673](https://github.com/gfx-rs/wgpu/issues/10673) handles.
+- **Metal workgroup memory:** [#10800](https://github.com/gfx-rs/wgpu/issues/10800) supersedes [#10673](https://github.com/gfx-rs/wgpu/issues/10673). [#10800](https://github.com/gfx-rs/wgpu/issues/10800) does not cover passthrough MSL with `[[threadgroup(n)]]` arguments, which [#10673](https://github.com/gfx-rs/wgpu/issues/10673) handles.
 - **Metal AS sync:** [#10292](https://github.com/gfx-rs/wgpu/issues/10292) is a superset of [#9645](https://github.com/gfx-rs/wgpu/issues/9645). Land [#9645](https://github.com/gfx-rs/wgpu/issues/9645) first, then a split [#10292](https://github.com/gfx-rs/wgpu/issues/10292).
-- **Vulkan workarounds:** [#10840](https://github.com/gfx-rs/wgpu/issues/10840) adds a workaround flag at bit `1 << 3`, which trunk uses for `POLYFILL_MESH_TASK_WORKGROUP_ZERO_INIT`; it needs a new bit.
-- **Child textures:** [#10795](https://github.com/gfx-rs/wgpu/issues/10795) is approved and queued. [#10812](https://github.com/gfx-rs/wgpu/issues/10812) has the unfixed high finding and conflicts.
-- **dx12 present (your queue):** [#10511](https://github.com/gfx-rs/wgpu/issues/10511) before [#10548](https://github.com/gfx-rs/wgpu/issues/10548).
-- **CHANGELOG only conflicts:** [#10891](https://github.com/gfx-rs/wgpu/issues/10891), [#10897](https://github.com/gfx-rs/wgpu/issues/10897), [#10901](https://github.com/gfx-rs/wgpu/issues/10901), [#10796](https://github.com/gfx-rs/wgpu/issues/10796).
+- **Core trackers:** [#10862](https://github.com/gfx-rs/wgpu/issues/10862) overlaps rowanG077's `ResourceMetadata::clear` commit on his fork (not a PR).
+- **Changelog:** [#10983](https://github.com/gfx-rs/wgpu/issues/10983), then the v31 release, then [#10984](https://github.com/gfx-rs/wgpu/issues/10984). Changelog-only conflicts: [#10897](https://github.com/gfx-rs/wgpu/issues/10897), [#10585](https://github.com/gfx-rs/wgpu/issues/10585), [#10891](https://github.com/gfx-rs/wgpu/issues/10891).
 
-## 10. Infrastructure problems seen in CI
+## Infrastructure problems seen in CI
 
-- Cancelled macOS jobs are on the heads of [#10506](https://github.com/gfx-rs/wgpu/issues/10506) and [#10800](https://github.com/gfx-rs/wgpu/issues/10800), and on drafts [#10409](https://github.com/gfx-rs/wgpu/issues/10409), [#10790](https://github.com/gfx-rs/wgpu/issues/10790), [#9353](https://github.com/gfx-rs/wgpu/issues/9353), [#9975](https://github.com/gfx-rs/wgpu/issues/9975) and [#10803](https://github.com/gfx-rs/wgpu/issues/10803).
-- Possible flakes, not confirmed: `player` `test_api` timeout ([#10896](https://github.com/gfx-rs/wgpu/issues/10896)), Metal `poll::wait_on_submission_with_timeout` ([#10866](https://github.com/gfx-rs/wgpu/issues/10866)).
+- Cancelled macOS jobs are on the head of [#10506](https://github.com/gfx-rs/wgpu/issues/10506), and on drafts [#10409](https://github.com/gfx-rs/wgpu/issues/10409), [#10790](https://github.com/gfx-rs/wgpu/issues/10790), [#10803](https://github.com/gfx-rs/wgpu/issues/10803), [#9353](https://github.com/gfx-rs/wgpu/issues/9353) and [#9975](https://github.com/gfx-rs/wgpu/issues/9975).
+- Metal `poll::wait_on_submission_with_timeout` times out on the paravirtual Mac runner: [#10866](https://github.com/gfx-rs/wgpu/issues/10866) and [#10984](https://github.com/gfx-rs/wgpu/issues/10984). Possible flake, not confirmed.
+- HTTP 504 tool downloads and a `mach-dxcompiler-rs` build script panic on Windows: [#10890](https://github.com/gfx-rs/wgpu/issues/10890), [#9679](https://github.com/gfx-rs/wgpu/issues/9679).
 - The Metal ray tracing stack ([#10287](https://github.com/gfx-rs/wgpu/issues/10287), [#10288](https://github.com/gfx-rs/wgpu/issues/10288), [#10289](https://github.com/gfx-rs/wgpu/issues/10289), [#10292](https://github.com/gfx-rs/wgpu/issues/10292)) has no workflow runs at all.
 
 ## Limits of this pass
 
 - No builds or tests were run. High and medium findings that say "from code" were not reproduced.
-- [#10862](https://github.com/gfx-rs/wgpu/issues/10862) and [#10839](https://github.com/gfx-rs/wgpu/issues/10839): the missing [#8014](https://github.com/gfx-rs/wgpu/issues/8014) field is reasoned from the struct definition and the diffs.
-- [#8388](https://github.com/gfx-rs/wgpu/issues/8388): the commits after the 11-06 review were not checked against the review threads.
+- "Last maintainer reply" uses the GitHub author association of comments and reviews. A reply from someone without the member, owner or collaborator association does not count.
+- [#10839](https://github.com/gfx-rs/wgpu/issues/10839): the missing [#8014](https://github.com/gfx-rs/wgpu/issues/8014) field is reasoned from the struct definition and the diff.
 - [#10875](https://github.com/gfx-rs/wgpu/issues/10875) iOS background behavior and [#10860](https://github.com/gfx-rs/wgpu/issues/10860) watchOS indirect dispatch were not checked on hardware.
 - [#10891](https://github.com/gfx-rs/wgpu/issues/10891): the 2047 limit was read in the WGSL specification; Tint's behavior was not checked.
-- [#10922](https://github.com/gfx-rs/wgpu/issues/10922): DXC `-denorm` values were not checked against DXC sources.
+- [#10957](https://github.com/gfx-rs/wgpu/issues/10957): `cts_runner/fail.lst` may need an update for the bitcast validation tests; the CTS was not run.
 
 ---
 
@@ -256,7 +290,7 @@ Entries are grouped by area and sorted by number. **Reviewed** is the date of th
 
 #### [#9295](https://github.com/gfx-rs/wgpu/issues/9295): fix(naga/spv): emit layoutless types for Workgroup storage class variables ([@kvark](https://github.com/kvark))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-11-13.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-11-13.
 - **Verdict:** Needs a lot of work
 - **Waiting on:** kvark and maintainer. kvark must say if he will continue, and if he will adopt [#10928](https://github.com/gfx-rs/wgpu/issues/10928). inner-daemons said that he will look at the PR again.
 - **Last activity:** 2026-11-13, 5andr0, comment. 0 days.
@@ -273,7 +307,7 @@ Entries are grouped by area and sorted by number. **Reviewed** is the date of th
 
 #### [#9940](https://github.com/gfx-rs/wgpu/issues/9940): fix(naga): Additional cases of vector flattening ([@andyleiserson](https://github.com/andyleiserson))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-10-21.
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-10-21.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** author (andyleiserson). jimblandy requested changes on 2026-10-21.
 - **Last activity:** 2026-10-21, jimblandy, CHANGES_REQUESTED review plus a follow-up comment with a 13 s repro. 16 days ago.
@@ -301,7 +335,7 @@ Entries are grouped by area and sorted by number. **Reviewed** is the date of th
 
 #### [#10016](https://github.com/gfx-rs/wgpu/issues/10016): Emit spec-compliant SPIR-V under the Vulkan memory model, volatile support in MSL ([@kvark](https://github.com/kvark))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI green; last update 2026-09-27.
+- **State (2026-11-18):** draft; has conflicts; CI green; last update 2026-09-27.
 - **Verdict:** Draft: stalled
 - **Waiting on:** maintainer (cwfitzgerald must decide on scope) and then author
 - **CI:** green on head `c0b23d1` (2026-09-27). The PR is `dirty` (merge conflicts with trunk).
@@ -317,7 +351,7 @@ Entries are grouped by area and sorted by number. **Reviewed** is the date of th
 
 #### [#10229](https://github.com/gfx-rs/wgpu/issues/10229): glsl-out: never emit `invariant gl_FragCoord` on OpenGL ES ([@jonatino](https://github.com/jonatino))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-10-20.
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-10-20.
 - **Verdict:** Needs a bit of work (CHANGELOG only)
 - **Waiting on:** maintainer (assignee jimblandy; nobody with write access has reviewed)
 - **Last activity:** 2026-10-20, KalybosPro (outside user), comment with a real-world failure on the Android emulator (glyphon text shader). 17 days. Before that: 2026-09-09, grovesNL said "This seems correct to me".
@@ -333,7 +367,7 @@ Entries are grouped by area and sorted by number. **Reviewed** is the date of th
 
 #### [#10343](https://github.com/gfx-rs/wgpu/issues/10343): naga/hlsl: emit unbounded `[]` for unsized binding arrays without a size override ([@arcusbuilds](https://github.com/arcusbuilds))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-10-17.
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-10-17.
 - **Verdict:** Land as is
 - **Waiting on:** maintainer (needs approval from someone with write access. The author pinged ErichDonGubler.)
 - **Last activity:** 2026-10-17, arcusbuilds, pinged ErichDonGubler for a write-access review. 20 days.
@@ -349,7 +383,7 @@ Entries are grouped by area and sorted by number. **Reviewed** is the date of th
 
 #### [#10414](https://github.com/gfx-rs/wgpu/issues/10414): feat(naga): support non-square cooperative matrix tiles ([@kvark](https://github.com/kvark))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-10-28.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-10-28.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** author (merge conflict). After the rebase, it waits on inner-daemons, whose 3 threads have answers but are not resolved. infosave2007 published a rebased branch and reported that the GPU test passes on an RTX 5090.
 - **CI:** green (from 2026-09-25, before the conflict. The mergeable state is `dirty`.)
@@ -366,7 +400,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10561](https://github.com/gfx-rs/wgpu/issues/10561): [spv-in] Support NonSemantic.DebugPrintf ([@evilpie](https://github.com/evilpie))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; has conflicts; CI red (1 failed); last update 2026-10-28.
+- **State (2026-11-18):** ready; has conflicts; CI red (1 failed: Test Windows x86_64); last update 2026-10-24.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** maintainer (jimblandy assigned; no review in 30 days)
 - **Last activity:** 2026-10-24, evilpie, pushed the CHANGELOG commit. 13 days ago. There are no human comments or reviews at all.
@@ -396,7 +430,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10583](https://github.com/gfx-rs/wgpu/issues/10583): [naga msl-out] preserve equivalent array aliases ([@pbkx](https://github.com/pbkx))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-11-10.
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-10.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** maintainer (jimblandy / inner-daemons must choose the approach)
 - **Last activity:** 2026-11-10, kpreid, comment. 3 days.
@@ -413,7 +447,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10585](https://github.com/gfx-rs/wgpu/issues/10585): [naga hlsl-out] emit 64-bit integer literal suffixes ([@pbkx](https://github.com/pbkx))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; has conflicts; CI red (1 failed); last update 2026-10-17.
+- **State (2026-11-18):** ready; has conflicts; CI red (1 failed: Test Windows x86_64); last update 2026-10-17.
 - **Verdict:** Needs a bit of work (rebase only)
 - **Waiting on:** author (merge conflict) or maintainer (could resolve the CHANGELOG conflict and merge)
 - **Last activity:** 2026-10-17, inner-daemons, approved after the author addressed both nits. 20 days.
@@ -429,7 +463,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10596](https://github.com/gfx-rs/wgpu/issues/10596): Support BF16 type storage and cooperative matrix operations ([@kvark](https://github.com/kvark))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-11-13.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-11-13.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** author (kvark). inner-daemons requested changes on 11-13 and asks whether the planned `subgroup_matrix` extension replaces cooperative matrices.
 - **CI:** green on head `ed22a76` (all 66 non-Mergify checks pass). The PR is `dirty` (it has merge conflicts with trunk), so it needs a rebase.
@@ -487,53 +521,27 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 >
 > ---
 
-#### [#10597](https://github.com/gfx-rs/wgpu/issues/10597): naga: make Handle::from_usize public ([@kuntal-devrat](https://github.com/kuntal-devrat))
-- **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-10-31.
-- **Verdict:** Needs a bit of work (on a decision, not on the code)
-- **Waiting on:** maintainer (decision). jimblandy objected on 2026-10-14. inner-daemons argued for it on 2026-10-22 (in [#10088](https://github.com/gfx-rs/wgpu/issues/10088)). cwfitzgerald wrote on 2026-10-14 in [#10088](https://github.com/gfx-rs/wgpu/issues/10088) that they would "be happy to accept [#10597](https://github.com/gfx-rs/wgpu/issues/10597)" if it is required. On 2026-10-31 the author restated the use case and offered alternatives (`TryFrom<usize>`, a feature gate, `HandleMap`).
-- **Last activity:** 2026-10-31, kuntal-devrat, comment restating the use case and offering alternatives. 6 days ago.
-- **Approvals:** inner-daemons (2026-10-14, on the old commit 0585e13, not the current head 9b793f9)
-- **CI:** green (head 9b793f9, 2026-10-31). `mergeable_state: blocked` because no approval is on the current head.
-- **Summary:** Makes `Handle::from_usize` `pub`, with a `# Panics` doc and unit tests. The use case is from [#10088](https://github.com/gfx-rs/wgpu/issues/10088) (Random-Scientist): an `Index` impl that packs a handle into slice metadata.
-- **Findings:**
-  1. [medium] Process: the PR says "This PR was automatically created by an Agent" and "The description was automatically written by an Agent". AGENTS.md does not allow fully agentic PRs. The PR author is also not the person with the use case.
-  2. [medium] Design: jimblandy's objection still stands. A public `usize -> Handle` conversion weakens arena type safety. The use case is unusual, and inner-daemons agrees that it does not *need* this API.
-  3. [low] The code is trivial and correct. The panic message changed from "Failed to insert into arena. Handle overflows" to "Handle index overflows", which is still accurate for the arena path.
-- **To land:** a decision (public, `unsafe`/`TryFrom`, or no). If the answer is yes, a fresh approval on the current head.
-- **Move-along action:** decide whether `Handle::from_usize` goes public (jimblandy and inner-daemons disagree). If the answer is no, close it as fully agent-created with a use case that does not need it, and point Random-Scientist to a `HandleMap` follow-up.
-- **Depth:** full
-
-**CI and status check ([#10597](https://github.com/gfx-rs/wgpu/issues/10597): naga: make Handle::from_usize public):**
-
-> - **Open questions from the first pass:** full CI.
-> - **Answers:**
->   1. [confirmed] 67 check runs: 65 success, 2 neutral. No failure. Head 9b793f9. `blocked` (no approval on the head), `mergeable: true`.
-> - **New findings:** none
-> - **Verdict change:** none
-> - **Move-along action change:** none
-
 #### [#10600](https://github.com/gfx-rs/wgpu/issues/10600): refactor(naga spv-out): Add wrapped function preamble helper ([@andyleiserson](https://github.com/andyleiserson))
-- **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; has conflicts; CI red (47 failed); last update 2026-11-07.
-- **Verdict:** Needs a bit of work (does not compile on current trunk)
-- **Waiting on:** author (adapt to [#10311](https://github.com/gfx-rs/wgpu/issues/10311) and rebase). The author asks that review go ahead before that. jimblandy is assigned and has not reviewed.
-- **Last activity:** 2026-11-07, andyleiserson, comment about the [#10311](https://github.com/gfx-rs/wgpu/issues/10311) conflict. 6 days.
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-17.
+- **Verdict:** Land as is
+- **Waiting on:** reviewer (jimblandy is assigned and has not reviewed). GitHub `reviewDecision` is `REVIEW_REQUIRED`.
+- **Last activity:** 2026-11-17, andyleiserson, force push that rebases onto trunk and converts the `hit_object.rs` calls. No comment with it.
 - **Approvals:** none
-- **CI:** red (47 fail). The PR causes it: CI builds the merge with trunk, and `naga/src/back/spv/ray/hit_object.rs` (added by [#10311](https://github.com/gfx-rs/wgpu/issues/10311)) calls the old `write_function_signature(&[ty], ret)` signature. Errors are E0061 and E0599 (`consume` on `u32`) at `hit_object.rs:51`, `:94` and later. Also a Windows `install-action` bash startup failure, which is infra. Has conflicts: `naga/tests/out/spv/wgsl-image.spvasm` and `wgsl-skybox.spvasm` (from `git merge-tree`; these files also changed in [#10905](https://github.com/gfx-rs/wgpu/issues/10905)).
-- **Summary:** Adds `write_function_signature` and `write_wrapped_function_signature` in `spv/helpers.rs`. They emit `OpFunction`, `OpFunctionParameter` and the optional `OpName`s. The div/mod, std140-conversion and ray-query/ray-pipeline helpers move to them, and the ray helpers get debug names. Most changed files are SPIR-V snapshot churn.
+- **CI:** green (65 pass, 2 neutral, 1 skipped).
+- **Summary:** Adds `write_function_signature` and `write_wrapped_function_signature` in `spv/helpers.rs`. They emit `OpFunction`, the `OpFunctionParameter`s and, with `WriterFlags::DEBUG`, `OpName`s for the function and its parameters. The div/mod, std140-conversion, `matCx2` column, ray-query, ray-pipeline and hit-object helpers use them, and the ray helper in `spv/ray/mod.rs` is removed. Most of the 43 changed files are SPIR-V snapshot churn from new debug names and a different ID order. The PR prepares four external-texture helpers that come later.
 - **Findings:**
-  1. [medium] `naga/src/back/spv/ray/hit_object.rs:51,183,281,507,588` (trunk) [#10311](https://github.com/gfx-rs/wgpu/issues/10311) added 5 calls to the old helper signature. [#10600](https://github.com/gfx-rs/wgpu/issues/10600) removes that signature, so the merged tree does not compile. Each call needs the same conversion as the ray-query calls: a name, `(type, name)` parameter pairs, and the `(function, id, args)` return order. Then the hit-object snapshots must be regenerated. (Confirmed from CI logs.)
-  2. [medium] Semantic conflict with [#10697](https://github.com/gfx-rs/wgpu/issues/10697) (one call in `write_ray_query_get_current_t_max`). This is unchanged; see Cross-PR notes.
-  3. [low] `naga/src/back/spv/writer.rs` (std140 conversion) The `format!("{:?}_from_std140", ...)` debug name is now built when `WriterFlags::DEBUG` is off too. The cost is small.
-  4. [low] The function ID is now allocated after the type lookups. This gives ID-order snapshot churn with no behavior change.
-- **To land:** Rebase onto trunk. Convert the 5 `hit_object.rs` calls. Resolve the 2 snapshot conflicts and regenerate SPIR-V snapshots. Get a review (jimblandy).
-- **Move-along action:** ask jimblandy to review the helper now, as the author asks, and ask andyleiserson to rebase onto [#10311](https://github.com/gfx-rs/wgpu/issues/10311) after that.
-- **Depth:** targeted (I checked the CI failure, the conflict and the call sites; I did not re-read the full refactor, because I cannot tell what the 11-07 force push changed)
+  1. [medium] `naga/src/back/spv/ray/query.rs` in [#10697](https://github.com/gfx-rs/wgpu/issues/10697) (`write_ray_query_get_current_t_max`) calls the old `write_function_signature(&[...], ret)`. This PR removes that signature, so [#10697](https://github.com/gfx-rs/wgpu/issues/10697) does not compile after this PR lands. This is a landing-order item, not a defect of this PR. (From code; the merge also has textual conflicts that come from [#10697](https://github.com/gfx-rs/wgpu/issues/10697) against trunk.)
+  2. [low] `naga/src/back/spv/writer.rs:925`, `:1151` The `format!("{:?}_from_std140", ...)` and `format!("{:?}_get_column", ...)` debug names are built also when `WriterFlags::DEBUG` is off. The cost is small and occurs once for each wrapped type.
+  3. [low] The function ID is allocated after the caller's type lookups, and the ray helpers get new `OpName`s. This gives ID-order churn in about 40 SPIR-V snapshots, with no behavior change. A textual conflict with [#10957](https://github.com/gfx-rs/wgpu/issues/10957) in `naga/tests/out/spv/wgsl-operators.spvasm` follows from this; the PR that lands second regenerates the snapshot.
+  4. [low] PR template: all checklist boxes are unchecked. The agent-disclosure lines are left in the HTML comment and not filled in. "LLM Use?" says "No".
+- **To land:** a review from jimblandy (or another member). Release (in about one week): can land before it; it is a refactor with no user-visible change and needs no changelog entry.
+- **Move-along action:** ask jimblandy to review; the code compiles on trunk and CI is green.
+- **Depth:** full for `helpers.rs`, `writer.rs` and `spv/ray/*`. I compared the new head with the old head with `git range-diff`: the only source change is the 5 `hit_object.rs` call conversions. I did not read the snapshot files line by line.
 
 #### [#10609](https://github.com/gfx-rs/wgpu/issues/10609): naga: Support GLSL matrix interfaces and column component access ([@rleux](https://github.com/rleux))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-11-09.
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-09.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** other reviewer (inner-daemons, requested since 10-14)
 - **Last activity:** 2026-11-09, rleux, force push. 4 days.
@@ -551,10 +559,10 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10661](https://github.com/gfx-rs/wgpu/issues/10661): naga: Fix process_overrides panic on anonymous overrides ([@SAY-5](https://github.com/SAY-5))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-10-23.
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-16.
 - **Verdict:** Needs a bit of work
-- **Waiting on:** author (SAY-5). inner-daemons requested a snapshot test on 2026-10-22, and the author has not replied.
-- **Last activity:** 2026-10-23, inner-daemons, comment explaining to BenjaminBrienen why a snapshot test is wanted beyond the validation test. 14 days ago.
+- **Waiting on:** author (SAY-5). The author rebased on 2026-11-16 and asked for review again, but did not add the snapshot test that inner-daemons requested on 2026-10-22.
+- **Last activity:** 2026-11-16, SAY-5, rebase and review request.
 - **Approvals:** none (CHANGES_REQUESTED from inner-daemons)
 - **CI:** green (head deaf606). There is a merge conflict (`dirty`, probably CHANGELOG).
 - **Summary:** In `process_overrides`, the inner "catch up to override h" loop now skips `process_override` for anonymous overrides (only their `init` is adjusted), as the final loop already did. This fixes the `unreachable!()` panic ([#10660](https://github.com/gfx-rs/wgpu/issues/10660)). `override_map` changes from `HandleVec` to `FastHashMap`, because skipped entries leave gaps.
@@ -578,10 +586,10 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10676](https://github.com/gfx-rs/wgpu/issues/10676): [naga] Check out-of-bounds `let` indices at runtime instead of rejecting them ([@ilyas-mallah](https://github.com/ilyas-mallah))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-10-28.
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-14.
 - **Verdict:** Needs a bit of work
-- **Waiting on:** author (ilyas-mallah). On 2026-10-27, inner-daemons asked whether the LLM-written description breaks the contributor policy, and the author has not answered. The author pushed a trunk merge about 11 h after the question but did not reply. A third party (HashimTheArab, not a contributor) answered with a hostile comment on 2026-10-28.
-- **Last activity:** 2026-10-28, HashimTheArab, hostile comment. The last maintainer-side activity is 2026-10-27 (inner-daemons). 9 days ago.
+- **Waiting on:** author (ilyas-mallah). inner-daemons withdrew the policy question on 2026-11-14 but said that the substance stays. The medium finding about `let` folding is not raised on the PR.
+- **Last activity:** 2026-11-14, inner-daemons, deleted the policy-question comment and apologized for its tone. The author has not answered. The hostile third-party comment of 2026-10-28 is still there.
 - **Approvals:** none (review requested from inner-daemons; jimblandy assigned)
 - **CI:** green (head 372abd2, 2026-10-27)
 - **Summary:** The validator no longer rejects `Access` with a constant out-of-range or negative index, because a WGSL `let` is not a const-expression ([#4390](https://github.com/gfx-rs/wgpu/issues/4390), [#6396](https://github.com/gfx-rs/wgpu/issues/6396)). Back ends (SPIR-V, GLSL, HLSL, MSL, WGSL) now replace a known out-of-range index with a valid one, and the bounds-check policy decides the runtime behavior. Const or override errors move to the WGSL and GLSL front ends and `process_overrides`. CTS access tests move to test.lst.
@@ -631,7 +639,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10694](https://github.com/gfx-rs/wgpu/issues/10694): fix(wgsl-in): NotInScope error for `rayQueryGenerateIntersection` argument ([@DouglasDwyer](https://github.com/DouglasDwyer))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; mergeable; CI red (1 failed); last update 2026-10-28.
+- **State (2026-11-18):** ready; mergeable; CI red (1 failed: Validate: SPIR-V/GLSL/DOT/WGSL); last update 2026-10-21.
 - **Verdict:** Land as is
 - **Waiting on:** maintainer (assigned jimblandy; no review yet)
 - **Last activity:** 2026-10-21, DouglasDwyer, opened the PR (the 2026-10-28 update has no comment or review, so it is probably the assignment). 16 days.
@@ -646,7 +654,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10697](https://github.com/gfx-rs/wgpu/issues/10697): feat(naga, wgsl): Add `rayQueryGetCurrentTMax` function for ray queries ([@DouglasDwyer](https://github.com/DouglasDwyer))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-10-28.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-10-28.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** maintainer (jimblandy assigned: design decision and review), then author (rebase)
 - **Last activity:** 2026-10-28, Vecvec, commented that the PR uses the less strict init tracking from [#10735](https://github.com/gfx-rs/wgpu/issues/10735), so it does not match the current tracking. No author reply. 9 days.
@@ -665,27 +673,9 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 **Deeper review:** see the block under [#10600](https://github.com/gfx-rs/wgpu/issues/10600).
 
-#### [#10796](https://github.com/gfx-rs/wgpu/issues/10796): fix(hlsl-out): handle overflowing storage buffer offsets ([@kuntal-devrat](https://github.com/kuntal-devrat))
-- **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-11-09.
-- **Verdict:** Needs a bit of work
-- **Waiting on:** maintainer (agent-policy decision), then author (summed-offset fix, inline comment, rebase)
-- **Last activity:** 2026-11-09, inner-daemons, approval. 4 days.
-- **Approvals:** inner-daemons (GitHub still reports REVIEW_REQUIRED)
-- **CI:** green (65 pass); has conflicts (CHANGELOG.md only)
-- **Summary:** In `fill_access_chain`, `stride * index` for a constant index into a storage array is now `checked_mul`. On overflow, the whole address becomes `4294967295`. This removes a debug panic and a release wrap to an in-bounds address. It fixes [#10753](https://github.com/gfx-rs/wgpu/issues/10753).
-- **Findings:**
-  1. [high, policy] The checklist has "This PR was automatically created by an Agent" and "The description was automatically written by an Agent" checked. "I self-reviewed and fully understand this PR" is also checked, and the body says "I reviewed the diff and understand the fix". So the old finding still holds: by its own disclosure, an agent created the PR and wrote the description. The approval does not change this. A maintainer must decide if it is acceptable.
-  2. [medium] `naga/src/back/hlsl/storage.rs:141-157` The fix is still incomplete. The chain terms are emitted as separate HLSL `a+b` additions, so a large sum still wraps at runtime. Example: `array<S>` with `struct S {a,b,c: u32}` (stride 12), `buf[357913941].c` gives `4294967292+8`, which wraps to 4, an in-bounds address. Only the `stride * index` product is checked (`storage.rs:648`). (Reasoned from code, not run.)
-  3. [low] `naga/tests/in/wgsl/storage-buffer-offset-overflow.wgsl:6` inner-daemons' request for a comment or an issue-number file name is not addressed.
-  4. [low] The address `0xFFFFFFFF` is not 4-byte aligned. `ByteAddressBuffer` ignores the low bits, so it is still out of bounds. This is acceptable.
-- **To land:** a policy decision. If accepted: check the summed constant offsets for overflow, with a test for the struct-member case. Address the inline comment. Rebase.
-- **Move-along action:** decide whether to accept this agent-created PR. If yes, tell inner-daemons and the author about the summed-offset wrap before merge.
-- **Depth:** status only for code (no new commits); I re-checked finding 2 in the current code.
-
 #### [#10800](https://github.com/gfx-rs/wgpu/issues/10800): Fix [#10736](https://github.com/gfx-rs/wgpu/issues/10736) by removing the wg_memory_sizes logic ([@inner-daemons](https://github.com/inner-daemons))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; mergeable; CI 10 cancelled jobs; last update 2026-11-06.
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-18.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** author (to answer matthargett's A10X regression report and proposed patch)
 - **Last activity:** 2026-11-06, matthargett, linked a tested "aggregate-allocation" patch ([rebeckerspecialties/wgpu@611e7f4](https://github.com/rebeckerspecialties/wgpu/commit/611e7f4)) that passes on A10X/A12/A13/Watch. On 2026-11-05 matthargett reported an A10X/tvOS 26.6 regression: `MTLCompilerService` crashes at pipeline creation with this PR and passes on the parent. Neither the author nor a maintainer has replied. 0 days.
@@ -745,7 +735,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10820](https://github.com/gfx-rs/wgpu/issues/10820): Remove shader `F16_IN_F32` downlevel flag ([@szymros](https://github.com/szymros))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI pending; last update 2026-11-11.
+- **State (2026-11-18):** ready; mergeable; CI pending (1); last update 2026-11-11.
 - **Verdict:** Needs a bit of work (small: CHANGELOG and one stale comment)
 - **Waiting on:** author (CHANGELOG entry, stale comment), then maintainer to merge (inner-daemons assigned)
 - **Last activity:** 2026-11-11, szymros, force push. 2 days.
@@ -762,7 +752,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10873](https://github.com/gfx-rs/wgpu/issues/10873): Plumbing for external textures in SPIR-V backend ([@andyleiserson](https://github.com/andyleiserson))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-11-07.
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-17.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** maintainer (no reviewer assigned or requested), then author (rebase).
 - **Last activity:** 2026-11-07, andyleiserson, force push. 6 days.
@@ -780,7 +770,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10891](https://github.com/gfx-rs/wgpu/issues/10891): [naga wgsl-in] Enforce limit of 2047 elements in array constructor ([@sagudev](https://github.com/sagudev))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-11-13.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-11-13.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** maintainer (decide if the new limit is acceptable for native users), then author (CHANGELOG wording and conflict).
 - **Last activity:** 2026-11-13, sagudev, force push. 0 days.
@@ -799,7 +789,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10897](https://github.com/gfx-rs/wgpu/issues/10897): [naga wgsl-in] Reject composite `const_assert` conditions instead of panicking ([@MilosLord](https://github.com/MilosLord))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-11-09.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-11-09.
 - **Verdict:** Land as is
 - **Waiting on:** author or maintainer (resolve the `CHANGELOG.md` conflict, then merge).
 - **Last activity:** 2026-11-09, inner-daemons, approval and self-assignment. 4 days.
@@ -815,70 +805,104 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 - **Depth:** full
 
 #### [#10901](https://github.com/gfx-rs/wgpu/issues/10901): Naga coop store emit ([@Sandvoxel](https://github.com/Sandvoxel))
-- **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-11-13.
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-18.
 - **Verdict:** Needs a bit of work
-- **Waiting on:** author (inner-daemons asked for a naga validator check on 11-13; CHANGELOG conflict).
-- **Last activity:** 2026-11-13, inner-daemons, approval plus a request to add validation. 0 days.
-- **Approvals:** inner-daemons (with a follow-up request)
-- **CI:** green; has conflicts (`CHANGELOG.md`)
-- **Summary:** Fixes two cooperative-matrix bugs in the SPIR-V path. (1) The WGSL front end pushed `Statement::CooperativeStore` without first flushing the emitter, so a non-constant stride was emitted after the store, and spv-out panicked with "Expression [N] is not cached". The fix flushes the emitter like `textureStore` does. (2) When a cooperative matrix type appears only as an expression result (for example `let m = coopLoad(...)`), compaction removes the type, so spv-out did not request `SPV_KHR_cooperative_matrix` or the Vulkan memory model. The new `Writer::require_cooperative_matrix()` is now also called from the `CooperativeLoad` and `CooperativeMultiplyAdd` paths. Adds a snapshot case and a GPU test.
+- **Waiting on:** author (stride literal type, finding 1), then a member approval. inner-daemons approved on 2026-11-16, but GitHub `reviewDecision` is `REVIEW_REQUIRED`. The last commit (`require_all`, 2026-11-17) came after that approval. cwfitzgerald and inner-daemons are assigned.
+- **Last activity:** 2026-11-17, Sandvoxel, commit that uses `require_all`, as inner-daemons asked in a nit. Before that, 2026-11-16, inner-daemons, approval ("One insignificant nit but otherwise lgtm").
+- **Approvals:** inner-daemons (2026-11-13 and 2026-11-16)
+- **CI:** green (66 pass, 2 neutral, 1 skipped).
+- **Summary:** Fixes two cooperative-matrix bugs in the SPIR-V path. (1) The WGSL front end pushed `Statement::CooperativeStore` without first flushing the emitter, so a non-constant stride was emitted after the store and spv-out panicked ("Expression [N] is not cached"). The fix flushes the emitter like `textureStore`. (2) A cooperative matrix type that appears only as an expression result is compacted out of the type arena, so spv-out did not request `SPV_KHR_cooperative_matrix` or the Vulkan memory model. The new `Writer::require_cooperative_matrix()` (`require_all` of `CooperativeMatrixKHR` and `VulkanMemoryModel`) is called from the type path and from the `CooperativeLoad` and `CooperativeMultiplyAdd` paths. The validator now checks that the store pointer and stride are in scope and that the stride is a `u32` scalar, and `CooperativeMultiplyAdd` reports the failing operand instead of always `a`. Adds a snapshot case, 4 validator tests and a GPU test.
 - **Findings:**
-  1. [medium] `naga/src/valid/function.rs:1692` The validator arm for `Statement::CooperativeStore` checks the target type and the pointer, but it never checks `data.stride`: not that it is in scope (emitted before the statement), and not its type. This is why bug (1) reached spv-out as a panic. inner-daemons asked for this check on 11-13. Other front ends (SPIR-V in) or hand-built IR can still trigger the spv-out panic. The feature is experimental and gated, so this is not a safe-API hole. (Reasoned from code.)
-  2. [low] `naga/src/back/spv/block.rs:2227`, `:2269` The capability request is now added at each cooperative expression. A more general fix is to request capabilities when a local cooperative-matrix type id is created. [#10596](https://github.com/gfx-rs/wgpu/issues/10596) fixes the same bug in a different way (see Cross-PR notes).
-  3. [low] PR template: the agent-disclosure lines are not present. The "LLM Use?" section says Claude found the bugs and wrote the fixes and tests, and the author reviewed them.
-  4. [low] The description notes that Vulkan needs the stride to be a multiple of 16 bytes, and nothing validates this. The GPU test uses `size + 4` to stay legal. This is a known follow-up, not a defect of this PR.
-- **To land:** add the validator check that inner-daemons asked for (stride in scope and `u32`, with a test); rebase for the CHANGELOG conflict; coordinate with [#10596](https://github.com/gfx-rs/wgpu/issues/10596).
-- **Move-along action:** wait for Sandvoxel to add the validator check; no maintainer action now.
-- **Depth:** full (I read the GPU test; I did not check the MSL output beyond the snapshot diff)
+  1. [medium] `naga/src/valid/function.rs:1769-1775` with `naga/src/front/wgsl/lower/mod.rs` (coopStore lowering): the WGSL front end lowers an explicit stride with `self.expression(...)`, which concretizes an abstract integer to `i32`. So `coopStore(m, &buf[0], 16)` (no `u` suffix) gets an `i32` stride, and the new check rejects it with `InvalidCooperativeDataStride`. The extension documentation (`wgpu/src/documentation/extensions/cooperative_matrices.rs`) gives the stride as `u32`, so the front end should convert an abstract stride to `u32`. All tests use `u32` values (`16u` or `u32` variables), so CI does not show this. (From code.)
+  2. [low] `naga/src/valid/expression.rs:1447` `E::CooperativeLoad` checks the pointer but not the stride type. After finding 1, `coopLoad(p, 16)` and `coopStore(m, p, 16)` behave differently. Add the same `u32` check for loads.
+  3. [low] `naga/src/back/spv/block.rs:2227`, `:2269` The capability request is added at each cooperative expression. A more general fix is to request capabilities when a local cooperative-matrix type ID is created. [#10596](https://github.com/gfx-rs/wgpu/issues/10596) fixes the same bug in a different way (see Dependencies).
+  4. [low] `naga/src/valid/expression.rs:1468` The "report the failing operand" fix duplicates the same fix in [#10414](https://github.com/gfx-rs/wgpu/issues/10414) and gives a textual conflict with it (see Dependencies).
+  5. [low] The description notes that Vulkan needs the stride to be a multiple of 16 bytes, and nothing validates this. The GPU test stays legal. This is a known follow-up, not a defect of this PR.
+  6. [low] PR template: the agent-disclosure lines are not present. "LLM Use?" says Claude found the bugs and wrote the fixes and tests, and the author reviewed them.
+- **To land:** convert an abstract stride to `u32` in the WGSL front end for `coopLoad`/`coopStore` (and add a test with a plain literal stride); optionally check the load stride type; a member approval. Coordinate with [#10596](https://github.com/gfx-rs/wgpu/issues/10596) and [#10414](https://github.com/gfx-rs/wgpu/issues/10414). Release (in about one week): can land before it if the stride fix comes soon.
+- **Move-along action:** ask Sandvoxel to make abstract-integer strides `u32` (finding 1); after that, approve.
+- **Depth:** full for the new commits (validator, `require_all`, validation tests). I compared the old and new heads with `git range-diff`: the first three commits are the same except for the CHANGELOG rebase. I did not run the new tests.
 
-#### [#10908](https://github.com/gfx-rs/wgpu/issues/10908): naga: Preserve SPIR-V NoContraction through translation ([@5andr0](https://github.com/5andr0))
-- **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-11-12.
-- **Verdict:** Needs a lot of work
-- **Waiting on:** maintainer. A naga maintainer must decide if naga wants a new per-expression IR field (`Function::expression_controls`) at all. On [#9295](https://github.com/gfx-rs/wgpu/issues/9295) (2026-11-13), the author says that he has no time for "the human part" and asks maintainers to treat his PRs as issues with suggested fixes.
-- **Last activity:** 2026-11-12, 5andr0, PR body edit. 1 day.
+#### [#10957](https://github.com/gfx-rs/wgpu/issues/10957): [naga] Implement bitcast in constant evaluator ([@szymros](https://github.com/szymros))
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-18.
+- **Verdict:** Needs a bit of work
+- **Waiting on:** reviewer (cwfitzgerald, assigned 2026-11-18). GitHub `reviewDecision` is `REVIEW_REQUIRED`.
+- **Last activity:** 2026-11-18, cwfitzgerald, assigned the PR to himself. Last author activity: 2026-11-15, szymros, commit "Add more tests, adjust error types" and ready for review.
 - **Approvals:** none
-- **CI:** green (66 pass, 3 skipped); mergeable
-- **Summary:** Adds `ArithmeticControl::NoContraction` and a `Function::expression_controls` map to the naga IR. The SPIR-V frontend reads `NoContraction` on add/sub/mul/dot, and the SPIR-V backend writes it again. GLSL 4.00+/ESSL 3.20+ and HLSL SM 6+ put each controlled operation into a `precise` helper function (HLSL: `[noinline]` with an `inout` operand array, to avoid an NVIDIA D3D12 driver bug). MSL, WGSL and older GLSL/HLSL return a new error. The HLSL writer also hoists loop-body values into variables before the loop so that the `continuing` block can read them. 1465 lines added, about 1000 of them in `naga/src`.
+- **CI:** green (65 pass, 2 neutral, 1 skipped).
+- **Summary:** Implements const evaluation of `Expression::Bitcast`. `expression_to_bytes` flattens a literal or `Compose` to little-endian bytes, and `literal_from_bytes` builds the target scalars from them, so `vec2<f16>` <-> 32-bit and `vec4<f16>` <-> `vec2` of 32-bit casts follow the WGSL internal layout. A size mismatch returns a new `InvalidBitcastArgs` error. Bitcasts with const arguments in function bodies are now folded too. The `bitcast-f16.wgsl` runtime cases now use `let` values, so they stay runtime and keep their backend coverage. Part of [#7700](https://github.com/gfx-rs/wgpu/issues/7700).
 - **Findings:**
-  1. [high, reasoned from code, not run] `naga/src/front/spv/mod.rs:1035`, `naga/src/valid/function.rs:2184` Regression for SPIR-V input that trunk accepts. On trunk, `NoContraction` goes to the "Unknown decoration" arm and is ignored. With this PR:
-     - `NoContraction` on any op other than add/sub/mul/dot (for example `OpFDiv`, `OpFNegate`, or GLSL.std.450 ext-insts) gives `UnsupportedNoContraction`, either in `register_arithmetic_control` or from the left-over check at the end of `parse`.
-     - `OpVectorTimesScalar`/`OpMatrixTimes*` lower to `Binary::Multiply` with operand types that do not match. The frontend accepts them, but the validator then fails with `InvalidArithmeticControl`, because it requires `left` type == `right` type and scalar/vector only.
-     - glslang and DXC emit `NoContraction` for `precise`. So shaders that load today fail after this PR, and there is no option to opt out.
-  2. [high, reasoned from code, not run] `naga/src/back/msl/writer.rs:4763`, `naga/src/back/wgsl/writer.rs:145`, `naga/src/back/glsl/writer.rs:157`, `naga/src/back/hlsl/writer.rs:463` Any reachable controlled expression is now a hard error on MSL, WGSL, GLSL below 400 / ESSL below 320 (this includes WebGL2's ESSL 300), and HLSL below SM 6.0. Today these targets translate the shader and drop the decoration. So a wgpu user who passes `ShaderSource::SpirV` with `precise` math gets a shader-creation error on Metal and GL. `naga` CLI spv-to-wgsl translation also breaks. The CHANGELOG entry calls this "an explicit error", but it does not say that working inputs stop working.
-  3. [medium] No test covers the paths that the title names. There is no SPIR-V input that has `NoContraction`, no SPIR-V output check for the decoration, and no GLSL output test. All tests (`hlsl_inout.rs`, `function_control_serialization.rs`) insert controls by hand into WGSL-parsed modules. The 40 `.ron` snapshot changes only add `expression_controls: {}`.
-  4. [medium] `naga/src/back/hlsl/writer.rs:3045-3140` The HLSL loop hoisting rewrites how `Call`, `Atomic`, `WorkGroupUniformLoad`, subgroup and `RayQuery::Proceed` results are declared in every loop with a `continuing` gate, in functions that have controls. It is a large change to the HLSL writer for a narrow feature. The PR body says that it also fixes atomic-load regressions, but these regressions exist only with controls present.
-  5. [low] `naga/tests/naga/hlsl_inout.rs:28` The test helper `save` writes files when the `OUTPUT326`/`CASE326` environment variables are set. This is debug code from the agent harness.
-  6. [low] `CHANGELOG.md` The entry has no "By [@5andr0](https://github.com/5andr0) in [#10908](https://github.com/gfx-rs/wgpu/issues/10908)" attribution.
-  7. [low] Process: the PR body says "100% Astra" (an agent). The boxes "changes authored by an Agent" and "description written by an Agent" are checked. The box "self-reviewed and fully understand" is also checked. But the author's 2026-11-13 comment on [#9295](https://github.com/gfx-rs/wgpu/issues/9295) says that he will not do the human part.
-- **To land:** A maintainer decides if the IR design is acceptable. Make unsupported controls degrade the way trunk does (drop the control, maybe with a warning or an option) instead of failing. Accept `NoContraction` on all ops that the frontend lowers, or drop it on them. Add SPIR-V in/out and GLSL snapshot tests. Remove the debug env code. Find a human owner.
-- **Move-along action:** decide if naga wants `expression_controls` in the IR. If not, close the PR and open an issue: "NoContraction is dropped by translation".
-- **Depth:** full for `naga/src` and the CHANGELOG. I skimmed the tests. I did not trace every HLSL hoisting case.
+  1. [medium] Behavior change with no test and no changelog entry: a const bitcast whose result is a NaN or infinity (for example `bitcast<f32>(0x7fc00000u)`, also inside a function body) now fails with the `check_literal_value` error from `register_evaluated_expr`. Before, it was emitted as a runtime bitcast. This is correct per WGSL ([Finite Math Assumption](https://gpuweb.github.io/gpuweb/wgsl/#floating-point-evaluation): infinities and NaNs made before shader execution are errors), but users can see it. Add a `wgsl_errors` test for it and for the f16 case, and a changelog entry. (From code.)
+  2. [low] `naga/src/proc/constant_evaluator.rs:2808` `InvalidBitcastArgs { from: format!("{:?}", expr), ... }` formats the expression handle (for example `[12]`), not its type, and `to` is the `TypeInner` debug output. The error is also built before it is needed. From WGSL it is not reachable because the front end checks sizes, so a plainer message is enough.
+  3. [low] `naga/src/proc/constant_evaluator.rs:2719`, `:2759`, `:2799` `expression_to_bytes`, `literal_from_bytes` and `bitcast` are `pub` on the public `naga::proc::ConstantEvaluator`. This adds public API by accident; make them private. `literal_from_bytes` does not need `&mut self`.
+  4. [low] `cts_runner/fail.lst:71` lists `webgpu:shader,validation,expression,call,builtin,bitcast:*` with the note "bitcast const-eval unimplemented". The PR does not update it. Someone should run that CTS selector and update the list.
+  5. [low] `naga/tests/in/wgsl/bitcast-f16.wgsl` uses `let u = 4294967295;`. In WGSL a `let` with an AbstractInt initializer is concretized to `i32`, so this value overflows and should be an error. Naga accepts it and passes the abstract value to `bitcast<u32>` (the snapshot shows `bitcast<u32>(4294967295u)`). The test depends on a naga deviation; use `4294967295u`. (From the snapshot.)
+  6. [low] No changelog entry. PR template: the agent-disclosure lines are not present. "LLM Use?" says a Claude chatbot helped to understand the codebase and no code is AI-generated.
+- **To land:** add error tests for NaN/infinity results; add a changelog entry; make the new methods private and fix the error message; check the CTS `bitcast` selector. Release (in about one week): can land before it if the author answers soon; the change is self-contained.
+- **Move-along action:** review it (assigned to cwfitzgerald); ask szymros for the error tests and the changelog entry.
+- **Depth:** full for `constant_evaluator.rs`, the test inputs and the WGSL snapshots. I checked the f16 layout values in the snapshot by hand (`vec2<f16>(1.0)` -> `0x3C003C00` = 1006648320). I skimmed the HLSL, MSL, GLSL and SPIR-V snapshots.
 
-#### [#10921](https://github.com/gfx-rs/wgpu/issues/10921): naga: preserve scalar Exp2 producer controls ([@5andr0](https://github.com/5andr0))
-- **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-11-12.
-- **Verdict:** Close
-- **Waiting on:** maintainer. The PR stacks on [#10908](https://github.com/gfx-rs/wgpu/issues/10908), and its body says that no human claims self-review, understanding or ownership.
-- **Last activity:** 2026-11-12, 5andr0, PR body edit. 1 day.
+#### [#10961](https://github.com/gfx-rs/wgpu/issues/10961): Fix bitcasting packed vec3 struct field for MSL ([@IsseW](https://github.com/IsseW))
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI red (1 failed); last update 2026-11-18.
+- **Verdict:** Needs a bit of work
+- **Waiting on:** author (typos CI failure), and reviewers (inner-daemons and andyleiserson, assigned 2026-11-18). GitHub `reviewDecision` is `REVIEW_REQUIRED`.
+- **Last activity:** 2026-11-18, cwfitzgerald, assigned inner-daemons and andyleiserson. Last author activity: 2026-11-15, IsseW, opened the PR.
 - **Approvals:** none
-- **CI:** green (66 pass, 3 skipped); mergeable
-- **Summary:** On top of [#10908](https://github.com/gfx-rs/wgpu/issues/10908), adds `ArithmeticControl::Exp2F32NoRefactoringV1`. The SPIR-V frontend maps `FPFastMathMode 0` on a scalar f32 GLSL.std.450 `Exp2` (SPIR-V 1.2+, `FloatControls2`) to this control, and the SPIR-V backend writes it again. HLSL emits a `[noinline]` `precise exp2` helper. GLSL, MSL and WGSL reject the control. The PR also adds `SPV_KHR_float_controls2` and `FloatControls2` to the frontend's supported lists. 909 lines added over [#10908](https://github.com/gfx-rs/wgpu/issues/10908), 633 of them tests.
+- **CI:** red (1 failed): "Format & Typos". The PR causes it: `typos` reads the user name in the new CHANGELOG line (`By @IsseW`, `CHANGELOG.md:315`) as a misspelling of "Issue". Fix: add the name to the "Usernames" list in `typos.toml` (as for `Healthire`), or change the entry.
+- **Summary:** In MSL, a `vec3` struct member that is followed by a scalar is emitted as `packed_float3`. `as_type<uint3>(s.v)` then has a 12-byte source and a 16-byte target, and Metal rejects it. The fix wraps the bitcast operand with `put_wrapped_expression_for_packed_vec3_access`, so it becomes `as_type<metal::uint3>(metal::float3(s.v))`, as for swizzles and matrix multiplies. Adds an MSL snapshot test and a changelog entry.
 - **Findings:**
-  1. [high] Process: the "self-reviewed and fully understand" box is unchecked. The body says "human self-review, understanding, and ownership are not asserted". The repository does not allow fully agentic PRs.
-  2. [medium] `naga/src/ir/mod.rs:2523` The IR variant is very narrow (one op, one type, a "V1" suffix). Its doc comment talks about "transport permissions", a "qualified DXC compiler" and "D3D source provenance". This is the author's porting contract, not a general IR concept.
-  3. [low] `naga/src/front/spv/mod.rs` `FPFastMathMode` with nonzero flags gives `UnsupportedExp2Control(0)`, with a placeholder id 0. Any `FloatControls2` module that uses fast-math flags fails. Trunk rejected the extension anyway, so this is not a regression.
-  4. [low] It carries all [#10908](https://github.com/gfx-rs/wgpu/issues/10908) findings, including the `OUTPUT326` test debug code.
-- **To land:** Not recommended. It needs [#10908](https://github.com/gfx-rs/wgpu/issues/10908) to land first, a human owner, and a maintainer decision that this IR variant is wanted.
-- **Move-along action:** close. Point to [#10908](https://github.com/gfx-rs/wgpu/issues/10908) for the shared design decision.
-- **Depth:** full for the 447-line `naga/src` delta over [#10908](https://github.com/gfx-rs/wgpu/issues/10908). I did not read `exp2_control.rs` (633 lines of tests).
+  1. [low] CI typos failure (see CI).
+  2. [low] `CHANGELOG.md:315` The entry text is missing a word: "fix generated for `bitcast`" should be "fix the generated code for `bitcast`".
+  3. [low] The description says the test was added to `packed-vec3-bitcast.wgsl`. The PR adds a new file, `packed-vec3-struct-field-bitcast.wgsl`.
+  4. [low] PR template: the agent-disclosure lines are not present. "LLM Use?" says an LLM made the minimal repro from the author's shader.
+- **To land:** fix the typos failure; fix the changelog wording; a member review. Release (in about one week): can land before it.
+- **Move-along action:** ask IsseW to add the user name to `typos.toml`; ask inner-daemons or andyleiserson to review.
+- **Depth:** full. I checked `get_packed_vec_kind`, which finds a packed member through `AccessIndex` on a struct value or pointer. I did not check whether `As` (`static_cast`) of a packed member has the same problem.
+
+#### [#10980](https://github.com/gfx-rs/wgpu/issues/10980): fix(naga): allow `continuing` block to shadow loop body declarations ([@ekarad1um](https://github.com/ekarad1um))
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-18.
+- **Verdict:** Land as is
+- **Waiting on:** member approval. inner-daemons approved on 2026-11-18, but GitHub `reviewDecision` is `REVIEW_REQUIRED`. teoxoy is assigned.
+- **Last activity:** 2026-11-18, ekarad1um, force push that removes the `wgsl_errors` test, as inner-daemons suggested in his nit. Before that, 2026-11-18, inner-daemons, approval ("LGTM with one nit").
+- **Approvals:** inner-daemons (2026-11-18, before the last force push)
+- **CI:** green (66 pass, 2 neutral, 1 skipped).
+- **Summary:** The WGSL parser did not push a scope for the `continuing` block, so `loop { let x = a; continuing { let x = b; } }` was rejected as a redefinition. The WGSL grammar makes `continuing_compound_statement` its own compound statement in the loop body, and Tint accepts this. The fix adds `push_scope`/`pop_scope` around the continuing block, including `break if`. Adds a `continuingLexicalScope` case to the `lexical-scopes` snapshot and a changelog entry. This is item 4 of the closed [#10648](https://github.com/gfx-rs/wgpu/issues/10648).
+- **Findings:**
+  1. [low] `naga/tests/in/wgsl/lexical-scopes.wgsl:56` The snapshot output (`wgsl-lexical-scopes.wgsl`) folds the body away, so it shows only that the shader parses. The input checks the important cases (the continuing block reads the body's `a`, shadows it, and `break if` sees the shadowed `bool`), because a wrong scope gives a type error. No change needed.
+  2. [low] PR template: the agent-disclosure lines are left in the HTML comment and not filled in. "LLM Use?" says Claude helped with the investigation, fixes, tests and checks, and the author supervised and reviewed.
+- **To land:** a member approval (the code is the same as what inner-daemons approved, less one test). Release (in about one week): can land before it.
+- **Move-along action:** approve and queue (or ask teoxoy, who is assigned).
+- **Depth:** full. I read the parser's `loop` function: the body scope is pushed before the loop and popped after it, so the new scope nests correctly.
+
+#### [#10982](https://github.com/gfx-rs/wgpu/issues/10982): [naga] Implement wgpu_f64 enable extension ([@stefnotch](https://github.com/stefnotch))
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-18.
+- **Verdict:** Needs a bit of work
+- **Waiting on:** maintainer (answers to the author's questions; decision on the breaking change), then author (changelog entry, docs, tests). cwfitzgerald and inner-daemons are assigned; review requested from inner-daemons. GitHub `reviewDecision` is `REVIEW_REQUIRED`.
+- **Last activity:** 2026-11-18, stefnotch, opened the PR with questions for maintainers.
+- **Approvals:** none
+- **CI:** green (65 pass, 2 neutral, 1 skipped).
+- **Summary:** Adds the WGSL enable extension `wgpu_f64` (mapped to `Capabilities::FLOAT64`). The `f64` type and the `lf` literal suffix now need `enable wgpu_f64;`. The WGSL backend writes the directive when the type arena has an `f64` scalar, vector or matrix. Existing f64 test shaders get the directive. The PR also adds `spv::Capability::Float64` to the Vulkan list of available SPIR-V capabilities when `Features::SHADER_F64` is on. Fixes [#8975](https://github.com/gfx-rs/wgpu/issues/8975).
+- **Findings:**
+  1. [medium] Breaking change for `wgpu` users: every WGSL shader that uses `f64` today fails until it adds `enable wgpu_f64;`. There is no changelog entry (the author lists it as missing), and the `Features::SHADER_F64` docs (`wgpu-types/src/features.rs:~780`) do not say that the directive is required, as `SHADER_I16` does for `wgpu_int16`. A maintainer must accept the break and decide if it goes in the coming release.
+  2. [medium] No negative test: nothing checks that `f64` or `1lf` without the directive is an error, or that `enable wgpu_f64;` without `Capabilities::FLOAT64` is an error. The author offers to add them. Add them to `wgsl_errors.rs`, as for the other enable extensions.
+  3. [low] `wgpu-hal/src/vulkan/adapter.rs:2847` The new `Float64` entry is not mentioned in the description. On trunk the SPIR-V writer inserts `Float64` directly into `capabilities_used` (`spv/writer.rs:2077`) and does not call `require_any`, so f64 works on Vulkan without it. The line is harmless but is unrelated scope; ask why it is there.
+  4. [low] `naga/src/back/wgsl/writer.rs` The writer checks only the type arena. An `f64` value that has no arena type (for example an `f64` literal or `As` result only in a function expression, from a non-WGSL front end) gives WGSL output without the directive. `f16` has the same gap on trunk. (From code.)
+  5. [low] Author questions that need a maintainer answer: why the capability is `FLOAT64` and not `SHADER_FLOAT64`; that the WGSL writer does not write `enable wgpu_ray_query;` (true on trunk: `RequiredEnabled` has no ray-query flag); whether `li`/`lu` literals need an extension (there is no 64-bit integer enable extension on trunk); how to update inline snapshot tests.
+  6. [low] PR template: the agent-disclosure lines are not present. "LLM Use?" says "Written lovingly by hand." The changelog and tests boxes are unchecked, and the author says that docs and a changelog entry are still missing.
+- **To land:** a maintainer decision on the break; answers to the questions; a changelog entry (breaking change); the `SHADER_F64` docs line and an extension docs page if wanted; negative tests; an explanation or removal of the Vulkan capability line. Release (in about one week): possible only if the maintainer accepts the break now and the author adds the changelog entry, docs and tests quickly; otherwise land after the release.
+- **Move-along action:** answer the author's questions and say whether the f64 break may go into the coming release (inner-daemons has the review request).
+- **Depth:** full. I checked every site that `wgpu_int16` touches for a matching `wgpu_f64` change (parser, `map_predeclared_type`, number suffix, capability mapping, WGSL writer).
 
 ## Metal
 
 #### [#9645](https://github.com/gfx-rs/wgpu/issues/9645): [metal] synchronize acceleration structure builds using fences ([@jtbirdsell](https://github.com/jtbirdsell))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-08-07.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-06-23.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** author (jtbirdsell). On 2026-06-23, Vecvec reported "a race when splitting the encoder" and asked for a fix. There has been no author reply or push since then.
 - **Last activity:** 2026-06-23, Vecvec, comment: the fix works on their phone, but a race exists when the encoder splits. 136 days ago. Draft [#10292](https://github.com/gfx-rs/wgpu/issues/10292) (2026-09-09) took over this branch.
@@ -943,7 +967,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#9679](https://github.com/gfx-rs/wgpu/issues/9679): Use Metal ICBs for multi-draw indirect count ([@matthargett](https://github.com/matthargett))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; has conflicts; CI red (3 failed); last update 2026-11-09.
+- **State (2026-11-18):** ready; has conflicts; CI red (3 failed: Test Mac aarch64, Test Windows x86_64, Test Windows x86_64 (attempt 1)); last update 2026-11-09.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** author (rebase onto trunk, open findings), then cwfitzgerald to re-review. The 2026-11-05 "changes requested" review still stands.
 - **Last activity:** 2026-11-09, matthargett, inline reply pointing to [#10890](https://github.com/gfx-rs/wgpu/issues/10890). 4 days.
@@ -963,24 +987,9 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 - **Move-along action:** ask the author to rebase, then re-review the Deno-free diff (cwfitzgerald).
 - **Depth:** targeted. I reviewed the delta (Deno removal and trunk merge) and re-checked each old finding at the current head. I did not re-review `icb.rs` or the test file, which did not change since 11-05.
 
-#### [#9757](https://github.com/gfx-rs/wgpu/issues/9757): Workaround xcode misreporting ray tracing support ([@mate-h](https://github.com/mate-h))
-- **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-10-26.
-- **Verdict:** Needs a bit of work
-- **Waiting on:** other reviewer (inner-daemons). andyleiserson rewrote most of the PR and asked for someone else to review it. inner-daemons asked why the change is debug-only, and Andy answered on 2026-10-26. There is no response after that.
-- **CI:** green
-- **Summary:** Ray tracing support is now detected from `MTLGPUFamily::Apple6` (Apple's feature table), with `supportsRaytracing` and `supportsRaytracingFromRender` as a runtime fallback. The objc2 `responds_to` workaround is now active only under `cfg(debug_assertions)`, because the panic comes from objc2's debug-only method check, not from Metal. A one-time warning is logged when the device is `CaptureMTLDevice`.
-- **Findings:**
-  1. [medium] `CHANGELOG.md:203` The entry describes only the debug warning and the workaround removal. It does not describe the user-visible fix (ray tracing is now detected under Xcode capture and on Apple6+). The phrase "remove the feature detection workaround in question entirely" means little to users. Rewrite it.
-  2. [low] `wgpu-hal/src/metal/adapter.rs:30-34` The check is keyed on wgpu-hal's `debug_assertions`, but the panic comes from objc2's `debug_assertions`. A per-package profile override (wgpu-hal release, objc2 debug) would bring back the panic under capture. This is rare. Mention it in the doc comment, or consider objc2's feature that disables the check ([#10028](https://github.com/gfx-rs/wgpu/issues/10028)).
-  3. [low] `wgpu-hal/src/metal/adapter.rs:118` The `// others...?` placeholder is left in `MTL_DEBUG_DEVICES`. Andy noted that `MTLDebugDevice` and `MTLToolsDevice` exist. Add them or remove the placeholder.
-  4. [low] The PR description and the unchecked checklist still describe mate-h's original approach. Update them before merge so the squash message is accurate. The outdated review thread from Andy is still open.
-- **To land:** fix the CHANGELOG wording, resolve the `others...?` placeholder, refresh the description, and get a review from inner-daemons or the maintainer.
-- **Depth:** full
-
 #### [#9876](https://github.com/gfx-rs/wgpu/issues/9876): Query Subgroup Size on Metal ([@Vollkornaffe](https://github.com/Vollkornaffe))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-10-30.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-10-30.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** maintainer (jimblandy is assigned and has not reviewed). sagudev reviewed informally ("I am not actually reviewer here"), and the author addressed their last comment in `836b42f`. The author bumped the PR on 2026-09-23.
 - **Last activity:** around 2026-10-30, Vollkornaffe, pushed the head (CI ran on 10-30; the last commit is from 10-26 and addresses sagudev's DynComputePipeline thread). 7 days ago.
@@ -998,7 +1007,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10506](https://github.com/gfx-rs/wgpu/issues/10506): Reduce Metal command-buffer memory for multi-pass encoders ([@matthargett](https://github.com/matthargett))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; has conflicts; CI 7 cancelled jobs; last update 2026-11-05.
+- **State (2026-11-18):** ready; has conflicts; CI 7 cancelled jobs; last update 2026-11-05.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** maintainer (no reviews yet; inner-daemons is requested). The maintainer must approve the design first: the PR adds a new `wgpu_hal::Capabilities::pass_barriers_are_noop` and changes the core pass-encoding structure in wgpu-core, which Firefox uses.
 - **CI:** incomplete. Most Mac jobs were cancelled at about 19:25 UTC on 2026-11-05 (API Validation/Operation Mac, Other Mac, Clippy MacOS/IOS/VisionOS aarch64, Core MSRV MacOS). The same timestamp shows on [#9679](https://github.com/gfx-rs/wgpu/issues/9679), which suggests a runner-wide cancellation, not a PR failure. "Test Mac aarch64" passed. All other jobs are green. A rerun is necessary.
@@ -1069,7 +1078,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10673](https://github.com/gfx-rs/wgpu/issues/10673): fix(metal): allocate threadgroup memory for passthrough shaders ([@lexoliu](https://github.com/lexoliu))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-11-01.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-11-01.
 - **Verdict:** Needs a lot of work (superseded)
 - **Waiting on:** author, who should mark it draft or close it. [#10800](https://github.com/gfx-rs/wgpu/issues/10800) (inner-daemons) says it "Closes [#10673](https://github.com/gfx-rs/wgpu/issues/10673) as obselete".
 - **Last activity:** 2026-11-01, inner-daemons, comment: [#10800](https://github.com/gfx-rs/wgpu/issues/10800) makes this obsolete. Please mark it as a draft. 5 days ago. The author has not replied since 2026-10-20.
@@ -1095,10 +1104,10 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10725](https://github.com/gfx-rs/wgpu/issues/10725): fix(metal): Probe MSL support and add version controls ([@ITJamie](https://github.com/ITJamie))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-11-11.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-11-16.
 - **Verdict:** Needs a lot of work
-- **Waiting on:** maintainer (andyleiserson). Andy asked on 2026-11-04 whether `msl_version`/`max_msl_version` are needed and whether probing can be opt-in. The author answered the same day. Andy has not replied.
-- **Last activity:** 2026-11-11, osimon9, test report. 2 days.
+- **Waiting on:** author and maintainers. On 2026-11-16 andyleiserson proposed: probe only if the OCLP plist exists or `WGPU_METAL_PROBE_MSL_VERSION` is set, remove the maximum-version setting, and keep `WGPU_METAL_MSL_VERSION`. He put a consistent position on probing on the agenda of the maintainers meeting of 2026-11-18.
+- **Last activity:** 2026-11-16, andyleiserson, proposal for opt-in probing.
 - **Approvals:** none
 - **CI:** green; has conflicts (confirmed with `git merge-tree`: `CHANGELOG.md`, `docs/testing.md`, `wgpu-hal/src/metal/adapter.rs`, `wgpu-hal/src/metal/mod.rs`).
 - **Summary:** At adapter enumeration, compiles a tiny kernel for each MSL version from the OS maximum downward and selects the first that compiles. Adds `wgt::MetalBackendOptions { msl_version, max_msl_version }` and the env vars `WGPU_METAL_MSL_VERSION`/`WGPU_METAL_MAX_MSL`. Gates several features on the selected MSL version. Adapters with no compiling version are excluded.
@@ -1109,12 +1118,12 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
   4. [medium] New public API surface (`MetalShadingLanguageVersion`, `MetalBackendOptions`, `BackendOptions::metal`, two env vars). Andy asks whether it is needed.
   5. [low] `CHANGELOG.md` entries have no "By @..." attribution. Merge conflicts.
 - **To land:** Andy decides on opt-in probing and the version knobs. Then the author makes probing opt-in, removes or justifies the knobs, moves the feature-gate changes to a separate PR, writes the description, and rebases.
-- **Move-along action:** ping andyleiserson to decide on opt-in probing and the version knobs. Point to osimon9's timing data.
+- **Move-along action:** take the probing question to the maintainers meeting of 2026-11-18, then tell the author the result. The proposal of 2026-11-16 also answers part of [#10731](https://github.com/gfx-rs/wgpu/issues/10731) and [#10743](https://github.com/gfx-rs/wgpu/issues/10743).
 - **Depth:** status only (conversation changed; code not re-reviewed)
 
 #### [#10731](https://github.com/gfx-rs/wgpu/issues/10731): fix(metal): Work around legacy Intel compute compiler failures ([@ITJamie](https://github.com/ITJamie))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-10-28.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-10-27.
 - **Verdict:** Needs a lot of work
 - **Waiting on:** maintainer (andyleiserson is assigned and has not reviewed).
 - **Last activity:** 2026-10-28, ITJamie, merged trunk into the branch. 9 days ago. No human comments.
@@ -1133,7 +1142,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10743](https://github.com/gfx-rs/wgpu/issues/10743): fix(metal): Cache Intel workgroup-size compiler probes ([@ITJamie](https://github.com/ITJamie))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-10-28.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-10-27.
 - **Verdict:** Needs a lot of work (blocked on [#10731](https://github.com/gfx-rs/wgpu/issues/10731))
 - **Waiting on:** [#10731](https://github.com/gfx-rs/wgpu/issues/10731) (it stacks on it). Then maintainer (andyleiserson is assigned).
 - **Last activity:** 2026-10-28, ITJamie, merged trunk into the branch. 9 days ago. No human comments.
@@ -1151,27 +1160,29 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 - **Depth:** full for the cache commit.
 
 #### [#10860](https://github.com/gfx-rs/wgpu/issues/10860): fix(metal): select modern shader language profiles on watchOS ([@matthargett](https://github.com/matthargett))
-- **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; has conflicts; CI red (1 failed); last update 2026-11-09.
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; has conflicts; CI no runs; last update 2026-11-16.
 - **Verdict:** Needs a bit of work
-- **Waiting on:** maintainer (inner-daemons is assigned and requested; no review yet).
-- **Last activity:** 2026-11-09, matthargett, pushed `b0d0dcbb3`. 4 days.
-- **Approvals:** none
-- **CI:** red, infra. "Test Mac aarch64" failed in 8 s because `actions/checkout` could not load its `action.yml`. All other jobs pass. Mergeable.
-- **Summary:** Adds `watchos` keys to the Metal adapter `available!` checks. watchOS 26/11/10 select MSL 4.0/3.2/3.1, and older releases keep MSL 1.0. The GPU family, argument buffer, read-write texture, counter sampling and fragment read-write checks now run on watchOS 10+. New: indirect draw/dispatch (`INDIRECT_EXECUTION`) and base vertex/first instance are enabled on Apple5+ watch GPUs on watchOS 11+. The render ICB probe floor goes from watchOS 6 to 11, and the probe is skipped on 32-bit watchOS. CHANGELOG entry added.
+- **Waiting on:** author (rebase, and the per-check version comments that inner-daemons asked for and that the author promised on 2026-11-16). Then a member review.
+- **Last activity:** 2026-11-16, matthargett, pushed two commits that raise four watchOS floors to 11.0, after a discussion with inner-daemons about watchOS support.
+- **Approvals:** none. GitHub says `REVIEW_REQUIRED`. inner-daemons left a non-blocking `COMMENTED` review on 2026-11-14.
+- **CI:** no CI runs on the head `febb88519`. Only the Mergify checks and "Summary" ran. The merge conflict probably stops the `pull_request` workflows.
+- **Summary:** Adds `watchos` keys to the Metal adapter `available!` checks. watchOS 26/11/10 select MSL 4.0/3.2/3.1. The GPU family, read-write texture tier, counter sampling and argument buffer checks run on watchOS 11+, and fragment read-write storage on watchOS 10+. Indirect draw/dispatch (`INDIRECT_EXECUTION`) and base vertex/first instance are on for Apple5+ watch GPUs on watchOS 11+. The render ICB probe floor goes from watchOS 6 to 11, and the probe is skipped on 32-bit watchOS. CHANGELOG entry added.
 - **Findings:**
-  1. [medium] `wgpu-hal/src/metal/adapter.rs:898`, `:931`, `:939` The new `watchos_indirect_drawing` sets `indirect_draw_dispatch`, which enables both indirect draws and indirect dispatch. The evidence in the description covers indirect draws on two watches (S8 on watchOS 11.6, Series 10 on watchOS 27). It does not mention indirect dispatch or base vertex/first instance. Ask for that evidence, or confirm it from Apple's family tables.
-  2. [low] `wgpu-hal/src/metal/adapter.rs:863` The 32-bit watchOS skip is now described ("the probe aborts instead of failing"), but there is still no log or evidence. It covers all `arm64_32` watches (S4 to S8), including the S8 used as the indirect-drawing floor.
-  3. [low] No CI builds or runs watchOS. The PR adds no test. The old host-only table test is gone because the table is gone.
-  4. [low] The description has no "LLM Use?" section and no checklist.
-  5. [low, interaction] [#10927](https://github.com/gfx-rs/wgpu/issues/10927) edits the same `indirect_command_buffers_rendering` expression (`!is_virtual && ...`). Whichever lands second has a small textual conflict.
-- **To land:** get evidence for indirect dispatch and base vertex/first instance on Apple5 watchOS 11, or limit the change to draws. Rebase after [#10927](https://github.com/gfx-rs/wgpu/issues/10927) if it lands first. Rerun the Mac test job.
-- **Move-along action:** review (about 70 lines). Ask about the evidence for indirect dispatch.
-- **Depth:** full
+  1. [medium] `wgpu-hal/src/metal/adapter.rs:896-898`, `:931`, `:939` `watchos_indirect_drawing` sets `indirect_draw_dispatch`, which turns on indirect draws and indirect dispatch. It also sets `base_vertex_first_instance_drawing`. The evidence in the description covers indirect draws only (S8 on watchOS 11.6.2, Series 10 on watchOS 27.2). There is no evidence for indirect dispatch or base vertex/first instance. Not fixed.
+  2. [medium] Conflict with trunk in `wgpu-hal/src/metal/adapter.rs` near `:861`. [#10927](https://github.com/gfx-rs/wgpu/issues/10927) (merged 2026-11-14) moved the probe exclusions into `render_icb_probe_allowed()`. The 32-bit watchOS skip must move into that function on rebase.
+  3. [low] inner-daemons asked for a comment at each check that says which watchOS version was tested. The new commits only change the numbers. No comment says what was tested. The floors are mixed: `family_check`, read-write texture, counter sampling and argument buffers use 11.0; MSL 3.1 (`:810-816`) and `fragment_rw_storage` (`:911-917`) keep 10.0. The description still says all capability checks run on watchOS 10 and later.
+  4. [low] `wgpu-hal/src/metal/adapter.rs:863` The 32-bit watchOS probe skip has no log or evidence. It covers all `arm64_32` watches (S4 to S8), including the S8 that is the indirect-drawing floor.
+  5. [low] No CI builds or runs watchOS. No test.
+  6. [low] The description has no "LLM Use?" section and no checklist, so there are no agent-disclosure boxes.
+  7. [low, process] inner-daemons asked on 2026-11-16 to move the watchOS support policy (App Store rule 2.5.1, best-effort support, in-repo docs) to an issue. No issue exists yet in the PR thread.
+- **To land:** rebase onto [#10927](https://github.com/gfx-rs/wgpu/issues/10927); add evidence for indirect dispatch and base vertex/first instance on Apple5 watchOS 11, or limit the change to draws; add the version comments; update the description; get CI to run. Not likely before the release unless the author rebases this week.
+- **Move-along action:** ask the author to rebase and to answer the indirect-dispatch evidence question. Decide if the watchOS policy issue blocks this PR (inner-daemons said it does not).
+- **Depth:** full (re-review of the full diff and of the two new commits)
 
 #### [#10875](https://github.com/gfx-rs/wgpu/issues/10875): metal: Lose the device when a command buffer fails ([@lexoliu](https://github.com/lexoliu))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-11-13.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-11-13.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** author. andyleiserson asked on 11-13 how the device-loss change interacts with `release_gpu_resources`, [#9579](https://github.com/gfx-rs/wgpu/issues/9579) and [#9278](https://github.com/gfx-rs/wgpu/issues/9278), and suggested a split into two PRs. No approval yet.
 - **Last activity:** 2026-11-07, lexoliu, pushed the CHANGELOG PR-number commit. 6 days.
@@ -1190,10 +1201,10 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10890](https://github.com/gfx-rs/wgpu/issues/10890): [deno] Expose chromium-experimental-multi-draw-indirect ([@matthargett](https://github.com/matthargett))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI red (4 failed); last update 2026-11-09.
+- **State (2026-11-18):** ready; mergeable; CI red (4 failed: API Validation Mac aarch64, Other Mac aarch64, Test Windows x86_64, Test Windows x86_64 (attempt 1)); last update 2026-11-18.
 - **Verdict:** Needs a bit of work
-- **Waiting on:** maintainer decision on count-draw validation (finding 1), then author. inner-daemons is assigned and requested. There is no review yet.
-- **Last activity:** 2026-11-09, matthargett, opened the PR (split from [#9679](https://github.com/gfx-rs/wgpu/issues/9679)). 4 days.
+- **Waiting on:** maintainer decision. On 2026-11-18 inner-daemons said that the PR uses Chrome's CTS tests for a Chrome API that wgpu's API does not match (wgpu has a separate count-buffer function), and that the new validation is valuable on its own and could be split out. The count-draw validation question (finding 1) is not answered.
+- **Last activity:** 2026-11-18, inner-daemons, comment against using the Chromium experimental feature tests.
 - **Approvals:** none
 - **CI:** red, infra. "API Validation Mac" and "Other Mac" failed on HTTP 504 tool downloads. "Test Windows x86_64 (attempt 1)" failed in `compile_fail` because the `mach-dxcompiler-rs` build script panicked, and no retry ran. [#9679](https://github.com/gfx-rs/wgpu/issues/9679) has the same failures on the same day. A rerun is necessary. Mergeable.
 - **Summary:** The Deno split that cwfitzgerald asked for on [#9679](https://github.com/gfx-rs/wgpu/issues/9679). Exposes `MULTI_DRAW_INDIRECT_COUNT` to JS as `chromium-experimental-multi-draw-indirect`, with `multiDrawIndirect` and `multiDrawIndexedIndirect` (with and without a count buffer). wgpu-core no longer strips this feature under `STRICT_WEBGPU_COMPLIANCE`. The PR also carries the count-buffer offset alignment check and `wgt::INDIRECT_BUFFER_OFFSET_ALIGNMENT` from [#9679](https://github.com/gfx-rs/wgpu/issues/9679). It moves `indirect_multi_draw` from `skip.lst` to `test.lst` and adds validation and Deno integration tests.
@@ -1204,14 +1215,14 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
   4. [low] Under strict compliance, the Metal hal in [#9679](https://github.com/gfx-rs/wgpu/issues/9679) removes `MULTI_DRAW_INDIRECT_COUNT` (`wgpu-hal/src/metal/mod.rs:473-478` at [#9679](https://github.com/gfx-rs/wgpu/issues/9679)'s head). The CTS runner sets strict compliance by default. So on Metal, Deno and the CTS never see this feature, and the description's "Depends on [#9679](https://github.com/gfx-rs/wgpu/issues/9679)" is not true for Vulkan/DX12. The integration test already skips Apple targets.
   5. [low] Process: the description says Claude Code cloud did the split. All checklist boxes are ticked. There are no agent-disclosure lines.
 - **To land:** decide on finding 1. Record a pass/encoder error instead of an immediate device error (finding 2), and test that `finish()` fails. Fix the CHANGELOG link and add a Deno entry. Rebase after [#9679](https://github.com/gfx-rs/wgpu/issues/9679) to drop the duplicate wgpu-core change. Rerun CI.
-- **Move-along action:** decide whether Deno may expose count draws before wgpu-core validates their arguments.
+- **Move-along action:** decide: split the encoder validation into its own PR and land it, and hold the Deno feature until wgpu's multi-draw API matches the proposal and core validates count draws.
 - **Depth:** full
 
 ## Vulkan
 
 #### [#10546](https://github.com/gfx-rs/wgpu/issues/10546): Enable `VK_COLOR_SPACE_PASS_THROUGH_EXT` such that application can declare native surface's color ([@yikerman](https://github.com/yikerman))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-11-03.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-10-31.
 - **Verdict:** Land as is
 - **Waiting on:** maintainer (jimblandy is assigned; the author pinged them twice)
 - **Last activity:** 2026-10-31, yikerman, "Can this be merged? [@jimblandy](https://github.com/jimblandy)" (also merged trunk). 6 days.
@@ -1228,10 +1239,10 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10629](https://github.com/gfx-rs/wgpu/issues/10629): Vulkan multi-planar DMA-buf import support ([@andyleiserson](https://github.com/andyleiserson))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-11-07.
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-15.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** author (description still says "Testing TBD"; CHANGELOG has `#TODO`), then reviewer inner-daemons (review requested; jimblandy assigned)
-- **Last activity:** 2026-11-07, andyleiserson, force push (rebase). 6 days.
+- **Last activity:** 2026-11-15, jakobkukla, review comment: a `pub` item in `wgpu-hal/src/vulkan/device.rs:20` is not reachable from outside `wgpu-hal`.
 - **Approvals:** none
 - **CI:** green; mergeable
 - **Summary:** Adds multi-plane DMA-buf import to the Vulkan hal. `texture_from_dmabuf_fd` takes a slice of plane layouts and an `alias` flag. The new `texture_from_dmabuf_fds` imports disjoint images. Adds `ImportTextureError` and replaces `TextureMemory::Dedicated` with `DeviceMemory(Vec<_>)`. For Firefox external textures; fixes [#9801](https://github.com/gfx-rs/wgpu/issues/9801).
@@ -1247,7 +1258,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10750](https://github.com/gfx-rs/wgpu/issues/10750): Add opt-in static HDR metadata submission for Vulkan surfaces ([@ecke101](https://github.com/ecke101))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-11-09.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-11-09.
 - **Verdict:** Needs a lot of work
 - **Waiting on:** maintainer (jimblandy assigned) for the agentic-PR policy and API design decisions; author for the merge conflict.
 - **Last activity:** 2026-11-09, ecke101, pushed 2 commits. 4 days.
@@ -1266,10 +1277,10 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10837](https://github.com/gfx-rs/wgpu/issues/10837): vulkan: write the pass-begin timestamp at TOP_OF_PIPE ([@kikijiki](https://github.com/kikijiki))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-11-14.
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-16.
 - **Verdict:** Land as is
-- **Waiting on:** author: rebase (has conflicts). cwfitzgerald is an assignee from 11-14, with inner-daemons.
-- **Last activity:** 2026-11-14, cwfitzgerald added as assignee. Last push: 2026-11-13, kikijiki.
+- **Waiting on:** you: approve. kikijiki rebased on 2026-11-16 with no change to the diff, and the PR is mergeable. You and inner-daemons are assignees.
+- **Last activity:** 2026-11-16, kikijiki, rebase.
 - **Approvals:** inner-daemons approved on 11-12, before the last push. GitHub now shows "review required", so the approval does not count for the current head.
 - **CI:** green on the head of 11-13; has conflicts with trunk.
 - **Summary:** Render and compute passes write `beginning_of_pass_write_index` at `TOP_OF_PIPE` through a new private `unsafe fn write_pass_begin_timestamp`, instead of at `BOTTOM_OF_PIPE`. The end-of-pass stamp and `write_timestamp` do not change. This fixes near-zero pass durations on RADV when the GPU is busy.
@@ -1277,12 +1288,12 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
   1. [low] `wgpu-hal/src/vulkan/command.rs:42-54` The begin stamp can now latch before earlier passes finish, so a pass duration can include queue wait. This is the usual profiler trade-off and is better than zero durations. The new doc comment explains why the helper exists.
   2. [low] No test (the bug depends on timing). Acceptable.
 - **To land:** rebase, then an approval from a member with write access.
-- **Move-along action:** ask the author to rebase, then approve (the last push only changed a doc comment).
+- **Move-along action:** approve and queue (the push after inner-daemons' approval changed only a doc comment).
 - **Depth:** full (2-file diff)
 
 #### [#10840](https://github.com/gfx-rs/wgpu/issues/10840): Vulkan: Don't use timeline semaphores on Arm's proprietary Mali driver ([@tadeohepperle](https://github.com/tadeohepperle))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-11-05.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-11-05.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** maintainer (no reviewer or assignee yet)
 - **Last activity:** 2026-11-05, tadeohepperle, opened the PR. 1 day.
@@ -1299,62 +1310,85 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 - **Depth:** full for the hal change; skimmed the repro crate.
 
 #### [#10880](https://github.com/gfx-rs/wgpu/issues/10880): [hal vulkan] Trim command pools to what the last submission used ([@purian23](https://github.com/purian23))
-- **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-11-10.
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-18.
 - **Verdict:** Needs a bit of work
-- **Waiting on:** reviewer inner-daemons (assigned) and matthargett (asked to benchmark). The design question from inner-daemons has no answer yet.
-- **Last activity:** 2026-11-10, purian23, force push. 3 days.
-- **Approvals:** none
-- **CI:** green; mergeable
-- **Summary:** In `reset_all`, the Vulkan command encoder now frees the command buffers that the last encoding did not use, and then calls `vkTrimCommandPool` (core 1.1, or `VK_KHR_maintenance1` on 1.0). `ALLOCATION_GRANULARITY` goes from 16 to 1. The author saw 10 to 13 MB of retained command buffers on Mesa anv, because wgpu-core pools hal encoders for the life of the device.
+- **Waiting on:** author (the `VulkanBackendOptions` trim-window field promised on 2026-11-18 is not pushed) and matthargett (asked to benchmark window 16 or 8 on the Quest 1). A maintainer must accept a new public backend option.
+- **Last activity:** 2026-11-18, purian23, comment: will add a `VulkanBackendOptions` field for the window, default 16.
+- **Approvals:** none. GitHub says `REVIEW_REQUIRED`. matthargett's `CHANGES_REQUESTED` (2026-11-17) is still the latest review from him; the author applied his suggestions in `7d183a500`.
+- **CI:** green
+- **Summary:** In `reset_all`, the Vulkan command encoder records the fewest unused command buffers at any reset over a window of 64 resets. At the end of the window it frees that many and calls `vkTrimCommandPool` (core 1.1, or `VK_KHR_maintenance1` on 1.0). `ALLOCATION_GRANULARITY` goes from 16 to 1. The cause is that wgpu-core pools hal encoders for the life of the device, and Mesa returns command buffer memory only on a trim. The windowed form comes from matthargett's Quest 1 benchmarks: "trim at every reset" cost 2 to 3.5 times the CPU time when recording sizes alternate; the window stays within 5% of base.
 - **Findings:**
-  1. [medium] `wgpu-hal/src/vulkan/command.rs:201-210` The heuristic keeps only the count that the last encoding used. A pooled hal encoder that alternates between a large and a small wgpu `CommandEncoder` now frees, trims and reallocates command buffers on each cycle. With granularity 1, each extra buffer is one `vkAllocateCommandBuffers` call (`command.rs:122-132`). inner-daemons raised the same risk on 11-09 and asked for benchmarks. The PR has no performance numbers beyond "CPU use stayed the same" on one Intel machine. Reasoned from code, not measured.
-  2. [low] `wgpu-hal/src/vulkan/command.rs:205` `split_off(len - unused)` frees the buffers at the end of `free`, which are the buffers this encoding used, not the unused ones at the front. All buffers were reset by `reset_command_pool` just before, so the count is correct and the behavior is correct. The comment "Keep only what this encoding used" can mislead a reader.
-  3. [low] `wgpu-hal/src/vulkan/adapter.rs:2713` The `maintenance1` function table loads when `device_api_version < 1.1`. This matches the condition that adds `VK_KHR_maintenance1` to the required extensions (`adapter.rs:1240`) and the adapter filter (`adapter.rs:2402`). Correct.
-  4. [low] No test. A test that counts retained command buffers is possible through hal, but not required for a memory heuristic.
-  5. [low] PR template: "I self-reviewed and fully understand this PR" is not checked. The "LLM Use?" section says Claude helped to find the cause and write the patch, and the author reviewed and tested it. There are no agent-disclosure boxes.
-- **To land:** answer the alternating-submission concern with numbers (or a hysteresis, for example trim only when the free count stays high for several resets); author checks the self-review box; fix the comment wording.
-- **Move-along action:** ping matthargett for the benchmark that inner-daemons asked for.
+  1. [medium, design] The next push adds a public `VulkanBackendOptions` with a window size (inner-daemons proposed it on 2026-11-18, default 8 or 16). This is new public API in `wgpu-types`, so it needs docs and a changelog entry. The author's own measurement shows why it is needed: encoders reset only when a submission retires, so an idle app never finishes a window and keeps its peak (45 to 60 buffers with window 64 on Mesa anv). A maintainer should decide if a backend option is wanted, or if a fixed window is enough. Not pushed yet.
+  2. [low] `wgpu-hal/src/vulkan/command.rs:203-207` The comment "Keep only what this encoding used" does not match the windowed code. The code keeps what the busiest encoding in the window used. The second half of the comment (it does not matter which buffers are freed) is correct and fixes the old wording finding.
+  3. [low] The old alternating-size churn finding is fixed by the window, from code: `min_unused` is 0 in any window where an encoding drew a new buffer, so no trim happens then. matthargett measured this on the Quest 1.
+  4. [low] `wgpu-hal/src/vulkan/adapter.rs:2725` The `maintenance1` function table loads when `device_api_version < 1.1`, which matches the required-extension condition (`adapter.rs:1242`) and the adapter filter (`adapter.rs:2412`). Correct.
+  5. [low] No test.
+  6. [low] PR template: "I self-reviewed and fully understand this PR" is not checked. The "LLM Use?" section says Claude helped to find the cause and write the patch, and the author reviewed and tested it. There are no agent-disclosure boxes. The description is stale: it describes trim-after-each-reset and "Single commit", but the PR has three commits and a window.
+- **To land:** decide on the backend option; author pushes it with docs and a changelog entry, fixes the comment, updates the description and checks the self-review box; matthargett confirms the default window on the Quest 1. Not likely before the release, because the public option is not written yet.
+- **Move-along action:** reply on the thread to accept or reject the `VulkanBackendOptions` window field before the author writes it.
 - **Depth:** full
 
-#### [#10926](https://github.com/gfx-rs/wgpu/issues/10926): vulkan: filter buffer memory types by available budget ([@5andr0](https://github.com/5andr0))
-- **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI pending; last update 2026-11-12.
-- **Verdict:** Needs a bit of work
-- **Waiting on:** maintainer (no reviewer, no assignee). Policy decision on an agent-written description with an unchecked self-review box.
-- **Last activity:** 2026-11-12, 5andr0, marked ready for review. 1 day.
-- **Approvals:** none
-- **CI:** green (codecov/patch pending); mergeable
-- **Summary:** For buffers only, the Vulkan hal now removes from `memory_type_bits` every memory type whose heap would exceed `MemoryBudgetThresholds::for_resource_creation`, and passes that mask to gpu-allocator. Before, the check looked only at the heap that gpu-allocator would pick and failed if that heap was over budget. The goal: a small host-visible device-local heap that is full no longer blocks staging buffers, because gpu-allocator can fall back to system memory.
+#### [#10960](https://github.com/gfx-rs/wgpu/issues/10960): VK Fix fence race for devices without timeline semaphores ([@JasperDeSutter](https://github.com/JasperDeSutter))
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-17.
+- **Verdict:** Land as is
+- **Waiting on:** maintainer (a member approval on the current head).
+- **Last activity:** 2026-11-17, JasperDeSutter, pushed `789ff5044` (rename for the shadowing nit from inner-daemons).
+- **Approvals:** inner-daemons (2026-11-16, on `5f653e467`, before the rename commit). GitHub says `REVIEW_REQUIRED`, so an approval on the current head is necessary.
+- **CI:** green
+- **Summary:** On Vulkan devices without timeline semaphores, `Queue::submit` put the new `VkFence` into the `FencePool`'s `active` list and released the pool lock before `vkQueueSubmit`. Another thread could then call `vkGetFenceStatus` on it (through `get_fence_value`) during the submit, which breaks the external-synchronization rule for the `vkQueueSubmit` fence. The PR holds the pool's write lock until `vkQueueSubmit` returns. wgpu-core has no lock around the hal fence (`wgpu-core/src/device/resource.rs:259`), so hal must do this. Changelog entry added.
 - **Findings:**
-  1. [medium] Description and code do not match. The Testing section says "Fifteen CPU cases execute the exact helper against value-only stubs". The PR contains no tests (only `CHANGELOG.md` and `wgpu-hal/src/vulkan/device.rs` change). The fallback path has no test at all.
-  2. [medium] Policy: the "description was automatically written by an Agent" box is checked, "I self-reviewed and fully understand this PR" is not checked, and the description says "the submitter's review and ownership attestation remain unchecked". The repository does not allow PRs that the contributor cannot vouch for. Same author as [#10922](https://github.com/gfx-rs/wgpu/issues/10922).
-  3. [low] `wgpu-hal/src/vulkan/device.rs:1046-1052` The new helper copies gpu-allocator's required-flags table, as the old `error_if_would_oom_on_resource_allocation` copies its preferred-flags table. Both break silently if gpu-allocator changes. The old function has a doc comment that states this risk. The new function has no doc comment.
-  4. [low] Behavior change for `GpuOnly`: if the main VRAM heap is over budget, the mask can leave only the small host-visible device-local (BAR) type, and the buffer goes there. This is probably acceptable, but the description does not mention it. Textures and acceleration structures still use the old reject-only check (`device.rs:1275`, `:2712`, `:3058`), which the description states.
-  5. [low] `CHANGELOG.md:338` The entry has no "By [@5andr0](https://github.com/5andr0) in [#10926](https://github.com/gfx-rs/wgpu/issues/10926)" attribution and has an extra blank line after it.
-- **To land:** author confirms review and ownership (checks the box, or a maintainer accepts the PR as is); add the tests that the description describes, or remove the claim; add a doc comment; fix the CHANGELOG entry.
-- **Move-along action:** decide whether to review a PR with an agent-written description and no self-review attestation; if yes, assign a Vulkan reviewer.
+  1. [low] `wgpu-hal/src/vulkan/mod.rs:1595-1625` Correct, from code. Readers of `active` (`check_active` under `pool.read()`, `wait` in `device.rs:3248`, `maintain` under `pool.write()`) all take the pool lock, so they cannot see the new fence until the submit is done. `wait` drops the read lock before `vkWaitForFences`, so a long wait does not block the submit. The only lock taken while the guard is held is `next_submit_chain`, which no path takes before the fence pool, so there is no lock-order problem.
+  2. [low] Polls (`get_fence_value`) now block for the length of `vkQueueSubmit` on these devices. This is the cost of the fix and is small.
+  3. [low] No test; it needs a Vulkan 1.0 device without timeline semaphores. The author tested by hand and saw the validation warnings go away.
+  4. [low, interaction] [#10840](https://github.com/gfx-rs/wgpu/issues/10840) turns off timeline semaphores on every Arm proprietary Mali driver, which moves those devices onto the `FencePool` path that has this race. The two PRs do not touch the same lines and do not conflict. Land [#10960](https://github.com/gfx-rs/wgpu/issues/10960) first, or together with [#10840](https://github.com/gfx-rs/wgpu/issues/10840).
+  5. [low] PR template: "I self-reviewed and fully understand this PR" is checked. "LLM Use?" says agents helped to find the problem. There are no agent-disclosure boxes.
+- **To land:** a member approval on the head. Changelog entry may need to move to a fragment if [#10984](https://github.com/gfx-rs/wgpu/issues/10984) lands first. Can land before the release.
+- **Move-along action:** approve and queue.
+- **Depth:** full
+
+#### [#10979](https://github.com/gfx-rs/wgpu/issues/10979): Fix running debug builds, GPU tests and the CTS on Oculus Quest 1 (Adreno 540) ([@matthargett](https://github.com/matthargett))
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-18.
+- **Verdict:** Needs a bit of work
+- **Waiting on:** author (answer inner-daemons' OOM-test concern; consider a split). Then a member review of the `deno_webgpu` part, which inner-daemons did not review. Maintainer policy decision on agent authorship.
+- **Last activity:** 2026-11-18, inner-daemons, `COMMENTED` review: concern about the OOM-test approach, nit on a hal comment, has not reviewed `deno_webgpu`.
+- **Approvals:** none. GitHub says `REVIEW_REQUIRED`.
+- **CI:** green
+- **Summary:** Four independent commits found while running the CTS and GPU tests on an Oculus Quest 1. (1) hal Vulkan: if `vkCreateInstance` returns `VK_ERROR_EXTENSION_NOT_PRESENT` and `VK_EXT_debug_utils` was requested, create the instance again without it and without the messenger. (2) Tests: the six OOM GPU tests return early on Vulkan devices without `VK_EXT_memory_budget`. (3) `deno_webgpu`: set `InstanceFlags::AUTOMATIC_TIMESTAMP_NORMALIZATION`, so timestamps are in nanoseconds. (4) `deno_webgpu`: report buffer and texture sizes to V8 with `adjust_amount_of_external_allocated_memory`, so V8 collects unreferenced GPU resources sooner. Changelog entries for (1), (3) and (4).
+- **Findings:**
+  1. [medium] `tests/tests/wgpu-gpu/oom.rs:38-60` and each `run_async` The early `return` makes a skipped test report as passed, on every Vulkan device without `VK_EXT_memory_budget`, not only the Quest. inner-daemons raised this on 2026-11-18. The claim that Vulkan predicts OOM only with the extension is correct (`wgpu-hal/src/vulkan/device.rs:892-898`, `get_memory_properties` returns `None`). A skip that the harness reports, or a narrower device skip, is better.
+  2. [low] `deno_webgpu/external_memory.rs:16-28`, `:63-68` from code: sizes released by finalizers wait in the device's `PendingRelease` until the next buffer or texture allocation or `destroy()` on the same device. If the device is collected first, those bytes are never released, so V8's external-memory count drifts up across many devices (the CTS makes many). `GPUDevice::destroy` (`deno_webgpu/device.rs:151`) does not flush either. The count also includes buffers and textures that fail validation (for example a huge invalid `size`), until they are destroyed or collected.
+  3. [low] `wgpu-hal/src/vulkan/instance.rs:997-1070` The retry is correct, from code: the debug-utils create info and the validation features are pushed onto a copy of the caller's `create_info` on each pass, so the retry does not chain the removed messenger. `debug_utils` and `extensions` are both cleared, so `from_raw` sees no debug utils. If a `CreateInstanceCallback` adds a different missing extension, the code retries once without debug utils and logs a misleading warning before the real error.
+  4. [low] The `deno_webgpu` changes are Deno-specific, which the project rules require: (3) is an embedder choice that `deno_webgpu` makes when it creates its own instance (`deno_webgpu/lib.rs:198-200`), and (4) is V8 accounting. Neither affects Firefox or the `wgpu` API.
+  5. [low] The PR batches four unrelated fixes. The "PR is minimal" box is checked, but the author offers to split. The hal retry is small and could land alone; the OOM-test change needs rework.
+  6. [low] Agent disclosure: "This PR was automatically created by an Agent" is checked. The "description was automatically written by an Agent" line is written as `- []`, which does not render as a checkbox, but "LLM Use?" says Claude Mythos found the issues, wrote the code, ran the checks and drafted the description and commit messages. The author says they read, edited and verified on the device. A maintainer must decide if this is within the policy on agentic PRs.
+- **To land:** answer the OOM-test concern (report a skip, or narrow it); decide on the agent-authorship policy; preferably split the hal retry into its own PR; a member reviews the `deno_webgpu` part. The hal retry alone can land before the release; the whole PR is not likely to.
+- **Move-along action:** ask the author to split out the hal retry commit and to rework the OOM skip.
 - **Depth:** full
 
 ## GLES, DX12, present and platform
 
 #### [#8388](https://github.com/gfx-rs/wgpu/issues/8388): Implement DXGI Swapchain on Vulkan ([@cwfitzgerald](https://github.com/cwfitzgerald))
-- **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-11-13.
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-15.
 - **Verdict:** Status note
-- **Waiting on:** andyleiserson (re-review). cwfitzgerald answered the review threads on 11-13; the fixes are in fixup commits that will be squashed after approval.
-- **Last activity:** 2026-11-13, cwfitzgerald, push of the head. 0 days.
-- **Approvals:** none
-- **CI:** green (66 pass, 3 skipped) on the new head; mergeable (the old conflict is gone).
-- **Summary:** Adds a DXGI swapchain path to the Vulkan backend on Windows. The PR is ready for review and has review state CHANGES_REQUESTED.
-- **Findings:** none (status only). Open review threads: 27 of 46 are unresolved (same count as the old report). The author has not replied to them in the threads. Some of them may be fixed by the 30 new commits. I did not check this.
-- **To land:** check the 27 threads against the new commits; resolve or answer each; re-request review from andyleiserson; get an approval.
-- **Move-along action:** Reply to andyleiserson's threads and re-request his review, since the 30 new commits probably answer many of them.
-- **Depth:** status only
+- **Waiting on:** andyleiserson (re-review). His only review is CHANGES_REQUESTED from 2026-10-07. He is an assignee, but GitHub does not show a pending review request for him. inner-daemons has a pending review request.
+- **Last activity:** 2026-11-15, cwfitzgerald, force-push with six new fixup commits (head `ac9137b13`).
+- **Approvals:** none (review decision CHANGES_REQUESTED)
+- **CI:** green (66 pass, 1 skipped).
+- **Summary:** Adds a DXGI flip-model swapchain path to the Vulkan backend on Windows. The fixes for the review are in fixup commits, which the author will squash after approval.
+- **Findings:**
+  1. [low] `wgpu-hal/src/vulkan/swapchain/dxgi.rs:829,1078,1202` The fixup `ac9137b13` replaces `waited_for_frame: bool` with `pending_present_count`. The count starts at `maximum_frame_latency`, an acquire waits and decrements only if the count is above 0, and only a successful present increments it. This is the same logic as the DX12 code from merged [#10511](https://github.com/gfx-rs/wgpu/issues/10511) (`wgpu-hal/src/dx12/mod.rs:1156,1384,1502`). The Vulkan path makes a new swapchain and waitable on each configure (no `ResizeBuffers`), so resetting the count on configure is correct. On a wait timeout, the count does not change and the acquire returns `Timeout`, which is also correct. Checked from code.
+  2. [low] Review threads: 3 of 46 are unresolved. In all 3, the last comment is from cwfitzgerald.
+- **To land:** re-request a review from andyleiserson; get an approval; squash the fixups.
+- **Move-along action:** Re-request the review from andyleiserson, so GitHub shows it in his queue.
+- **Depth:** status only (plus a correctness check of fixup `ac9137b13`)
 
 #### [#10505](https://github.com/gfx-rs/wgpu/issues/10505): gles/wgl: pump hidden-window messages while awaiting shutdown ([@acarl005](https://github.com/acarl005))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-11-07.
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-07.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** maintainer (cwfitzgerald, assigned). No review is posted, so the author does not know about the findings.
 - **Last activity:** 2026-11-07, acarl005, merged trunk into the branch. 6 days.
@@ -1371,43 +1405,9 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 - **Move-along action:** post a review with findings 1, 2 and 4.
 - **Depth:** status only (verified that the PR diff is unchanged and the old findings still apply)
 
-#### [#10511](https://github.com/gfx-rs/wgpu/issues/10511): fix(dx12): fix 1 second hang for dropped `SurfaceTexture`s ([@DouglasDwyer](https://github.com/DouglasDwyer))
-- **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; mergeable; CI pending; last update 2026-11-14.
-- **Verdict:** Needs a bit of work
-- **Waiting on:** maintainer (no reviews yet). cwfitzgerald merged trunk on 11-14.
-- **CI:** pending on the head of 11-14.
-- **Summary:** Adds `pending_present_count` to the DX12 swapchain, so that `acquire_texture` waits on the frame-latency waitable object only when a matching present exists. This stops the 1 s timeout when acquired textures are dropped without a present (common during resize).
-- **Findings:**
-  1. [medium] `wgpu-hal/src/dx12/mod.rs:1408` Each `configure` resets the counter to `maximum_frame_latency`, also on the `ResizeBuffers` path. That path keeps the old swapchain, so it probably keeps the same waitable semaphore. Example: acquire-and-drop until the counter is 0, so the semaphore is also drained. Then resize. The counter is back at max but the semaphore is still 0, so the next acquire can stall for 1 s again. This is the resize case the PR targets. Ask the author to confirm that `ResizeBuffers`/`SetMaximumFrameLatency` resets the semaphore count. If it does not, keep the counter across a resize (clamped to the new max) and reset it only on the new-swapchain path. The author's repro passed, so the reset may be real. It is not documented.
-  2. [low] `wgpu-hal/src/dx12/mod.rs:1645` If no present is pending, the code skips the wait with no throttling. That is the intent, but a short comment on the invariant (waits <= presents + max latency) would help future readers. The field doc comment partly covers this.
-  3. [low] No test. A GPU test is hard here (it needs a real window). The manual repro is linked. Acceptable.
-  4. [info] Overlap with [#10548](https://github.com/gfx-rs/wgpu/issues/10548): both PRs edit the `SwapChain` struct and the tail of `Queue::present` in `wgpu-hal/src/dx12/mod.rs`. The textual conflict is trivial. See [#10548](https://github.com/gfx-rs/wgpu/issues/10548) for the semantic interaction.
-- **To land:** answer or fix finding 1.
-- **Depth:** full
-
-**Deeper review ([#10511](https://github.com/gfx-rs/wgpu/issues/10511): fix(dx12): fix 1 second hang for dropped `SurfaceTexture`s):**
-
-> - **Open questions from the first pass:**
->   1. Does the frame latency waitable object keep its semaphore count across `IDXGISwapChain::ResizeBuffers`? The PR resets its counter to `maximum_frame_latency` on every `configure`.
-> - **Answers:**
->   1. [unknown: the docs do not say; the evidence points to "count is kept"] Microsoft docs for `GetFrameLatencyWaitableObject`, `IDXGISwapChain2::SetMaximumFrameLatency`, `ResizeBuffers` and "Reduce latency with DXGI 1.3 swap chains" do not describe the object's count, and do not say that `ResizeBuffers` resets it. They do not even call it a semaphore. Secondary evidence:
->      - vkd3d-proton (`libs/vkd3d/swapchain.c`) models the object as a semaphore that starts at count 1. `SetFrameLatency` releases only the increase (`MaxLatency - old`), with the comment "Only increasing the latency is handled here; apparently it is the application's responsibility to reduce the semaphore value". Its `ChangeProperties` (the `ResizeBuffers` path) drains the present queue and does not touch the semaphore. Every completed present releases 1.
->      - In wgpu, the `ResizeBuffers` path keeps the same `IDXGISwapChain3` (`wgpu-hal/src/dx12/mod.rs:1411-1427` at the PR head). It closes our handle in `release_resources` (`:1322`) and gets a new handle with `GetFrameLatencyWaitableObject` (`:1591`). The new handle most likely points at the same kernel object. `SetMaximumFrameLatency` is called with the same value (`:1584`), so under the vkd3d model nothing is released.
->
->      If the count is kept, the stall comes back. Example with `maximum_frame_latency = 2`: acquire+drop (counter 1, semaphore 1), resize (counter reset to 2, semaphore 1), acquire+drop (counter 1, semaphore 0), resize (counter 2, semaphore 0), acquire: the counter allows a wait, the semaphore is 0, and no present is in flight, so the wait times out after 1 s. This is the resize-with-dropped-frames case the PR targets.
->
->      The direction of the error matters. If the counter is too high, it stalls for 1 s. If it is too low, one wait is skipped and one frame is not throttled. So keeping the counter across `ResizeBuffers` is safe whichever way Windows behaves. Resetting it is safe only if Windows resets the semaphore.
->
->      How the author can test this on Windows: set `Dx12UseFrameLatencyWaitableObject::Wait` and `maximum_frame_latency = 2`. Acquire and drop two textures, so the semaphore is drained. Call `configure` with a new size, which takes the `ResizeBuffers` path. Then get `Surface::waitable_handle()` (`wgpu-hal/src/dx12/mod.rs:547`, through `as_hal`) and call `WaitForSingleObject(h, 0)`. `WAIT_TIMEOUT` means the count is kept. `WAIT_OBJECT_0` means it was reset. As an end-to-end check, run the acquire+drop / resize / acquire+drop / resize / acquire sequence and time the last acquire.
-> - **New findings:**
->   1. [low] `wgpu-hal/src/dx12/mod.rs:1645-1648` `SwapChain::wait` returns `Ok(false)` on timeout. The new code still decrements the counter, but the semaphore was not consumed, so the counter is now 1 too low. This is the safe direction (one wait is skipped later, with no stall). The bool result was ignored before this PR too. Decrement only on `Ok(true)`, or leave it and say so in a comment.
-> - **Verdict change:** none (Needs a bit of work). Finding 1 from the first pass now has a concrete fix that does not depend on the unknown.
-> - **Move-along action change:** Ask the author to keep `pending_present_count` across the `ResizeBuffers` path, and to reset it only when a new swapchain is created (see the combined change under [#10548](https://github.com/gfx-rs/wgpu/issues/10548)). Optional: ask them to run the probe above and record the result in a comment.
-
 #### [#10515](https://github.com/gfx-rs/wgpu/issues/10515): Fix support for Emscripten (v6.0.10+) by making it use `web-sys` ([@almarklein](https://github.com/almarklein))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; mergeable; CI red (4 failed); last update 2026-10-27.
+- **State (2026-11-18):** ready; mergeable; CI red (4 failed: Clippy Emscripten, Test Linux x86_64, Test Mac aarch64, Test Windows x86_64); last update 2026-10-27.
 - **Verdict:** Needs a lot of work
 - **Waiting on:** author. grovesNL (2026-10-07) proposed option 1: make Emscripten identical to `wasm32-unknown-unknown` for both WebGL and WebGPU, which needs a small glow change. The author agreed on 2026-10-09 to "have a stab" and has not pushed since 2026-10-07.
 - **Last activity:** 2026-10-27, ErichDonGubler, changed their approval to CHANGES_REQUESTED because CI is red. 10 days. (andyleiserson dequeued the PR from Mergify on 2026-10-16.)
@@ -1423,91 +1423,9 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 - **Move-along action:** ping author. Ask whether they still plan option 1. If not, close it in favour of a maintainer or community PR (DouglasDwyer has a prototype branch; grovesNL prototyped option 1).
 - **Depth:** full
 
-#### [#10522](https://github.com/gfx-rs/wgpu/issues/10522): hal: Add GLES DMA-BUF import ([@terjdev](https://github.com/terjdev))
-- **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-11-13.
-- **Verdict:** Needs a bit of work
-- **Waiting on:** author. andyleiserson requested changes on 11-13 with minor notes: report GL errors in the import path, also require `GL_OES_EGL_image`, move `dmabuf.rs` into `gles/egl.rs`, add the CHANGELOG attribution.
-- **Last activity:** 2026-11-04, andyleiserson, said "started reviewing ... should be able to finish soon". 2 days.
-- **Approvals:** none (inner-daemons and HigherOrderLogic left COMMENTED reviews; both say they are not maintainers)
-- **CI:** green (2026-10-24)
-- **Summary:** Adds `gles::Device::texture_from_dmabuf_fd` (single-plane DMA-BUF to EGLImage to `GL_TEXTURE_2D`, zero copy) and `gles::ImportTextureError`. The EGL extension caps are cached in `PrivateCapabilities`. Scope was reduced to only this after maintainer discussion (2026-10-21 meeting).
-- **Findings:**
-  1. [medium] No tests. The description still says it has tests and mentions a `TextureBacking` field, but both were removed when the scope was reduced. Andy asked (2026-10-15) for tests that export a DMA-BUF from Vulkan, not from `libgbm`. Update the description, and either add the test or agree to defer it.
-  2. [low] `wgpu-hal/src/gles/device.rs` `glEGLImageTargetTexture2DOES` is resolved only through `eglGetProcAddress`, which can return non-null for unsupported functions. `GL_OES_EGL_image` is not checked in the GL extension string. Add it to the adapter-time cap check.
-  3. [low] `CHANGELOG.md` The entry has no "By [@terjdev](https://github.com/terjdev) in [#10522](...)" attribution, which is the repo convention.
-  4. [low] Only `GL_TEXTURE_2D` is used. Some drivers import YUV and tiled formats only as `GL_TEXTURE_EXTERNAL_OES`. This is acceptable for the single-plane RGB scope, but the doc comment could say so.
-- **To land:** Andy's review. Update the description. Add the attribution. Optionally add the OES_EGL_image check and the test (or an issue for the test).
-- **Move-along action:** ping andyleiserson (they said they will finish soon; nothing else blocks).
-- **Depth:** full
-
-#### [#10548](https://github.com/gfx-rs/wgpu/issues/10548): fix(dx12): use DXGI_PRESENT_RESTART for new swapchains ([@DouglasDwyer](https://github.com/DouglasDwyer))
-- **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; mergeable; CI pending; last update 2026-11-14.
-- **Verdict:** Needs a bit of work
-- **Waiting on:** maintainer (no reviews yet). cwfitzgerald merged trunk on 11-14. The description says "Depends on [#10511](https://github.com/gfx-rs/wgpu/issues/10511)", but the diff does not contain [#10511](https://github.com/gfx-rs/wgpu/issues/10511)'s changes. They are two independent branches against trunk.
-- **CI:** pending on the head of 11-14.
-- **Summary:** The first `Present` after every `configure` uses `Present(1, DXGI_PRESENT_RESTART)`. This drops stale old-size frames, so DWM does not stretch them during a live resize. It is part of a smooth-resize approach that also needs a winit change.
-- **Findings:**
-  1. [medium] `wgpu-hal/src/dx12/mod.rs:1745-1765` The restart branch hard-codes sync interval 1 and ignores the computed `interval`/`flags`. For `Immediate`/`Mailbox`, the first frame after each configure now waits for vsync, and `DXGI_PRESENT_ALLOW_TEARING` is dropped. Since resize calls configure every frame, this changes Immediate-mode behavior for the whole resize. Use `Present(interval, flags | DXGI_PRESENT_RESTART)`. The author says one present at interval 1 worked for them. They did not say why the configured interval must be overridden.
-  2. [medium] Interaction with [#10511](https://github.com/gfx-rs/wgpu/issues/10511): after both land, the restart branch must also do `pending_present_count += 1`. Otherwise every resize loses one count, and acquire skips one wait. When you merge the second PR, put the increment after the `if/else`. It is also not verified whether presents that RESTART discards still signal the frame-latency waitable object. If they do not, the [#10511](https://github.com/gfx-rs/wgpu/issues/10511) counter is off by the number of discarded frames. Ask the author to check this, because they depend on both PRs together.
-  3. [low] `wgpu-hal/src/dx12/mod.rs:1745` The `if/else` duplicates the `Present` call and `Ok(())`. It can be one call with computed `(interval, flags)`. This also fixes finding 1.
-  4. [low] RESTART is applied to every swapchain kind and present mode on every configure, and also on the first present of a new swapchain (where nothing is queued). That is harmless but not necessary. The behavior is not gated, and the author tested only on their own Windows 10/11 machines.
-- **To land:** pass the configured interval and flags with `DXGI_PRESENT_RESTART`; land in order after [#10511](https://github.com/gfx-rs/wgpu/issues/10511) and fix the counter increment in the restart path; get an answer on discarded presents and the waitable object.
-- **Depth:** full
-
-**Deeper review ([#10548](https://github.com/gfx-rs/wgpu/issues/10548): fix(dx12): use DXGI_PRESENT_RESTART for new swapchains):**
-
-> - **Open questions from the first pass:**
->   1. Do presents that `DXGI_PRESENT_RESTART` discards still signal the frame latency waitable object?
->   2. What exact combined change do [#10511](https://github.com/gfx-rs/wgpu/issues/10511) and [#10548](https://github.com/gfx-rs/wgpu/issues/10548) need?
-> - **Answers:**
->   1. [unknown] The `DXGI_PRESENT` doc says only "the runtime will discard outstanding queued presents". It is "valid only for flip-model swap chains and full screen", and it is meant for "the previously queued presentation might have assumed that the window is an old size". Nothing says whether a discarded present releases the latency object. wgpu has no code comment on this. vkd3d-proton ignores `RESTART` (every present releases 1), so it gives no evidence. My reasoning, not verified: if discarded presents did not signal, any waitable-object app that uses `RESTART` would lose latency slots permanently and then hang, so DXGI probably retires them through the same path. Treat this as unproven.
->
->      Also unknown: whether anything is still queued when the `RESTART` present runs. `configure` calls `wait_for_present_queue_idle` and `ResizeBuffers` first, and `ResizeBuffers` may already flush the flip queue. The author's video shows a visible improvement, so something is probably discarded. The visible change could also come from the forced sync interval 1.
->
->      How the author can test this: use `maximum_frame_latency = 3` and Fifo. Do not wait on the object for this probe. Present 3 frames back to back, then present once with `RESTART`, then sleep about 200 ms so that everything retires. Count how many `WaitForSingleObject(h, 0)` calls succeed before the first `WAIT_TIMEOUT`. Use `IDXGISwapChain::GetFrameStatistics` / `GetLastPresentCount` (or PresentMon) to find how many presents were discarded. If the success count is lower by the number discarded, discarded presents do not signal.
->
->      If they do not signal, the [#10511](https://github.com/gfx-rs/wgpu/issues/10511) counter is too high by the number discarded after each resize, which is the stall direction. Then the counter cannot stay correct without knowing how many presents were discarded, and the design needs another answer (for example, do not use `RESTART` when `Wait` is selected).
->   2. Combined change (on top of both PRs, `wgpu-hal/src/dx12/mod.rs`):
->
->      In `Surface::configure`:
->      ```rust
->      // A new waitable object can be waited on `maximum_frame_latency` times before it stalls.
->      let mut pending_present_count = config.maximum_frame_latency as usize;
->      let swap_chain = match self.swap_chain.write().take() {
->          Some(sc) => {
->              // `ResizeBuffers` keeps the waitable object and its count.
->              pending_present_count = sc.pending_present_count;
->              let raw = unsafe { sc.release_resources() };
->              // ... ResizeBuffers as before ...
->      ```
->      The struct literal keeps `pending_present_count` and `restart_pending: true`. If the app raises `maximum_frame_latency` on a resize, the counter is too low (safe). Matching the increase exactly would need the old latency stored in `SwapChain`. That is extra complexity and is not needed.
->
->      In `Queue::present`, replace the `if/else` from [#10548](https://github.com/gfx-rs/wgpu/issues/10548) with one call:
->      ```rust
->      let (interval, mut flags) = match sc.present_mode { /* as before */ };
->      if mem::take(&mut sc.restart_pending) {
->          // Drop frames queued at the old size, so DWM does not stretch them.
->          flags |= Dxgi::DXGI_PRESENT_RESTART;
->      }
->
->      profiling::scope!("IDXGISwapchain3::Present");
->      unsafe { sc.raw.Present(interval, flags) }
->          .ok()
->          .into_device_result("Present")?;
->      sc.pending_present_count += 1;
->
->      Ok(())
->      ```
->      This keeps the configured interval and `ALLOW_TEARING` (interval 0 is required with `ALLOW_TEARING`, so `Present(1, RESTART)` must not be used for Immediate). It counts the `RESTART` present. For Fifo (the default) it is the same call the author tested (`Present(1, RESTART)`). `mem` is already imported in this file (`use core::{ffi, fmt, mem, ops::Deref}`).
-> - **New findings:** none.
-> - **Verdict change:** none (Needs a bit of work).
-> - **Move-along action change:** Ask the author to apply the combined change above when the two PRs are stacked, and to run the discard probe. Land [#10511](https://github.com/gfx-rs/wgpu/issues/10511) first.
-
 #### [#10554](https://github.com/gfx-rs/wgpu/issues/10554): gles/wgl: request an explicit core version from wglCreateContextAttribsARB ([@jimm98y](https://github.com/jimm98y))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; has conflicts; CI red (1 failed); last update 2026-10-25.
+- **State (2026-11-18):** ready; has conflicts; CI red (1 failed: Format & Typos); last update 2026-10-25.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** maintainer (Wumpf). On 2026-10-25 the author approved Wumpf's suggestion and asked "is there anything else I should do?". Nobody replied. The concrete fixes are mechanical, but the author is not a Rust developer and pushes from their fork's `trunk`, so maintainers cannot push.
 - **Last activity:** 2026-10-25, jimm98y, asked what else to do after Wumpf's CHANGES_REQUESTED review. 12 days.
@@ -1523,46 +1441,32 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 - **Depth:** full
 
 #### [#10775](https://github.com/gfx-rs/wgpu/issues/10775): feat(hal/dx12): Extension to restrict enumeration to a specific adapter LUID ([@andyleiserson](https://github.com/andyleiserson))
-- **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-11-04.
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-17.
 - **Verdict:** Needs a bit of work (a design decision is open; the code is in good shape)
-- **Waiting on:** maintainer. Andy asked for input on 2026-11-03 about the unsafe-to-construct `Extensions<T>` token plus a separate `request_adapters` argument. No reviewer is assigned and no review exists.
-- **Last activity:** 2026-11-04, andyleiserson, pushed "fix wasm" after their 2026-11-03 request for design input. 2 days.
-- **Approvals:** none
+- **Waiting on:** maintainer (design decision on the `Extensions<T>` token and the separate `request_adapters` argument; andyleiserson asked on 2026-11-03), then jimblandy and teoxoy (assigned on 2026-11-18).
+- **Last activity:** 2026-11-18, cwfitzgerald, assigned jimblandy and teoxoy. The last push was a rebase on 2026-11-17.
+- **Approvals:** none (review decision REVIEW_REQUIRED)
 - **CI:** green
-- **Summary:** Lands part of the [#10304](https://github.com/gfx-rs/wgpu/issues/10304) extension API. It adds `wgt::BackendMap`, `BackendAdapterOptionsMap`, an `Extensions<T>` token that is unsafe to construct, `hal::Api::AdapterOptions`, an `options` argument on `hal::Instance::enumerate_adapters`, `dx12::Dx12AdapterOptions { luid }`, and a new public `wgpu::Instance::request_adapters(options, extensions)`. It has a DX12 GPU test for select-by-LUID and for unknown-LUID giving `NotFound`. Fixes [#9932](https://github.com/gfx-rs/wgpu/issues/9932).
+- **Summary:** Lands part of the [#10304](https://github.com/gfx-rs/wgpu/issues/10304) extension API. It adds `wgt::BackendMap`, `BackendAdapterOptionsMap`, an `Extensions<T>` token that is unsafe to construct, `hal::Api::AdapterOptions`, an `options` argument on `hal::Instance::enumerate_adapters`, `dx12::Dx12AdapterOptions { luid }`, and a public `wgpu::Instance::request_adapters(options, extensions)`. A DX12 GPU test covers select-by-LUID and `NotFound` for an unknown LUID. Fixes [#9932](https://github.com/gfx-rs/wgpu/issues/9932).
 - **Findings:**
-  1. [medium] Design question for the maintainer: one token type `Extensions<T>` gates all extensions. Some are safe (`Dx12AdapterOptions` docs say "These options are safe"), and all still need `unsafe`. Andy says the `request_adapter` / `request_adapters` split bothers them more than the token. This needs a decision before merge, because it sets the pattern for every future extension ([#10304](https://github.com/gfx-rs/wgpu/issues/10304), [#4067](https://github.com/gfx-rs/wgpu/issues/4067)).
-  2. [low] `CHANGELOG.md` covers only the LUID filter. It does not mention the new public `wgpu::Instance::request_adapters`, `wgpu::Extensions`, `BackendAdapterOptionsMap`, or the breaking `hal::Instance::enumerate_adapters` signature (that matters for out-of-tree hal backends).
-  3. [low] `wgpu-hal/src/lib.rs` The doc on `Api::AdapterOptions` says "used with `request_adapter_ext`", but that function does not exist.
-  4. [low] `wgpu-core/src/instance.rs` `request_adapters` now has its own `profiling::scope!` and `api_log!` with the name "Instance::request_adapter". `request_adapter` calls it, so each call logs twice under the same name.
-- **To land:** a design decision on the token and API shape. CHANGELOG entries for the new public API. A fix for the stale doc reference.
-- **Move-along action:** decide whether the `Extensions<T>` token plus separate-argument shape is the extension pattern, then review (or assign a reviewer).
-- **Depth:** targeted (read the core, hal, wgpu API surface, DX12 filter, test and the first half of `wgpu-types/src/backend.rs`; skipped the `backend_map_type!` / `adapter_options!` macro bodies and the per-backend boilerplate)
-
-**Deeper review ([#10775](https://github.com/gfx-rs/wgpu/issues/10775): feat(hal/dx12): Extension to restrict enumeration to a specific adapter LUID):**
-
-> - **Open questions from the first pass:**
->   1. Review the skipped `backend_map_type!` / `backend_type!` macro bodies and the per-backend boilerplate.
->   2. Can safe code construct a non-empty `Extensions<T>`, or smuggle an extension to the wrong backend?
-> - **Answers:**
->   1. [reviewed] `wgpu-types/src/backend.rs:390-447` `backend_map_type!`: a `const` assert ties it to the crate root. It generates a `CheckTrait`/`CheckStruct<const B: usize>` pair, so two value types for one backend in the same crate fail with a conflicting-impl error. The inner macro implements `Sealed<M>`, `BackendMapValue<M>` (with `BACKEND`) and `DynBackendMapValue<M>`. The matcher takes the struct body as one `tt`, so braced and unit structs work. Tuple and generic structs do not, which is acceptable. `Backend` discriminants are 0..=5 and `Backend::COUNT` is 6 (`backend.rs:80`), so `T::BACKEND as usize` stays in bounds. The per-backend boilerplate (Vulkan, Metal, GL, Noop types, an `_options` parameter on each `enumerate_adapters`, two example call sites passing `None`) is mechanical and correct. The DX12 filter compares `GetDesc().AdapterLuid` and drops an adapter if `GetDesc` fails, with an error log. That is reasonable.
->   2. [refuted: no safe construction and no wrong-backend delivery; a panic is possible] `wgpu-types/src/tokens.rs:13`: `Extensions<T>(Option<T>)` has a private field. The only constructors are `Default` (empty) and `unsafe fn new` (`:27`). It derives `Clone`/`Copy`/`Eq`/`PartialEq`/`Debug`, which cannot make a new non-empty value. It implements `Deref` to `Option<T>` (`:32`) and not `DerefMut`, so safe code cannot change the contents. `BackendMap` has no interior mutability. So safe code cannot construct a non-empty token or change one after construction.
->
->      Wrong backend: `BackendMap::set` indexes by `T::BACKEND`, and the hal reads with `map.get::<A::AdapterOptions>()` (`wgpu-hal/src/dynamic/instance.rs:64`). `get` downcasts through `Any` and checks the `TypeId`, so a backend can never receive another type as its own options. The seal is only partial: `__backend_map_private` is `pub` (`backend.rs:235`, "quasi-seal"). A downstream crate can implement `Sealed`/`BackendMapValue` for its own type with `BACKEND = Dx12` and put it in the map. Then `get` reaches `downcast_ref::<T>().unwrap()` (`backend.rs:298`, also `remove` at `:306`) and panics during `request_adapters`. This needs deliberate misuse, and an `unsafe { Extensions::new(..) }` call to get there, and the result is a panic, not UB. Using `.and_then(|v| v.downcast_ref())` (ignore foreign values) or documenting the panic would close it.
-> - **New findings:**
->   1. [low-medium] `wgpu/src/backend/wgpu_core.rs:854` changes `request_adapter` from `apply_limit_buckets: false` to `options.apply_limit_buckets`. On trunk, `wgpu::Instance::request_adapter` ignores the user's `apply_limit_buckets` (`wgpu-types/src/adapter.rs:58`). This PR quietly fixes that, so adapters change for users who set it. It is user-visible, it is not in the CHANGELOG, and it is not related to the LUID filter. It should be its own commit with a CHANGELOG entry.
->   2. [low] `wgpu-types/src/backend.rs:480` `backend_type!` is `#[macro_export]`ed (public API) but nothing uses it. Its doc example names `wgt::BackendDeviceOptions`, which does not exist. Drop it until a user exists.
->   3. [low] `backend.rs:298,306` the `unwrap` panic described in answer 2.
->   4. [nit] `BackendAdapterOptions` (`wgpu-types/src/adapter.rs`) is only a type-level tag for `BackendMap<dyn BackendAdapterOptions>`. No value type implements it. The `BackendMap` doc says that `SomeTrait` "is implemented by the value type for each backend", which is not true here. Fix the doc or implement the trait in the inner macro.
-> - **Verdict change:** none (Needs a bit of work; the design decision on the token is still open). The token itself is sound as an "unsafe to construct" gate.
-> - **Move-along action change:** none. Add new finding 1 to the review notes.
+  1. [medium] Design question for the maintainer: one token type `Extensions<T>` gates all extensions. Some are safe (the `Dx12AdapterOptions` docs say "These options are safe"), but all need `unsafe`. andyleiserson says that the `request_adapter` / `request_adapters` split bothers him more than the token. This sets the pattern for all future extensions ([#10304](https://github.com/gfx-rs/wgpu/issues/10304), [#4067](https://github.com/gfx-rs/wgpu/issues/4067)), so decide it before merge.
+  2. [low-medium] `wgpu/src/backend/wgpu_core.rs:882` `request_adapter` passes `options.apply_limit_buckets` where trunk passes `false` (trunk `wgpu_core.rs:850`). This fixes a separate bug: trunk ignores the user's `apply_limit_buckets`. It changes the adapter limits for users who set it, is not in the changelog entry, and is not related to the LUID filter. Make it a separate commit with its own changelog entry.
+  3. [low] The changelog entry covers only the LUID filter. It does not mention the public `wgpu::Instance::request_adapters`, `wgpu::Extensions`, `BackendAdapterOptionsMap`, or the breaking `hal::Instance::enumerate_adapters` signature (this matters for out-of-tree hal backends).
+  4. [low] `wgpu-types/src/backend.rs:298,306` `BackendMap::get` and `remove` call `downcast_ref::<T>().unwrap()` (and the `remove` equivalent). `__backend_map_private` is `pub` (`backend.rs:235`), so a downstream crate can implement `Sealed`/`BackendMapValue` for its own type with the DX12 backend key, and `request_adapters` then panics. This needs deliberate misuse and an `unsafe { Extensions::new(..) }`, and it is a panic, not UB. Safe code cannot make a non-empty `Extensions<T>` or change one.
+  5. [low] `wgpu-hal/src/lib.rs:693` The doc on `Api::AdapterOptions` says "used with `request_adapter_ext`", but that function does not exist.
+  6. [low] `wgpu-core/src/instance.rs:454,609` `request_adapter` and `request_adapters` both use `profiling::scope!` and `api_log!` with the name "Instance::request_adapter". `request_adapter` calls `request_adapters`, so each call logs twice under one name.
+  7. [low] `wgpu-types/src/backend.rs:477` `backend_type!` is `#[macro_export]`ed (public API), but nothing uses it, and its doc example names `wgt::BackendDeviceOptions`, which does not exist. The `BackendMap` doc says that `SomeTrait` "is implemented by the value type for each backend", which is not true for `BackendAdapterOptions`.
+  - The rebase of 2026-11-17 changed only the `wgpu/src/lib.rs` import lists (adds `Rect`) and the changelog context. All other patches are identical (checked with `git range-diff`).
+- **To land:** a design decision on the token and API shape; a split of the `apply_limit_buckets` change; changelog entries for the new public API; a fix for the stale doc reference; a member review. Not reasonable before the release.
+- **Move-along action:** Decide whether the `Extensions<T>` token plus separate-argument shape is the extension pattern, and tell jimblandy and teoxoy before they review.
+- **Depth:** targeted (verified that the rebase changed only imports and changelog context; findings carried from the 2026-11-06 full and deeper review and spot-checked at the new head)
 
 #### [#10778](https://github.com/gfx-rs/wgpu/issues/10778): Make `wayland-sys`'s `dlopen` feature togglable ([@HigherOrderLogic](https://github.com/HigherOrderLogic))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; mergeable; CI red (15 failed); last update 2026-10-29.
+- **State (2026-11-18):** ready; mergeable; CI red (15 failed: API Operation Linux x86_64, API Validation Linux x86_64, Clippy Android aarch64, Clippy IOS aarch64); last update 2026-10-29.
 - **Verdict:** Needs a lot of work
-- **Waiting on:** author (CI red). No reviewer is assigned and nobody has commented. A maintainer decision on whether to accept the feature is also needed.
+- **Waiting on:** maintainer: decide if the feature is wanted. No maintainer has replied. Then the author fixes CI.
 - **Last activity:** 2026-10-29, HigherOrderLogic, opened the PR. 8 days.
 - **Approvals:** none
 - **CI:** red: Clippy Linux x86_64/aarch64, Clippy MacOS x86_64/aarch64, Clippy IOS, Clippy Android aarch64, Clippy OpenHarmony, Clippy cts_runner, Core MSRV Linux/MacOS, Test Linux x86_64, Test Mac aarch64, API Validation/Operation Linux, Other Linux. Related. When the feature is off, `wayland-sys` (a `cfg(unix)` dep) links to libwayland at compile time on every unix target.
@@ -1578,7 +1482,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10866](https://github.com/gfx-rs/wgpu/issues/10866): Detach GLES renderbuffers when reusing draw framebuffers ([@shtse8](https://github.com/shtse8))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI red (1 failed); last update 2026-11-06.
+- **State (2026-11-18):** ready; mergeable; CI red (1 failed: Test Mac aarch64); last update 2026-11-06.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** maintainer (no reviewer, no assignee)
 - **Last activity:** 2026-11-06, shtse8, commented on the Mac CI failure. 7 days.
@@ -1595,32 +1499,29 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 - **Move-along action:** review (small hal change plus one test).
 - **Depth:** full
 
-#### [#10922](https://github.com/gfx-rs/wgpu/issues/10922): dx12: add opt-in DXC f32 denormal modes ([@5andr0](https://github.com/5andr0))
-- **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-11-11.
-- **Verdict:** Needs a lot of work
-- **Waiting on:** maintainer, for a design decision (does wgpu want a DX12-only denormal option?) and a policy decision. No reviewer, no assignee.
-- **Last activity:** 2026-11-11, 5andr0, marked ready for review. 2 days.
-- **Approvals:** none
-- **CI:** green; mergeable
-- **Summary:** Adds `Dx12BackendOptions::dxc_denormal_mode: Option<DxcDenormalMode>` (`Any`, `Preserve`, `FlushToZero`), re-exported from `wgpu`. When set, DXC gets `-denorm <mode>`, the mode goes into the shader cache key, and instance creation fails if FXC is in use. Shader compilation fails below shader model 6.2. The PR also moves the DXC argument list into a helper `dxc_arguments` and adds about 230 lines of tests.
+#### [#10981](https://github.com/gfx-rs/wgpu/issues/10981): Prefer an 8-bit-per-channel EGL config when choosing the GLES framebuffer configuration ([@Victorbs-01](https://github.com/Victorbs-01))
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-18.
+- **Verdict:** Needs a bit of work
+- **Waiting on:** maintainer (first review; policy decision on an agent-written PR).
+- **Last activity:** 2026-11-18, Victorbs-01, opened the PR.
+- **Approvals:** none. GitHub says `REVIEW_REQUIRED`.
+- **CI:** green
+- **Summary:** In `choose_config`, each EGL tier first asks for a config with `RED_SIZE`/`GREEN_SIZE`/`BLUE_SIZE` 8. If that gives no config, it uses the original attribute list. The cause: SwiftShader on the Android 11 emulator lists an RGB565 config first when no alpha is requested, so presented colors were quantized. Changelog entry added.
 - **Findings:**
-  1. [high] Policy: the description says "This is an agent-written draft" and "The submitting human remains responsible for ... writing the final significant description". That was not done. "I self-reviewed and fully understand this PR" is not checked. Same author as [#10926](https://github.com/gfx-rs/wgpu/issues/10926).
-  2. [medium] Design: there is no linked issue and no concrete use case. Denormal behavior is a cross-backend topic (Vulkan has `shaderDenormPreserveFloat32` and `shaderDenormFlushToZeroFloat32` through `SPV_KHR_float_controls`). A DX12-only public field in `wgpu-types` fixes the API shape without that discussion. A maintainer should decide whether wgpu wants this.
-  3. [medium] `wgpu-hal/src/dx12/shader_compilation.rs:145-146` On a device whose shader model is below 6.2, an explicit mode makes every pipeline creation fail late with `PipelineError::Linkage`. The device is still created and reports no problem. A check at adapter or device creation would give an earlier, clearer error. Reasoned from code.
-  4. [low] `wgpu-hal/src/dx12/instance.rs:51-61` The `StaticDxc` without `static_dxc` pre-check is redundant: `new_static_dxc` already fails in that build. It only changes the error message.
-  5. [low] Complexity: about 370 changed lines in `shader_compilation.rs` for one compiler flag. The `#[ignore]` test `denormal_actual_dxc` prints full disassembly and needs a DLL in the working directory. `typos.toml` gains an exception (`Ges`) only for a test string.
-  6. [low] `CHANGELOG.md:195-197` The entry wraps over three lines, unlike the other entries, and has no "By [@5andr0](https://github.com/5andr0) in [#10922](https://github.com/gfx-rs/wgpu/issues/10922)" attribution.
-  7. [low] Adding a public field to `Dx12BackendOptions` breaks exhaustive struct literals. The description says this. The CHANGELOG does not.
-- **To land:** maintainer decides on the API (and whether it should be cross-backend); author writes the description and attests review; move the shader-model check earlier; reduce the tests; fix the CHANGELOG.
-- **Move-along action:** decide whether wgpu wants a DX12-only denormal option. If not, close and point to a design issue.
-- **Depth:** full (did not check the DXC `-denorm` values against DXC sources; they match the documented values `any`, `preserve`, `ftz`)
+  1. [medium] `wgpu-hal/src/gles/egl.rs:155-171` from code and the EGL sort rules: EGL treats a color size as a minimum and, for each color size in the request, sorts configs with more color bits first. Before this PR no color size was requested, so that rule did not apply. Now a driver that lists 10-bit configs (for example RGB10_A2 on Mesa) can return one first. The change applies to every EGL platform (Linux, Android, ANGLE), not only SwiftShader. The only test is one emulator. Ask the author to check this, or to pick the first config with exactly 8 bits from a full `choose_config` list.
+  2. [low] `wgpu-hal/src/gles/egl.rs:167-170` The `_ =>` arm also catches an `Err` from the 8-bit request and retries without a log. The original request then logs its own error, so the effect is small.
+  3. [low] No automated test. The description says "Lavapipe control run on the same emulator image: no behavior change", but Lavapipe is a Vulkan driver and does not use this EGL code.
+  4. [low] Agent disclosure: both "automatically created by an Agent" and "description was automatically written by an Agent" are checked. "LLM Use?" says an agent wrote the code and the description, and the human reviewed and approves it. The self-review box is checked. First-time contributor. A maintainer must decide if this is within the policy on agentic PRs.
+- **To land:** a policy decision on agent authorship; an answer on the 10-bit config ordering. Can land before the release only if both are settled this week.
+- **Move-along action:** ask the author about configs with more than 8 bits per channel on desktop Mesa.
+- **Depth:** full (two-file diff)
 
 ## Core and API
 
 #### [#10098](https://github.com/gfx-rs/wgpu/issues/10098): Add immediates support to WebGPU and remove `Features::IMMEDIATES` ([@beicause](https://github.com/beicause))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-09-18.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-09-18.
 - **Verdict:** Needs a lot of work
 - **Waiting on:** author (no activity since [@cwfitzgerald](https://github.com/cwfitzgerald)'s 2026-09-18 comment asking to keep `Features::IMMEDIATES`. [@cwfitzgerald](https://github.com/cwfitzgerald) and [@inner-daemons](https://github.com/inner-daemons) have CHANGES_REQUESTED. The author invited [@czoli1976](https://github.com/czoli1976) to open a follow-up PR, but none exists yet.)
 - **CI:** green, but stale (base from August 2026; probably conflicts with trunk now)
@@ -1636,7 +1537,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10155](https://github.com/gfx-rs/wgpu/issues/10155): perf(core): reuse the acceleration structure build scratch buffer ([@mstampfli](https://github.com/mstampfli))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-10-06.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-10-06.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** author. On 2026-09-04 Vecvec asked for a policy that releases or shrinks the cached buffer after many builds that use only a small part of it. On 2026-10-06 Vecvec asked "are you still keen to pursue this". The author has not answered.
 - **Last activity:** 2026-10-06, Vecvec, asked the author whether they still want to continue. 31 days. The author's last activity was 2026-09-03.
@@ -1653,7 +1554,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10438](https://github.com/gfx-rs/wgpu/issues/10438): Add `create_render_pipeline_async` and `create_compute_pipeline_async` to `Device` ([@abdymazhit](https://github.com/abdymazhit))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-11-04.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-11-04.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** maintainer (author asked [@cwfitzgerald](https://github.com/cwfitzgerald) for review on 2026-10-24; [@sagudev](https://github.com/sagudev) approved; the two open threads are addressed but not resolved). Also needs a rebase (merge state "dirty").
 - **CI:** green (66 success). CI does not run the WebGPU backend. The author tested the WebGPU path by hand in Chrome, and two downstream users run it in production.
@@ -1669,7 +1570,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10591](https://github.com/gfx-rs/wgpu/issues/10591): [core] avoid allocation for single-region texture copies ([@pbkx](https://github.com/pbkx))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-10-21.
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-10-14.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** maintainer (decide if the change is wanted; [@inner-daemons](https://github.com/inner-daemons) commented "very low importance", did not block)
 - **CI:** green
@@ -1683,7 +1584,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10638](https://github.com/gfx-rs/wgpu/issues/10638): [hal] Link API hal docs from dyn methods ([@sagudev](https://github.com/sagudev))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-10-21.
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-10-16.
 - **Verdict:** Land as is
 - **Waiting on:** other reviewer (jimblandy, assigned 2026-10-21, no review since)
 - **Last activity:** 2026-10-21, jimblandy, assigned themself. The author's last push was 2026-10-16. 16 days.
@@ -1698,39 +1599,39 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10675](https://github.com/gfx-rs/wgpu/issues/10675): fix(core): hold `command_indices` around HAL surface (un)configure and queue drop ([@AdrianEddy](https://github.com/AdrianEddy))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-11-12.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-11-12.
 - **Verdict:** Land as is
-- **Waiting on:** maintainer. jimblandy is the assignee. sagudev's approval does not satisfy the review requirement, so a member must approve.
+- **Waiting on:** maintainer. The PR is in the v31 milestone. jimblandy is the assignee. sagudev's approval does not satisfy the review requirement, so a member must approve.
 - **Last activity:** 2026-11-12, kixelated, comment. 1 day. The last review was 2026-11-02 (sagudev).
 - **Approvals:** sagudev
-- **CI:** green; mergeable
+- **CI:** green; has conflicts
 - **Summary:** Holds `Device::command_indices.write()` during HAL surface configure/unconfigure and during `Queue::drop`'s `wait_for_idle`. This serializes those calls with submit and present, and stops the multi-threaded `vkDeviceWaitIdle` race and the related crashes.
-- **Findings:** unchanged. No issue found in the lock ordering. A second user (kixelated) now reports the same issue, after JMS55's Bevy DLSS report.
-- **To land:** a member approval.
+- **Findings:** No issue found in the lock ordering. A second user (kixelated) reports the same issue, after JMS55's Bevy DLSS report.
+- **To land:** resolve the conflict, a member approval, and a decision under the agent-written PR policy.
 - **Move-along action:** approve and merge, or ping jimblandy. Decide the agent-disclosure question.
 - **Depth:** status only
 
 #### [#10776](https://github.com/gfx-rs/wgpu/issues/10776): Multi-planar texture copy validation ([@andyleiserson](https://github.com/andyleiserson))
-- **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI red (16 failed); last update 2026-11-13.
-- **Verdict:** Needs a bit of work (the code itself looks ready for review)
-- **Waiting on:** author (andyleiserson). Rebased on trunk on 11-13 after [#10710](https://github.com/gfx-rs/wgpu/issues/10710) merged.
-- **Last activity:** 2026-11-10, andyleiserson, force-pushed. 3 days.
-- **Approvals:** none
-- **CI:** red from the PR. `tests/tests/wgpu-validation/api/texture.rs:824` builds a `TextureDescriptor` without `texture_binding_view_dimension` (error E0063 in the Clippy log).
-- **Summary:** Folds `extract_texture_selector` into `validate_texture_copy_range`, validates copy extents in plane texels for single-plane copies (plane-0 texels plus chroma-subsampling alignment for all-plane copies), and allows texture-buffer copies and copies into one plane of a multi-planar texture.
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-17.
+- **Verdict:** Land as is
+- **Waiting on:** reviewer. cwfitzgerald assigned himself on 2026-11-18. No review is requested.
+- **Last activity:** 2026-11-18, cwfitzgerald, assigned himself. The last push was on 2026-11-17 (rebase on trunk after [#10710](https://github.com/gfx-rs/wgpu/issues/10710) merged on 2026-11-13).
+- **Approvals:** none (review decision REVIEW_REQUIRED)
+- **CI:** green (66 pass, 1 skipped). The Clippy failure from the missing `texture_binding_view_dimension` field is gone.
+- **Summary:** Folds `extract_texture_selector` into `validate_texture_copy_range`. Validates copy extents in plane texels for single-plane copies, and in plane-0 texels plus chroma-subsampling alignment for all-plane copies. Allows texture-buffer copies and copies into one plane of a multi-planar texture. Two commits (refactor, then fix); 1200 added lines, most of them tests.
 - **Findings:**
-  1. [medium] It is stacked on [#10710](https://github.com/gfx-rs/wgpu/issues/10710) and contains the old [#10710](https://github.com/gfx-rs/wgpu/issues/10710) commit. After [#10710](https://github.com/gfx-rs/wgpu/issues/10710) merges (with its feedback commit), the branch needs another rebase.
-  2. [medium] `tests/tests/wgpu-gpu/planar_texture/mod.rs`, `tests/tests/wgpu-gpu/zero_init.rs` and `tests/tests/wgpu-validation/api/texture.rs` (one new literal each) The `TextureDescriptor` literals have no `texture_binding_view_dimension`, so the tests do not compile on current trunk. Reasoned from code, not built.
-  3. [low] Earlier review notes still apply: the T2T aspect check now applies only to depth-stencil formats, which is correct; zero-init per plane is safe because the init tracker is per (mip, layer) and any plane write is treated as partial; `plane_size` adds a new `assert_eq!` in a `#[doc(hidden)]` public function.
-  4. [low] With [#9624](https://github.com/gfx-rs/wgpu/issues/9624) merged, this PR now also enables copies into one plane on Metal. The Metal `copy_texture_to_texture` asserts apply only when the source and destination pixel formats differ. For plane copies that `copy_format` allows, the plane format equals the other side's format, so the asserts are not reached. Reasoned from code.
-- **To land:** merge [#10710](https://github.com/gfx-rs/wgpu/issues/10710). Rebase. Add the [#8014](https://github.com/gfx-rs/wgpu/issues/8014) field. Review.
-- **Move-along action:** assign a reviewer now (ErichDonGubler has the [#10710](https://github.com/gfx-rs/wgpu/issues/10710) context), so that the review runs in parallel with the [#10710](https://github.com/gfx-rs/wgpu/issues/10710) merge.
-- **Depth:** targeted (verified that the force-push did not change the patches; did not re-review the code)
+  1. [low] The branch has only its own two commits on top of trunk. The old [#10710](https://github.com/gfx-rs/wgpu/issues/10710) commit is gone. The two new `TextureDescriptor` literals (`tests/tests/wgpu-gpu/planar_texture/mod.rs`, `tests/tests/wgpu-validation/api/texture.rs`) have `texture_binding_view_dimension: None`. The PR does not touch `zero_init.rs`.
+  2. [low] The T2T aspect check applies only to depth-stencil formats, which is correct. Zero-init per plane is safe, because the init tracker is per (mip, layer) and a write to any plane counts as partial. `plane_size` adds an `assert_eq!` in a `#[doc(hidden)]` public function. `subsampling_factors` changes `unreachable!` to `panic!` and documents the panic.
+  3. [low] With [#9624](https://github.com/gfx-rs/wgpu/issues/9624) merged, this PR also enables copies into one plane on Metal. The Metal `copy_texture_to_texture` asserts apply only when the source and destination pixel formats differ. For the plane copies that `copy_format` allows, the plane format equals the other side's format, so the asserts are not reached. From code.
+  4. [low] Disclosure: both agent boxes are unchecked; the self-review box is checked. A changelog entry is present.
+- **To land:** one member review. It is a 1200-line validation change in wgpu-core. It can land before the release only if the review is quick; otherwise land it after.
+- **Move-along action:** Review it, or ask ErichDonGubler (he has the [#10710](https://github.com/gfx-rs/wgpu/issues/10710) context).
+- **Depth:** targeted (`git range-diff` against the 2026-11-13 head: the only change is the two `texture_binding_view_dimension` lines and the changelog context; the code was not reviewed again)
 
 #### [#10802](https://github.com/gfx-rs/wgpu/issues/10802): [deno] Report external memory size for GPUBuffer and GPUTexture to encourage GC of them ([@sagudev](https://github.com/sagudev))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-11-01.
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-01.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** maintainer (no reviewer assigned, no review)
 - **Last activity:** 2026-11-01, sagudev, force-pushed and renamed the PR. 5 days.
@@ -1748,7 +1649,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10812](https://github.com/gfx-rs/wgpu/issues/10812): [core] Add child texture concept that shares underlying data and subsets TextureUsage ([@sagudev](https://github.com/sagudev))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; has conflicts; CI green; last update 2026-11-09.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-11-02.
 - **Verdict:** Needs a lot of work
 - **Waiting on:** teoxoy (assigned on 11-09; no review yet). The author must fix the high finding.
 - **Last activity:** 2026-11-09, teoxoy, assigned themself. 4 days. The only commit is `050417d3` from 2026-11-02.
@@ -1762,7 +1663,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10821](https://github.com/gfx-rs/wgpu/issues/10821): Release the acquired surface texture when the device is lost ([@KanikaBreed](https://github.com/KanikaBreed))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-11-09.
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-09.
 - **Verdict:** Needs a bit of work (leaning to close)
 - **Waiting on:** author (sagudev's [#10296](https://github.com/gfx-rs/wgpu/issues/10296) question from 11-03 is still unanswered).
 - **Last activity:** 2026-11-09, inner-daemons, approved. 4 days. No author activity since 2026-11-03.
@@ -1778,7 +1679,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10831](https://github.com/gfx-rs/wgpu/issues/10831): Fix truncated trace playback ([#1620](https://github.com/gfx-rs/wgpu/issues/1620)) ([@vatsanbalaji-ossagent](https://github.com/vatsanbalaji-ossagent))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-11-09.
+- **State (2026-11-18):** ready; has conflicts; CI green; last update 2026-11-09.
 - **Verdict:** Needs a bit of work. Policy question first.
 - **Waiting on:** ErichDonGubler or teoxoy. On 11-09 teoxoy asked Erich: "do you want to take this PR or should I?" No answer.
 - **Last activity:** 2026-11-09, teoxoy, comment. 4 days. The last author activity was 2026-11-05.
@@ -1792,7 +1693,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10838](https://github.com/gfx-rs/wgpu/issues/10838): Fix sparse tlas instance indices ([@Vecvec](https://github.com/Vecvec))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI red (1 failed); last update 2026-11-14.
+- **State (2026-11-18):** ready; has conflicts; CI red (1 failed: Test Linux x86_64); last update 2026-11-14.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** author (CI is red from a lavapipe crash that the new test triggers). inner-daemons is a requested reviewer since 11-09.
 - **Last activity:** 2026-11-12, Vecvec, pushed. 1 day.
@@ -1810,7 +1711,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10839](https://github.com/gfx-rs/wgpu/issues/10839): fix: relax render bundle resource lifetimes ([@mvanhorn](https://github.com/mvanhorn))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-11-09.
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-06.
 - **Verdict:** Needs a bit of work
 - **Waiting on:** inner-daemons (review requested on 11-09)
 - **Last activity:** 2026-11-09, inner-daemons, requested review from themself. 4 days. The last author activity was 2026-11-06.
@@ -1827,31 +1728,32 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 - **Depth:** targeted (new commit and CI only; the code did not change since the old full review)
 
 #### [#10862](https://github.com/gfx-rs/wgpu/issues/10862): Reuse command buffer and pass trackers ([@VitaminCpp](https://github.com/VitaminCpp))
-- **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-11-09.
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-15.
 - **Verdict:** Needs a bit of work
-- **Waiting on:** inner-daemons (assignee and requested reviewer since 11-09). Maintainer decision on the agent-disclosure checklist.
-- **Last activity:** 2026-11-09, inner-daemons, commented "Makes sense as an optimization, we should probably prioritize this", and assigned themself. 4 days.
-- **Approvals:** none
-- **CI:** green (run from 11-06, before [#8014](https://github.com/gfx-rs/wgpu/issues/8014) merged); mergeable
+- **Waiting on:** maintainer decision on the agent disclosure; then inner-daemons (assignee and requested reviewer since 2026-11-09). cwfitzgerald is also an assignee since 2026-11-18.
+- **Last activity:** 2026-11-15, VitaminCpp, rebased and added the missing test field, and replied to rowanG077 that the `ResourceMetadata::clear` change should be a follow-up PR.
+- **Approvals:** none (review decision REVIEW_REQUIRED)
+- **CI:** green (66 pass, 1 skipped) on the head of 2026-11-15.
 - **Summary:** Adds a `TrackerPool` to `Device`. Command encoders, the pending-writes encoder, and the intermediate trackers of compute and ray tracing passes take a `Tracker` from the pool. The tracker goes back to the pool, cleared with its capacity kept, when the submission completes (`EncoderInFlight::release`) or the pass ends. This removes per-encoder allocations that scale with the device's resource count. A second commit fixes the Metal `HalCounters::query_sets` count for occlusion query sets.
 - **Findings:**
-  1. [medium] `tests/tests/wgpu-gpu/tracker_pool.rs:~93` The new `TextureDescriptor` literal has no `texture_binding_view_dimension` field, so the test does not compile on current trunk (after [#8014](https://github.com/gfx-rs/wgpu/issues/8014)). Reasoned from code, not built. Rebase and add the field.
-  2. [low] The core change looks correct. `ResourceMetadata::clear` now truncates `owned` to length 0. All other vectors are also emptied, so a pooled tracker is consistent (size 0) and grows again through `allow_index`/`set_size`. The only other caller, the `UsageScope` drop path, calls `set_size` again in `new_pooled`. `TextureStateSet::clear` also clears the `complex` map. `TrackerPool::release` drops the resource references before it takes the pool lock. The ordered-usage masks are not reset, but they are the same for every tracker of one device. Trackers on error paths are dropped and not returned, which only costs an allocation.
-  3. [low] `wgpu-core/src/track/mod.rs:605` The pool has no cap and pooled trackers never shrink. Each pooled tracker keeps vectors sized to the highest tracker index the device ever had, and the pool keeps as many trackers as the peak number of in-flight encoders. The author offers a cap. This is a maintainer decision.
-  4. [low] The new `DEVICE_TRACKER_POOL` lock rank is added as a follower of five ranks. I did not check each edge against the call paths. CI with debug builds passes.
-  5. [low] Policy: both agent-disclosure boxes are checked ("automatically created by an Agent" and "description automatically written by an Agent"). The LLM section says that Claude Code ported the author's prototype, wrote the tests and drafted the description, and that the author reviewed and edited it. AGENTS.md does not allow fully agentic PRs. The maintainers must decide whether this is acceptable.
-  6. [low] The Metal counter fix is a separate commit and is described. CHANGELOG entries are present for both changes.
-- **To land:** rebase and fix the test literal. A maintainer decision on the agent disclosure. A review by inner-daemons.
-- **Move-along action:** decide the agent-disclosure question, then let inner-daemons review (they want to prioritize it).
-- **Depth:** full (core, hal and CHANGELOG diff read; tests read for coverage only)
+  1. [low] The rebase changed only the changelog context and added `texture_binding_view_dimension: None` to the `TextureDescriptor` in `tests/tests/wgpu-gpu/tracker_pool.rs` (checked with `git range-diff`).
+  2. [low] Overlap with rowanG077's change (comment of 2026-11-14, linked commit on his fork, not a PR). `wgpu-core/src/track/metadata.rs:38-41` `ResourceMetadata::clear` sets both tables to length 0, so the next `set_size` writes `None` again up to the device's highest tracker index. Each reuse of a pooled tracker costs O(highest index), not O(members). rowanG077's version clears only the occupied slots and keeps the length. His claim is correct from code. The author asks for it as a follow-up PR. This is only a performance matter; the pooled tracker is consistent either way.
+  3. [low] The core change looks correct. All vectors are emptied, so a pooled tracker is consistent (size 0) and grows again through `allow_index`/`set_size`. `TextureStateSet::clear` also clears the `complex` map. `TrackerPool::release` drops the resource references before it takes the pool lock. Trackers on error paths are dropped, not returned, which costs only an allocation.
+  4. [low] `wgpu-core/src/track/mod.rs:605` The pool has no cap, and pooled trackers never shrink. The pool keeps as many trackers as the peak number of encoders in flight, each sized to the highest tracker index. The author offers a cap. This is a maintainer decision.
+  5. [low] The new `DEVICE_TRACKER_POOL` lock rank follows five ranks. I did not check each edge against the call paths. CI with lock validation passes.
+  6. [low] Policy: both agent-disclosure boxes are checked. The LLM section says that Claude Code ported the author's prototype, wrote the tests and drafted the description, and that the author reviewed and edited it. The self-review box is checked. AGENTS.md does not allow fully agentic PRs, so the maintainers must decide if this is acceptable.
+  7. [low] The Metal counter fix is a separate commit with its own changelog entry. The tracker change also has a changelog entry.
+- **To land:** a maintainer decision on the agent disclosure; a review by inner-daemons. It changes tracker lifetimes in wgpu-core, so landing it after the release is safer.
+- **Move-along action:** Decide the agent-disclosure question, then let inner-daemons review. Ask rowanG077 to open his `clear` change as a PR on top of this one.
+- **Depth:** targeted (`git range-diff` against the 2026-11-13 head, plus `metadata.rs` for the overlap; core, hal and changelog were read in full on 2026-11-13)
 
 #### [#10871](https://github.com/gfx-rs/wgpu/issues/10871): Add a ray tracing invocation reordering feature/adapter property to wgpu ([@JMS55](https://github.com/JMS55))
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-11-14.
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-18.
 - **Verdict:** Needs a bit of work
-- **Waiting on:** you (review requested). Vecvec approved on 11-14.
-- **Last activity:** 2026-11-11, JMS55, merged trunk. 2 days.
+- **Waiting on:** you (review requested, assignee). The PR is in the v31 milestone. Vecvec approved on 2026-11-14 and GitHub shows APPROVED.
+- **Last activity:** 2026-11-14, Vecvec approved; JMS55 merged trunk after that.
 - **Approvals:** Vecvec
 - **CI:** green.
 - **Summary:** [#10311](https://github.com/gfx-rs/wgpu/issues/10311) (merged 2026-11-06) added hit objects and `reorderThread` to naga: the IR, WGSL `enable wgpu_ray_tracing_invocation_reorder`, SPIR-V output, and `Capabilities::RAY_TRACING_INVOCATION_REORDER`. No wgpu feature mapped to that capability, so wgpu users could not use it. This PR adds that part: the feature `EXPERIMENTAL_RAY_TRACING_INVOCATION_REORDER` (bit 25, in the experimental mask), the mapping in `wgpu-naga-bridge`, and Vulkan support through `VK_EXT_ray_tracing_invocation_reorder` (extension enable, feature struct, `ShaderInvocationReorderEXT` SPIR-V capability). It also adds `Adapter::ray_tracing_invocation_reorder_mode`, which says whether `reorderThread` actually reorders (hardware hint) or is a no-op.
@@ -1865,11 +1767,65 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 - **Move-along action:** review (you are a requested reviewer), and ask JMS55 or Vecvec for a hardware run.
 - **Depth:** full (all non-test code read; tests read for coverage)
 
+#### [#10966](https://github.com/gfx-rs/wgpu/issues/10966): test: cover shared wgpu-core device wrappers ([@BlackRam-oss](https://github.com/BlackRam-oss))
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-16.
+- **Verdict:** Needs a bit of work
+- **Waiting on:** author (fix the title and description), then cwfitzgerald (assigned on 2026-11-18).
+- **Last activity:** 2026-11-16, BlackRam-oss, pushed a docs-only commit after sagudev's comment and removed the tests.
+- **Approvals:** none (review decision REVIEW_REQUIRED)
+- **CI:** green (65 pass, 1 skipped).
+- **Summary:** Adds 5 lines of docs to `wgpu::Device::from_core`: error scopes, the uncaptured error handler and the single device-lost callback belong to the wgpu-core device, so all users of that core device share them. The PR is not a test. The first two commits added tests; the last commit removed them, so the net diff is the doc comment only.
+- **Findings:**
+  1. [medium] The title ("test: cover shared wgpu-core device wrappers") and the description (three regression tests, "Deno WebGPU and a native compositor can use separate `wgpu` wrappers") do not match the diff, which is a doc comment only. sagudev said on 2026-11-16 that Deno uses wgpu-core directly and that the tests were not worth it. The author agreed and narrowed the PR, but did not update the title or description. The history has two commits that add tests and one that removes them; squash on merge.
+  2. [low] `wgpu/src/api/device.rs:982-985` The doc is correct. `CoreDevice` methods forward `push_error_scope`, `pop_error_scope`, `on_uncaptured_error` and `set_device_lost_callback` to the `wgc::device::Device`, whose `ErrorSink` holds the scopes and handler (`wgpu-core/src/error.rs:54-58`). `set_device_lost_closure` replaces the earlier closure (`wgpu-core/src/device/resource.rs:5733`). The doc does not say that error scopes are per thread (`ErrorSink` keys them by `ThreadId`). This is optional.
+  3. [low] No `CHANGELOG` entry is necessary for a doc comment.
+  4. [low] Disclosure: the PR does not use the template, so it has no checklist. The LLM section says that Codex helped with the tests and docs, reviewed the changes, and drafted the description.
+- **To land:** the author changes the title and description to match the doc-only diff; one member approval; squash. It can land before the release.
+- **Move-along action:** Ask the author to retitle the PR (for example "docs: note shared state in `Device::from_core`") and to update the description, then approve.
+- **Depth:** full (5-line doc change; checked each claim against `wgpu/src/backend/wgpu_core.rs` and `wgpu-core/src/error.rs`)
+
+#### [#10972](https://github.com/gfx-rs/wgpu/issues/10972): [core] Fix build failure with `--no-default-features`. ([@jimblandy](https://github.com/jimblandy))
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-17.
+- **Verdict:** Land as is
+- **Waiting on:** cwfitzgerald (assigned on 2026-11-18). No review is requested.
+- **Last activity:** 2026-11-17, jimblandy, opened the PR with two commits.
+- **Approvals:** none (review decision REVIEW_REQUIRED)
+- **CI:** green (66 pass, 1 skipped).
+- **Summary:** `wgpu_core::lock` compiles `ranked` only with `"std"`, but selected it whenever `wgpu_validate_locks` was set. A debug build of `wgpu-core --no-default-features` in the wgpu tree (where `.cargo/config.toml` sets `wgpu_validate_locks_debug`) failed. The PR selects `ranked` only with `"std"`, falls back to `vanilla` without `"std"`, and updates the module docs. A first commit fixes the docs only.
+- **Findings:**
+  1. [low] `wgpu-core/src/lock/mod.rs:48-78` The `cfg` logic selects exactly one module in all cases. `observe_locks` enables `"std"` (`wgpu-core/Cargo.toml:69`), so without `"std"` only `vanilla` is possible, and the `allow(dead_code)` conditions match the uses. Checked from code, not built. Without `"std"`, `wgpu_validate_locks` is silently ignored; the new module doc says this.
+  2. [low] CI does not cover this case. The `no_std` Clippy job (`.github/workflows/ci.yml:332`) runs only on `wasm32v1-none`, and `wgpu-core/build.rs` turns off `wgpu_validate_locks` on wasm. So the failure can come back. A native `cargo clippy -p wgpu-core --no-default-features` step would catch it. This is optional.
+  3. [low] The commit "[core] Doc fixes." is described in the PR as "Clarify `lock` module docs". The changelog entry is present under General bug fixes.
+  4. [low] Disclosure: the PR does not use the template, so it has no LLM section and no checklist.
+- **To land:** one member approval. It is small and can land before the release.
+- **Move-along action:** Approve and queue it.
+- **Depth:** full
+
+#### [#10974](https://github.com/gfx-rs/wgpu/issues/10974): Improve documentation on `AccelerationStructureGeometryFlags` ([@Vecvec](https://github.com/Vecvec))
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-18.
+- **Verdict:** Needs a bit of work
+- **Waiting on:** inner-daemons (Vecvec asked on 2026-11-18 if the new wording answers the thread). cwfitzgerald and inner-daemons are assignees.
+- **Last activity:** 2026-11-18, Vecvec, pushed "Improve no dupe any hit docs" and asked inner-daemons about the new wording.
+- **Approvals:** JMS55 (2026-11-18, before the last push). JMS55 has read permission only, and the review decision is REVIEW_REQUIRED, so a member approval is necessary.
+- **CI:** green (65 pass, 1 skipped).
+- **Summary:** Rewrites the doc comments of `AccelerationStructureGeometryFlags::OPAQUE` and `NO_DUPLICATE_ANY_HIT_INVOCATION`. The old text said that naga has no candidate intersections and that wgpu has no ray tracing pipelines. naga has `RayQueryFunction::GenerateIntersection` and `ConfirmIntersection` on trunk, so the old text is out of date. Docs only.
+- **Findings:**
+  1. [low] `wgpu-types/src/ray_tracing.rs:162-164` The `OPAQUE` text is correct: it disables any-hit shaders and makes ray queries commit triangle hits without a return to user code. "Is OPAQUE (there is no alpha test)" reads badly; "The geometry is opaque" is clearer. It does not say that ray flags (for example force-non-opaque) can override the geometry flag. This is optional.
+  2. [low] `wgpu-types/src/ray_tracing.rs:166-170` Typo "if this flag in present" ("is present"), and a comma splice before it. The content agrees with the DXR spec text that Vecvec quoted in the thread.
+  3. [low] One review thread from inner-daemons is unresolved; Vecvec answered it with the last push.
+  4. [low] Disclosure: "LLM Use? None". The self-review box is checked. No changelog entry is necessary for docs.
+- **To land:** fix the typo; inner-daemons confirms the wording; a member with write access approves. It can land before the release.
+- **Move-along action:** Ask inner-daemons to resolve the thread and approve, with the typo fix.
+- **Depth:** full
+
 ## CI, dependencies and your own PRs
 
 #### [#10739](https://github.com/gfx-rs/wgpu/issues/10739): chore(ci renovate): Configure `rebaseWhen = conflicted` ([@andyleiserson](https://github.com/andyleiserson))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-11-02.
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-10-27.
 - **Verdict:** Land as is (small config change; author is unsure it is needed)
 - **Waiting on:** maintainer (jimblandy is assignee; no review given)
 - **Last activity:** 2026-10-27, andyleiserson, comment ("not sure top-level `rebaseWhen` is necessary"). 10 days.
@@ -1895,7 +1851,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10784](https://github.com/gfx-rs/wgpu/issues/10784): test(cts): run non-`const` `modf` execution tests for `f32` ([@ErichDonGubler](https://github.com/ErichDonGubler))
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-10-30.
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-10-30.
 - **Verdict:** Land as is
 - **Waiting on:** maintainer (ErichDonGubler wrote "should be an easy review once this passes CI"; CI has passed)
 - **Last activity:** 2026-10-30, ErichDonGubler, self-comment. 7 days.
@@ -1911,66 +1867,106 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 - **Depth:** full
 
 #### [#10869](https://github.com/gfx-rs/wgpu/issues/10869): Update KosmicKrisp test expectations ([@cwfitzgerald](https://github.com/cwfitzgerald))
-- **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-11-06.
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-16.
 - **Verdict:** Status note
-- **Waiting on:** reviewer. No review requested.
-- **Last activity:** 2026-11-06, cwfitzgerald, one commit. 7 days.
-- **Approvals:** none
-- **CI:** green (65 pass); mergeable.
-- **Summary:** Updates the expected failures of tests on KosmicKrisp for Vulkan SDK 1.4.363.1 on Apple M5 Max. Adds expected failures for 17 `draw_indirect` tests, `render_pass_resource_ownership` and `vertex_indices`. Removes `draw_multiview_noncontiguous` and `subgroup_operations`. Touches 5 test files only. Connects to [#9187](https://github.com/gfx-rs/wgpu/issues/9187).
-- **Findings:** none (status only). The disclosure says Claude Code made the changes and wrote the description, and the author edited the description. The self-review box is unchecked.
-- **To land:** the author checks the self-review box; one approval.
-- **Move-along action:** Check the self-review box and ask a maintainer to approve.
+- **Waiting on:** author. andyleiserson (assigned on 2026-11-18) says that the changes may come from macOS 27, not the SDK version. cwfitzgerald confirmed macOS 27.2.1 and said an OS-version condition does not exist yet.
+- **Last activity:** 2026-11-16, andyleiserson, commented that he can upgrade to macOS 27, but that `subgroup_operations` may still need an OS condition, because it also affects Metal (see [#10685](https://github.com/gfx-rs/wgpu/issues/10685)).
+- **Approvals:** none (review decision REVIEW_REQUIRED)
+- **CI:** green (65 pass, 1 skipped).
+- **Summary:** Updates the expected failures on KosmicKrisp (Apple M5 Max, macOS 27.2.1). Adds expected failures for 17 `draw_indirect` tests, `render_pass_resource_ownership` and `vertex_indices`. Removes `draw_multiview_noncontiguous` and `subgroup_operations`. Test files only.
+- **Findings:** none (status only). Disclosure: both agent boxes are checked; the self-review box is unchecked.
+- **To land:** add an OS-version condition to the test expectations (at least for `subgroup_operations`), or agree with andyleiserson that the test machines run macOS 27; check the self-review box; one approval. It does not block the release.
+- **Move-along action:** Decide between an OS-version condition and a macOS 27 baseline for the test machines, and tell andyleiserson.
 - **Depth:** status only
 
-#### [#10886](https://github.com/gfx-rs/wgpu/issues/10886): Update Rust crate libloading to 0.9 ([@renovate](https://github.com/renovate))
-- **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI red (18 failed); last update 2026-11-13.
+#### [#10903](https://github.com/gfx-rs/wgpu/issues/10903): Fix binding more immediate data then pipeline supports ([@cwfitzgerald](https://github.com/cwfitzgerald))
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-15.
 - **Verdict:** Status note
-- **Waiting on:** author or a maintainer. Code changes are needed.
-- **Last activity:** 2026-11-13, renovate. 0 days.
-- **Approvals:** none
-- **CI:** red (18 fail, 47 pass). Cause: compile errors with libloading 0.9: E0277 "the trait bound `P: AsFilename` is not satisfied", and E0599 "no variant named `CreateCString` / `CreateCStringWithTrailing` found for enum `libloading::Error`" (the error enum changed). The `cargo-deny` job also fails: "found 2 duplicate entries for crate 'libloading'" (other crates still use the old version). No MSRV-specific message was seen; the MSRV jobs fail from the same compile errors. Mergeable.
-- **Summary:** Major bump (0.8 to 0.9) of libloading. The code that matches on `libloading::Error` variants must change, and the generic `AsFilename` bound must be fixed. The duplicate crate entry may need a skip entry in `deny.toml` or a wait for dependents to update.
-- **Findings:** none
-- **To land:** update the code for the new libloading API; fix or skip the duplicate in cargo-deny; green CI.
-- **Move-along action:** Decide: port to 0.9 now, or close and ignore the major until dependents move.
+- **Waiting on:** andyleiserson (assigned on 2026-11-18). No review yet.
+- **Last activity:** 2026-11-18, cwfitzgerald, assigned andyleiserson. The last push was on 2026-11-15.
+- **Approvals:** none (review decision REVIEW_REQUIRED)
+- **CI:** green (66 pass, 1 skipped).
+- **Summary:** Core trims immediates to the layout size, but still calls hal `set_immediates` with an empty slice, which panics on Metal and DX12 and is a validation error on Vulkan. Render bundles did not trim and did not resend after a layout change. The fix adds a shared `ImmediateState::take_dirty` that trims and skips empty writes, and initializes the DX12 immediates root element on signature reset. Three commits, with tests in `immediates.rs` and a changelog entry.
+- **Findings:** none (status only, no code review). Disclosure: both agent boxes are unchecked; the self-review box is checked.
+- **To land:** a full code review (wgpu-core and wgpu-hal); one approval. It is a panic fix and can land before the release if andyleiserson reviews it this week.
+- **Move-along action:** Ask andyleiserson to review it before the release.
 - **Depth:** status only
 
-#### [#10888](https://github.com/gfx-rs/wgpu/issues/10888): Update Rust crate bincode to v3 ([@renovate](https://github.com/renovate))
-- **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI red (56 failed); last update 2026-11-09.
+#### [#10959](https://github.com/gfx-rs/wgpu/issues/10959): Fix indirect draw validation panic on noop ([@cwfitzgerald](https://github.com/cwfitzgerald))
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-16.
 - **Verdict:** Status note
-- **Waiting on:** author or a maintainer. Code changes are needed.
-- **Last activity:** 2026-11-09, renovate. 4 days.
-- **Approvals:** none
-- **CI:** red (56 fail, 8 pass). Cause: cargo cannot resolve the dependency. `wgpu-benchmark` depends on `bincode` with feature `serde`, and bincode 3.0.0 has no `serde` feature. The jobs stop at dependency resolution (exit code 101). Mergeable.
-- **Summary:** Major bump to bincode 3. The API changed: the `serde` feature is gone, so `benches/Cargo.toml` and the code that uses bincode must be rewritten. Renovate also failed to update the lock file.
-- **Findings:** none
-- **To land:** change the benchmark code and `Cargo.toml` to the bincode 3 API, or close the PR.
-- **Move-along action:** Decide: port the benchmarks to bincode 3, or close and ignore the major.
+- **Waiting on:** author (queue it). andyleiserson approved on 2026-11-16.
+- **Last activity:** 2026-11-18, cwfitzgerald, assigned andyleiserson. The approval is from 2026-11-16.
+- **Approvals:** andyleiserson (review decision APPROVED)
+- **CI:** green (66 pass, 1 skipped).
+- **Summary:** Indirect draw validation reads the source buffer as `u32`, so it needs a lower bound of 4 on the dynamic offset alignment. Adapters that report a lower alignment (the noop backend reports 1) hit an assert panic. The fix adds the bound, removes the redundant assert, and borrows the limits instead of a clone per draw. Changes `wgpu-core/src/indirect_validation/{draw,mod}.rs`, adds a noop test in `tests/tests/wgpu-validation/noop.rs`, and a changelog entry.
+- **Findings:** none (status only). andyleiserson asked in his approval why the test is in `noop.rs` and not with the other indirect draw tests (the existing ones have an `expect_noop` flag); he says it does not matter much. No reply. Disclosure: both agent boxes are checked; the LLM section says Opus found the bug, wrote the fix and tests, and drafted the description. The self-review box is checked.
+- **To land:** optionally answer the test-location question; send to the merge queue. It can land before the release.
+- **Move-along action:** Answer andyleiserson's question in one line and queue it.
 - **Depth:** status only
 
-#### [#10903](https://github.com/gfx-rs/wgpu/issues/10903): Fix binding more immediate data than pipeline supports ([@cwfitzgerald](https://github.com/cwfitzgerald))
-- **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI green; last update 2026-11-13.
+#### [#10963](https://github.com/gfx-rs/wgpu/issues/10963): Update taiki-e/install-action action to v2.90.6 ([@app](https://github.com/app)/renovate)
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-16.
 - **Verdict:** Status note
-- **Waiting on:** reviewer. No review requested.
-- **Last activity:** 2026-11-13, cwfitzgerald, push. 0 days.
+- **Waiting on:** you (assignee): approve and queue.
+- **Last activity:** 2026-11-16, renovate, opened.
 - **Approvals:** none
-- **CI:** green (66 pass); mergeable.
-- **Summary:** Core trims immediates to the layout size, but it still calls hal `set_immediates` with an empty slice. That panics on Metal and DX12 and is a validation error on Vulkan. Render bundles did not trim and did not resend after a layout change. The fix adds a shared `ImmediateState::take_dirty` that trims and skips empty writes. It also initializes the DX12 immediates root element on signature reset. Files: `wgpu-core/src/command/bundle.rs`, `pass.rs`, `wgpu-hal/src/dx12/command.rs`, `wgpu-hal/src/lib.rs`, a changelog entry and tests in `immediates.rs`.
-- **Findings:** none (status only, no code review done).
-- **To land:** a full code review (this touches wgpu-core and wgpu-hal); one approval.
-- **Move-along action:** Get a reviewer for the core and hal changes.
+- **Summary:** Patch bump of a CI action in three workflow files. Trunk took v2.90.3 in [#10883](https://github.com/gfx-rs/wgpu/issues/10883).
+- **To land:** approve and queue. It can land before the release.
+- **Depth:** status only
+
+#### [#10964](https://github.com/gfx-rs/wgpu/issues/10964): Update Rust to v1.97.0 ([@app](https://github.com/app)/renovate)
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI red (2 failed: Clippy VisionOS aarch64, Clippy WebAssembly 64-bit); last update 2026-11-16.
+- **Verdict:** Needs a bit of work
+- **Waiting on:** you (assignee). Renovate cannot fix the CI cause.
+- **Last activity:** 2026-11-16, renovate, opened.
+- **Approvals:** none
+- **CI:** red, caused by the PR. The two `-Zbuild-std` jobs fail with "`.../1.97.0-aarch64-apple-darwin/lib/rustlib/src/rust/library/Cargo.lock` does not exist". The PR changes only `rust-toolchain.toml`. `.github/workflows/ci.yml:21` keeps `REPO_MSRV: "1.96.1"`, and line 246 installs `rust-src` for `REPO_MSRV` only, so the 1.97.0 toolchain that `rust-toolchain.toml` selects has no `rust-src`.
+- **Summary:** Bumps the repository toolchain from 1.96.1 to 1.97.0.
+- **Findings:**
+  1. [medium] `.github/workflows/ci.yml:21`: `REPO_MSRV` must change to `1.97.0` in the same PR. New Clippy lints of 1.97 are not checked, because the red jobs stop before Clippy runs and the other Clippy jobs use 1.96.1.
+- **To land:** push a commit that sets `REPO_MSRV` to 1.97.0, then fix new Clippy lints. A toolchain bump can also wait until after the release.
+- **Move-along action:** decide if the bump goes in before or after the release. If before, push the `REPO_MSRV` change to the Renovate branch.
+- **Depth:** targeted (CI logs and the toolchain settings)
+
+#### [#10983](https://github.com/gfx-rs/wgpu/issues/10983): Add changelog fragment tooling ([@cwfitzgerald](https://github.com/cwfitzgerald))
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** draft; mergeable; CI green; last update 2026-11-18.
+- **Verdict:** Status note
+- **Waiting on:** author (mark ready), then inner-daemons (review requested on 2026-11-18).
+- **Last activity:** 2026-11-18, cwfitzgerald, force-push (one commit, `814696e3e`) and review request to inner-daemons.
+- **Approvals:** none (review decision REVIEW_REQUIRED)
+- **CI:** green (66 pass, 1 skipped).
+- **Summary:** Adds `xtask changelog` tooling to create, preview and assemble changelog fragments (`xtask/src/changelog/fragments.rs`, about 900 lines), and changes `.github/workflows/changelog.yml`. v31.0.0 still uses `CHANGELOG.md`. Connects to [#3683](https://github.com/gfx-rs/wgpu/issues/3683).
+- **Findings:** none (status only). Disclosure: both agent boxes are checked; the LLM section says GPT-6 implemented and tested it and drafted the description, and GPT-6 Astra ran two adversarial review passes. The self-review box is unchecked.
+- **To land:** check the self-review box; mark ready; one approval. It can land before the release, because v31 keeps the current workflow.
+- **Move-along action:** Self-review, check the box, and mark it ready.
+- **Depth:** status only
+
+#### [#10984](https://github.com/gfx-rs/wgpu/issues/10984): Switch to changelog fragments after v31 ([@cwfitzgerald](https://github.com/cwfitzgerald))
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** draft; mergeable; CI red (1 failed); last update 2026-11-18.
+- **Verdict:** Status note
+- **Waiting on:** v31.0.0 release, then the author (rebase and mark ready). Depends on [#10983](https://github.com/gfx-rs/wgpu/issues/10983). inner-daemons has a review request (2026-11-18).
+- **Last activity:** 2026-11-18, cwfitzgerald, force-push and review request to inner-daemons.
+- **Approvals:** none (review decision REVIEW_REQUIRED)
+- **CI:** red (1 failed). `Test Mac aarch64` fails in `wgpu_gpu::poll::wait_on_submission_with_timeout` on Metal (Apple Paravirtual device): `PollType::Wait` with a 1 s timeout returned `Timeout` (`tests/tests/wgpu-gpu/poll.rs:273`). The PR changes only changelog tooling and docs, and [#10983](https://github.com/gfx-rs/wgpu/issues/10983) with the same first commit is green. So the failure is from the infrastructure (a slow paravirtual Mac runner), not the PR.
+- **Summary:** Second commit on top of [#10983](https://github.com/gfx-rs/wgpu/issues/10983). Switches CI to fragments, adds `changelog.d/README.md`, updates `docs/release-checklist.md`, and removes the old `CHANGELOG.md` checks from `xtask/src/changelog.rs`. The plan is to rebase after v31.0.0 and cherry-pick the cutover onto the v31 release branch.
+- **Findings:** none (status only). Disclosure: both agent boxes are checked; GPT-6 and GPT-6 Astra implemented it and GPT-6 drafted the description. The self-review box is checked.
+- **To land:** land [#10983](https://github.com/gfx-rs/wgpu/issues/10983); release v31.0.0; rebase; rerun CI; one approval. By design it lands after the release.
+- **Move-along action:** None until v31.0.0 ships.
 - **Depth:** status only
 
 ## Drafts
 
 #### [#6584](https://github.com/gfx-rs/wgpu/issues/6584): Test pass timestamp writes validation ([@ErichDonGubler](https://github.com/ErichDonGubler)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; mergeable; CI no runs; last update 2025-10-08.
+- **State (2026-11-18):** draft; mergeable; CI no runs; last update 2025-10-08.
 - **State:** stalled
 - **Waiting on:** author
 - **Last activity:** 2025-10-08, ErichDonGubler, last push/update. 394 days.
@@ -1980,7 +1976,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#8480](https://github.com/gfx-rs/wgpu/issues/8480): Add `set_web_canvas_size` option. ([@kpreid](https://github.com/kpreid)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI no runs; last update 2025-11-05.
+- **State (2026-11-18):** draft; has conflicts; CI no runs; last update 2025-11-05.
 - **State:** stalled
 - **Waiting on:** maintainer (decision: add a `SurfaceConfiguration` field defaulting to not resizing the web canvas, "option 1" of [#7938](https://github.com/gfx-rs/wgpu/issues/7938)?)
 - **Last activity:** 2025-11-05, kpreid, opened. 366 days. No comments or reviews.
@@ -1990,7 +1986,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#8653](https://github.com/gfx-rs/wgpu/issues/8653): Texture format testing ([@inner-daemons](https://github.com/inner-daemons)) [draft PR]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI green; last update 2026-08-25.
+- **State (2026-11-18):** draft; has conflicts; CI green; last update 2026-08-25.
 - **Status:** Adds tests that check each texture format works as the device claims, plus fixes for the failures they found (the author says the fixes are LLM-written and reviewed by them). Not ready: it is a draft that you set back to draft on 2026-08-14, asking for one fix per commit plus a final commit with all tests. No author response since. The branch has 23 commits.
 - **Waiting on:** author (history cleanup, then un-draft). Reviewers Erich (earlier CHANGES_REQUESTED, 2025-12-11 and later comments) and cwfitzgerald are requested, but the PR is not in a reviewable state.
 - **Recommended action:** Reply with a position: keep it parked until the author restructures commits. Optionally decide whether to land only the fixes first and make the tests opt-in, since the author said that landing the tests turns CI red on everyone's machines. Close it if no update comes by an agreed date.
@@ -2015,7 +2011,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#8849](https://github.com/gfx-rs/wgpu/issues/8849): make some error types constructible ([@jgraef](https://github.com/jgraef)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI red (1 failed); last update 2026-01-21.
+- **State (2026-11-18):** draft; has conflicts; CI red (1 failed: cargo-deny advisories); last update 2026-01-21.
 - **State:** stalled
 - **Waiting on:** author
 - **Last activity:** 2026-01-21, sagudev (collaborator) suggested a generic cloneable `AnyError` wrapper. 289 days.
@@ -2025,7 +2021,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#8954](https://github.com/gfx-rs/wgpu/issues/8954): fix(naga): Fix builtin metal imports ([@madsmtm](https://github.com/madsmtm)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI red (3 failed); last update 2026-01-28.
+- **State (2026-11-18):** draft; has conflicts; CI red (3 failed: Test Linux x86_64, Test Mac aarch64, Test Windows x86_64); last update 2026-01-28.
 - **State:** stalled
 - **Waiting on:** maintainer (decision: how to fix `using namespace metal;` removal for old macOS: 1) re-add it and reserve its names, 2) prefix all types with `metal::`, 3) import each used type explicitly)
 - **Last activity:** 2026-01-28, madsmtm, asked kvark for input. 282 days. No reply.
@@ -2035,7 +2031,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#9023](https://github.com/gfx-rs/wgpu/issues/9023): Remove layer from superlayer in `Drop` if needed ([@madsmtm](https://github.com/madsmtm)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI red (49 failed); last update 2026-02-08.
+- **State (2026-11-18):** draft; has conflicts; CI red (49 failed: 01-hello-compute, 02-hello-window, API Operation Linux x86_64, API Operation Mac aarch64); last update 2026-02-08.
 - **State:** early / experiment
 - **Waiting on:** author
 - **Last activity:** 2026-02-08, madsmtm, opened. 271 days. No comments.
@@ -2045,7 +2041,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#9053](https://github.com/gfx-rs/wgpu/issues/9053): Host image copies ([@inner-daemons](https://github.com/inner-daemons)) [draft PR]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI green; last update 2026-09-23.
+- **State (2026-11-18):** draft; has conflicts; CI green; last update 2026-08-25.
 - **Status:** Adds `HOST_VISIBLE` texture usage and host-side texture copies (Vulkan `VK_EXT_host_image_copy`, Metal, DX12 UMA), mapped-texture lifecycle like buffer mapping, tests and a CHANGELOG entry. Large (130 files, +3275/-69, 63 commits). Not close to ready: cwfitzgerald's CHANGES_REQUESTED review (2026-08-14) lists 12 correctness findings and has no author reply. The last pushes are two trunk merges (Jul 28, Aug 25); the Aug 25 merge reworks the code for the arc-based wgpu-core, so the review may be partly stale.
 - **Waiting on:** author (the review of 08-14 is unanswered; the PR is still draft)
 - **Recommended action:** Reply with a position: ask the author to address the 08-14 review, split the `TextureDescriptor` change into its own first commit, and re-run the checks against the new arc-based code before un-drafting. CI is stale evidence for the new head.
@@ -2080,7 +2076,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#9128](https://github.com/gfx-rs/wgpu/issues/9128): [core] Implement WebGPUError for WaitIdleError. ([@jimblandy](https://github.com/jimblandy)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; mergeable; CI green; last update 2026-06-24.
+- **State (2026-11-18):** draft; mergeable; CI green; last update 2026-06-24.
 - **State:** early / experiment
 - **Waiting on:** author
 - **Last activity:** 2026-06-24, jimblandy, moved to draft: error reporting from Firefox background polling is not resolved and they are "no longer sure we need this". 135 days.
@@ -2090,17 +2086,17 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#9353](https://github.com/gfx-rs/wgpu/issues/9353): fix(wgpu-hal/vk): don't use sequential bindings if pipeline layout is set explicitly ([@dylanblokhuis](https://github.com/dylanblokhuis)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI 1 cancelled jobs; last update 2026-09-02.
+- **State (2026-11-18):** draft; has conflicts; CI 1 cancelled jobs; last update 2026-11-15.
 - **State:** stalled
 - **Waiting on:** maintainer (decision: how passthrough/SPIR-V shaders get explicit binding indices; `bgl::Origin::Derived` is rejected as the switch)
-- **Last activity:** 2026-08-07, inner-daemons, asked the author if they will return. 91 days. Author last commented 2026-04-14.
+- **Last activity:** 2026-11-15, 5andr0, comment: hit [#9326](https://github.com/gfx-rs/wgpu/issues/9326) with passthrough SPIR-V, and offered an agent-written redraft with an opt-in flag and tests.
 - **CI:** unknown (status API empty)
 - **Summary:** In Vulkan, keeps user binding indices for explicitly set layouts instead of sequential ones (34/-16 lines, 3 files; labels vulkan, extensions). andyleiserson says explicit BGLs do not imply passthrough shaders and web content must not control this; a layout can serve both Naga and passthrough shaders. No test added. Inner-daemons links it to a future precompiled-shaders API.
 - **Move-along action:** decide whether to handle this now (an opt-in flag, e.g. `PRESERVE_BINDING_INDICES`) or wait for the precompiled-shaders API; then close or ping author
 
 #### [#9380](https://github.com/gfx-rs/wgpu/issues/9380): use threadgroup pointers instead of references in metal ([@39ali](https://github.com/39ali)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI green; last update 2026-08-12.
+- **State (2026-11-18):** draft; has conflicts; CI green; last update 2026-07-15.
 - **State:** stalled
 - **Waiting on:** author
 - **Last activity:** 2026-08-12, 39ali (author update; PR updated 2026-08-12). Last human comment 2026-07-15 by inner-daemons asking if the author will return. 86 days since update.
@@ -2110,7 +2106,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#9427](https://github.com/gfx-rs/wgpu/issues/9427): fix(core): dont panic in Queue::drop ([@atlv24](https://github.com/atlv24)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; mergeable; CI green; last update 2026-08-12.
+- **State (2026-11-18):** draft; mergeable; CI green; last update 2026-08-07.
 - **State:** stalled
 - **Waiting on:** author
 - **Last activity:** 2026-08-12, PR updated (author push or edit); last human comment 2026-08-07, inner-daemons: "Should this be closed?". 86 days.
@@ -2120,7 +2116,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#9485](https://github.com/gfx-rs/wgpu/issues/9485): GLES external texture implementation ([@cmeissl](https://github.com/cmeissl)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI green; last update 2026-08-12.
+- **State (2026-11-18):** draft; has conflicts; CI green; last update 2026-08-07.
 - **State:** stalled
 - **Waiting on:** author (teoxoy requested changes on 2026-06-24; inner-daemons confirmed "waiting on author" on 2026-08-07)
 - **Last activity:** 2026-08-07, inner-daemons, pinged author. Author's last comment 2026-06-09. 91 days.
@@ -2130,7 +2126,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#9512](https://github.com/gfx-rs/wgpu/issues/9512): [core] Doc fixes related to mapping callback management ([@jimblandy](https://github.com/jimblandy)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI green; last update 2026-07-22.
+- **State (2026-11-18):** draft; has conflicts; CI green; last update 2026-05-07.
 - **State:** close to ready
 - **Waiting on:** author (nothing blocks; only the draft flag)
 - **Last activity:** 2026-05-07, andyleiserson, approved. PR updated 2026-07-22 (cause not visible). 183 days since approval.
@@ -2150,7 +2146,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#9523](https://github.com/gfx-rs/wgpu/issues/9523): Support `SUBGROUP_SIZE_CONTROL`: add `subgroup_size` in `PassthroughShaderEntryPoint` ([@ruihe774](https://github.com/ruihe774)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI green; last update 2026-09-02.
+- **State (2026-11-18):** draft; has conflicts; CI green; last update 2026-08-12.
 - **State:** stalled
 - **Waiting on:** author (changes requested by inner-daemons 2026-06-15 and andyleiserson 2026-06-18; author said on 2026-07-22 they would revise "this week")
 - **Last activity:** 2026-08-12, inner-daemons, pinged author again. Author's last comment 2026-07-22. 86 days.
@@ -2160,7 +2156,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#9659](https://github.com/gfx-rs/wgpu/issues/9659): [metal] Implement MULTI_DRAW_INDIRECT_COUNT via compute shader emulation ([@Bromles](https://github.com/Bromles)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI green; last update 2026-07-21.
+- **State (2026-11-18):** draft; has conflicts; CI green; last update 2026-07-21.
 - **State:** superseded (by [#9679](https://github.com/gfx-rs/wgpu/issues/9679))
 - **Waiting on:** maintainer (decision: close, or keep as fallback until [#9679](https://github.com/gfx-rs/wgpu/issues/9679) lands)
 - **Last activity:** 2026-06-15, cwfitzgerald, moved to draft until [#9679](https://github.com/gfx-rs/wgpu/issues/9679) lands; author agreed. 144 days.
@@ -2170,7 +2166,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#9794](https://github.com/gfx-rs/wgpu/issues/9794): Experiment: Port VMA/D3D12MA to Rust in place of existing allocator stack ([@cwfitzgerald](https://github.com/cwfitzgerald)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI red (5 failed); last update 2026-08-30.
+- **State (2026-11-18):** draft; has conflicts; CI red (5 failed: Clippy WebAssembly, Clippy WebAssembly 64-bit, Test WebAssembly, publish); last update 2026-08-30.
 - **State:** early / experiment
 - **Waiting on:** author (needs their time to review and iterate; no reviewer assigned)
 - **Last activity:** 2026-08-18, cwfitzgerald, said they still plan to merge it ("I just need to spend time on it"). 80 days. Last update to the PR 2026-08-30 (66 days).
@@ -2179,7 +2175,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#9809](https://github.com/gfx-rs/wgpu/issues/9809): Make `WriteOnly` use only volatile writes ([@kpreid](https://github.com/kpreid)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; mergeable; CI red (45 failed); last update 2026-10-09.
+- **State (2026-11-18):** draft; mergeable; CI red (45 failed: 01-hello-compute, 02-hello-window, 03-hdr-surface, API Operation Linux x86_64); last update 2026-10-09.
 - **State:** early / experiment
 - **Waiting on:** maintainer (decision: do we want volatile writes in `WriteOnly` at all, given the perf cost and that const-ness depends on an unstable Rust feature, [rust-lang/rust#159094](https://github.com/rust-lang/rust/issues/159094)?)
 - **Last activity:** 2026-10-09, kpreid, rebased and restored `const fn`; says "still not sure what we want to do with this PR". 28 days.
@@ -2189,7 +2185,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#9843](https://github.com/gfx-rs/wgpu/issues/9843): Experimental AI slop naga cli rewrite ([@inner-daemons](https://github.com/inner-daemons)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI green; last update 2026-11-01.
+- **State (2026-11-18):** draft; has conflicts; CI green; last update 2026-11-01.
 - **State:** early / experiment
 - **Waiting on:** author
 - **Last activity:** 2026-11-01, inner-daemons, PR updated (probably a push). 5 days.
@@ -2199,7 +2195,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#9853](https://github.com/gfx-rs/wgpu/issues/9853): Upstream Bindless Implementation ([@cwfitzgerald](https://github.com/cwfitzgerald)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI red (8 failed); last update 2026-08-30.
+- **State (2026-11-18):** draft; has conflicts; CI red (8 failed: Clippy WebAssembly, Clippy WebAssembly 64-bit, Test Linux x86_64, Test Mac aarch64); last update 2026-08-30.
 - **State:** in progress
 - **Waiting on:** author. Open: mutable bindings, WGSL bounds checking, tests ("TODO"), full human audit.
 - **Last activity:** 2026-08-30 (PR updated, actor not checked). 68 days.
@@ -2208,7 +2204,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#9863](https://github.com/gfx-rs/wgpu/issues/9863): WIP wgpu-hal: Use `wayland-egl` instead of `wayland-sys` ([@ids1024](https://github.com/ids1024)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI red (5 failed); last update 2026-07-13.
+- **State (2026-11-18):** draft; has conflicts; CI red (5 failed: Clippy Emscripten, Clippy IOS aarch64, Clippy VisionOS aarch64, Format & Typos); last update 2026-07-13.
 - **State:** early / experiment
 - **Waiting on:** other (upstream wayland-rs release, [Smithay/wayland-rs#900](https://github.com/Smithay/wayland-rs/issues/900))
 - **Last activity:** 2026-07-13, ids1024, opened. No comments or reviews. 116 days.
@@ -2218,7 +2214,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#9888](https://github.com/gfx-rs/wgpu/issues/9888): Add an example that provokes VUID-vkAcquireNextImageKHR-semaphore-01286 ([@jimblandy](https://github.com/jimblandy)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; mergeable; CI green; last update 2026-07-29.
+- **State (2026-11-18):** draft; mergeable; CI green; last update 2026-07-29.
 - **State:** stalled
 - **Waiting on:** maintainer (decision: do we merge bug-repro examples that CI cannot run?)
 - **Last activity:** 2026-07-29, kpreid, review comment. 100 days.
@@ -2228,7 +2224,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#9894](https://github.com/gfx-rs/wgpu/issues/9894): Expect pass: `wgpu_gpu::clear_texture::clear_texture_uncompressed` ([@jimblandy](https://github.com/jimblandy)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; mergeable; CI red (3 failed); last update 2026-07-22.
+- **State (2026-11-18):** draft; mergeable; CI red (3 failed: Test Linux x86_64, Test WebAssembly, Test Windows x86_64); last update 2026-07-21.
 - **State:** in progress
 - **Waiting on:** other (depends on [#9903](https://github.com/gfx-rs/wgpu/issues/9903), which is merged on 2026-07-20; author must rebase and re-run CI)
 - **Last activity:** 2026-07-18, jimblandy, confirmed the test fails on Mesa 25.2.7 and passes on 26.0.3. 111 days.
@@ -2249,7 +2245,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#9897](https://github.com/gfx-rs/wgpu/issues/9897): [DO NOT MERGE] Example to probe expected alpha mode on macOS/metal ([@nicoburns](https://github.com/nicoburns)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; mergeable; CI green; last update 2026-07-17.
+- **State (2026-11-18):** draft; mergeable; CI green; last update 2026-07-17.
 - **State:** obsolete
 - **Waiting on:** author (nothing needed)
 - **Last activity:** 2026-07-17, nicoburns, opened. No comments. 112 days.
@@ -2259,7 +2255,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#9909](https://github.com/gfx-rs/wgpu/issues/9909): [hal vulkan] Clean up Vulkan Validation Layer callback ([@jimblandy](https://github.com/jimblandy)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; mergeable; CI red (34 failed); last update 2026-07-29.
+- **State (2026-11-18):** draft; mergeable; CI red (34 failed: 01-hello-compute, 02-hello-window, API Operation Linux x86_64, API Operation Windows x86_64); last update 2026-07-27.
 - **State:** close to ready
 - **Waiting on:** author (only the draft flag; CI to re-run)
 - **Last activity:** 2026-07-27, inner-daemons, approved (ErichDonGubler approved 2026-07-20 with "minus CI being aang-y"). 102 days.
@@ -2280,7 +2276,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#9975](https://github.com/gfx-rs/wgpu/issues/9975): Add `textureSampleLevel:sampled_{1,2,3}d` coverage in CTS ([@ErichDonGubler](https://github.com/ErichDonGubler)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; mergeable; CI 1 cancelled jobs; last update 2026-08-05.
+- **State (2026-11-18):** draft; mergeable; CI 1 cancelled jobs; last update 2026-08-05.
 - **State:** stalled
 - **Waiting on:** author
 - **Last activity:** 2026-08-05, ErichDonGubler, push (93 days). No comments or reviews.
@@ -2290,7 +2286,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10008](https://github.com/gfx-rs/wgpu/issues/10008): Add CTS coverage for `maxStorage{Buffer,Texture}sIn{Vertex,Fragment}Stage` limits ([@ErichDonGubler](https://github.com/ErichDonGubler)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; mergeable; CI green; last update 2026-09-07.
+- **State (2026-11-18):** draft; mergeable; CI green; last update 2026-09-07.
 - **State:** in progress
 - **Waiting on:** unclear (coupled to [#10006](https://github.com/gfx-rs/wgpu/issues/10006) and [#9974](https://github.com/gfx-rs/wgpu/issues/9974), both issues; state unknown to me)
 - **Last activity:** 2026-09-07, ErichDonGubler, push (60 days). No comments or reviews.
@@ -2310,7 +2306,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10114](https://github.com/gfx-rs/wgpu/issues/10114): Can we move entry point argument I/O validation into `VaryingContext::validate_impl`? ([@ErichDonGubler](https://github.com/ErichDonGubler)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; mergeable; CI red (4 failed); last update 2026-09-01.
+- **State (2026-11-18):** draft; mergeable; CI red (4 failed: Test Linux x86_64, Test Mac aarch64, Test Windows x86_64, Validate: SPIR-V/GLSL/DOT/WGSL); last update 2026-08-24.
 - **State:** early / experiment
 - **Waiting on:** other reviewer (andyleiserson, per the description: "Will bring out of draft after discussing with [@andyleiserson](https://github.com/andyleiserson)")
 - **Last activity:** 2026-09-01, ErichDonGubler, push (66 days). No comments or reviews.
@@ -2319,22 +2315,22 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 - **Move-along action:** close (stale experiment; check first whether [#10026](https://github.com/gfx-rs/wgpu/issues/10026) has landed, then ask author to close or rebase).
 
 #### [#10212](https://github.com/gfx-rs/wgpu/issues/10212): Record a pass's first use of a texture subresource, not its last ([@cwfitzgerald](https://github.com/cwfitzgerald))
-- **Reviewed:** 2026-11-13
-- **State (2026-11-14):** ready; mergeable; CI red (1 failed); last update 2026-11-13.
+- **Reviewed:** 2026-11-18
+- **State (2026-11-18):** ready; mergeable; CI green; last update 2026-11-15.
 - **Verdict:** Status note
-- **Waiting on:** author. The PR is ready for review but CI is red because of its own new test.
-- **Last activity:** 2026-11-13, cwfitzgerald, push of the rebased commit. 0 days.
-- **Approvals:** none (review state REVIEW_REQUIRED)
-- **CI:** red (1 fail, 65 pass). `Test Linux x86_64` fails in `wgpu_gpu::regression::issue_10199::whole_texture_first_use` on GL/llvmpipe. Cause: `create_bind_group` for the `write_layer` bind group uses a D2 view, but the texture has `texture_binding_view_dimension = D2Array`. This is a bug in the new test and not infrastructure. The old failure "Check changelog for errors" is gone (not in the failed list). Mergeable.
-- **Summary:** Fixes [#10199](https://github.com/gfx-rs/wgpu/issues/10199). The pass tracker merge now records the first use of a subresource as the start state and not the last. This gives correct Vulkan layouts. 4 files: `wgpu-core/src/track/texture.rs`, the changelog and a new regression test.
-- **Findings:** none (status only)
-- **To land:** fix the new test so it uses a D2Array view on GL, or skip the test on downlevel GL; wait for green CI; get a review.
-- **Move-along action:** Fix the bind group view dimension in `issue_10199.rs` for GL, then request review.
+- **Waiting on:** andyleiserson (assigned on 2026-11-18). No review yet.
+- **Last activity:** 2026-11-18, cwfitzgerald, assigned andyleiserson. The last push was on 2026-11-15.
+- **Approvals:** none (review decision REVIEW_REQUIRED)
+- **CI:** green (66 pass, 1 skipped). The test failure on GL is gone: `issue_10199.rs:97-104` makes both views `D2Array` ("A `D2` view of an array texture is not valid in compatibility mode").
+- **Summary:** Fixes [#10199](https://github.com/gfx-rs/wgpu/issues/10199). The pass tracker merge records the first use of a subresource as the start state, not the last, which gives correct Vulkan layouts. It changes `wgpu-core/src/track/texture.rs` and adds a regression test and a changelog entry.
+- **Findings:** none (status only). Disclosure: both agent boxes are checked; the text says an LLM found and bisected the bug, an agent opened the PR, and the author edited it. The self-review box is checked.
+- **To land:** one member approval. It is small and can land before the release.
+- **Move-along action:** Ask andyleiserson to review before the release.
 - **Depth:** status only
 
 #### [#10282](https://github.com/gfx-rs/wgpu/issues/10282): Change WebGPU backend panics to error callback insertion ([@Wumpf](https://github.com/Wumpf)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI red (1 failed); last update 2026-09-08.
+- **State (2026-11-18):** draft; has conflicts; CI red (1 failed: Format & Typos); last update 2026-09-08.
 - **State:** early / experiment
 - **Waiting on:** author
 - **Last activity:** 2026-09-08, Wumpf, opened (59 days). No comments or reviews.
@@ -2344,7 +2340,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10287](https://github.com/gfx-rs/wgpu/issues/10287): [metal] correct ray query semantics and BLAS transform handling ([@acoliver](https://github.com/acoliver)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI no runs; last update 2026-09-09.
+- **State (2026-11-18):** draft; has conflicts; CI no runs; last update 2026-09-08.
 - **State:** in progress (checklist is complete and testing is described, but it is stacked and unreviewed)
 - **Waiting on:** maintainer (decision: how to land the Metal RT stack; see the section above). Also needs [#10292](https://github.com/gfx-rs/wgpu/issues/10292) first.
 - **Last activity:** 2026-09-09, acoliver, update (58 days).
@@ -2376,7 +2372,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10288](https://github.com/gfx-rs/wgpu/issues/10288): [naga] require the acceleration structure binding array capability for non-uniform indexing of acceleration structure arrays ([@acoliver](https://github.com/acoliver)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI no runs; last update 2026-09-09.
+- **State (2026-11-18):** draft; has conflicts; CI no runs; last update 2026-09-08.
 - **State:** in progress
 - **Waiting on:** author (depends on [#10287](https://github.com/gfx-rs/wgpu/issues/10287), which depends on [#10292](https://github.com/gfx-rs/wgpu/issues/10292))
 - **Last activity:** 2026-09-09, acoliver, update (58 days).
@@ -2401,7 +2397,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10289](https://github.com/gfx-rs/wgpu/issues/10289): [metal] advertise extended vertex formats and acceleration structure binding arrays ([@acoliver](https://github.com/acoliver)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI no runs; last update 2026-11-05.
+- **State (2026-11-18):** draft; has conflicts; CI no runs; last update 2026-11-05.
 - **State:** in progress
 - **Waiting on:** author (depends on [#10288](https://github.com/gfx-rs/wgpu/issues/10288); also a conflict with trunk) and the maintainer for the stack decision
 - **Last activity:** 2026-11-05, matthargett (contributor), comment asking if the stack is ready (1 day). Last author activity 2026-09-08 (59 days).
@@ -2423,7 +2419,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10292](https://github.com/gfx-rs/wgpu/issues/10292): [metal] synchronize acceleration structure builds with a seeded fence ([@acoliver](https://github.com/acoliver)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI no runs; last update 2026-09-09.
+- **State (2026-11-18):** draft; has conflicts; CI no runs; last update 2026-09-09.
 - **State:** in progress (the base of the stack)
 - **Waiting on:** maintainer (decision: land this instead of [#9645](https://github.com/gfx-rs/wgpu/issues/9645)) and Vecvec (assignee on [#9645](https://github.com/gfx-rs/wgpu/issues/9645), tests Metal RT)
 - **Last activity:** 2026-09-09, acoliver, opened (58 days).
@@ -2464,7 +2460,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10304](https://github.com/gfx-rs/wgpu/issues/10304): Extension API proposal ([@andyleiserson](https://github.com/andyleiserson)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI red (50 failed); last update 2026-10-28.
+- **State (2026-11-18):** draft; has conflicts; CI red (50 failed: 01-hello-compute, 02-hello-window, 03-hdr-surface, API Operation Linux x86_64); last update 2026-10-27.
 - **State:** close to ready (as a proposal; the author will split out the actual change)
 - **Waiting on:** author (split the infrastructure into a separate PR, per jimblandy's comment on 2026-10-22)
 - **Last activity:** 2026-10-22, jimblandy, "I think we should go with this" and said andyleiserson will split it out (15 days). Author's last push 2026-10-28 (9 days).
@@ -2474,7 +2470,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10354](https://github.com/gfx-rs/wgpu/issues/10354): Add fern log capture and test shader debugPrintf output ([@cwfitzgerald](https://github.com/cwfitzgerald)) [draft]
 - **Reviewed:** 2026-11-13
-- **State (2026-11-14):** draft; mergeable; CI red (1 failed); last update 2026-11-13.
+- **State (2026-11-18):** draft; mergeable; CI red (1 failed: Test Mac aarch64); last update 2026-11-13.
 - **Verdict:** Status note
 - **Waiting on:** author. The PR still depends on [#9389](https://github.com/gfx-rs/wgpu/issues/9389) (Depends-On). Mergify said the dependency is satisfied on 09-15.
 - **Last activity:** 2026-11-13, cwfitzgerald, push. 0 days.
@@ -2488,7 +2484,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10355](https://github.com/gfx-rs/wgpu/issues/10355): Naga inline pass ([@inner-daemons](https://github.com/inner-daemons)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; mergeable; CI red (19 failed); last update 2026-11-01.
+- **State (2026-11-18):** draft; has conflicts; CI red (19 failed: Clippy Android ARMv7, Clippy Android aarch64, Clippy Android x86_64, Clippy Emscripten); last update 2026-11-01.
 - **State:** in progress (marked experimental by the author)
 - **Waiting on:** author (and [#10409](https://github.com/gfx-rs/wgpu/issues/10409) must land first)
 - **Last activity:** 2026-11-01, inner-daemons, PR updated. 5 days.
@@ -2498,7 +2494,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10396](https://github.com/gfx-rs/wgpu/issues/10396): Update repository MSRV values together with Renovate ([@cwfitzgerald](https://github.com/cwfitzgerald)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; mergeable; CI green; last update 2026-09-18.
+- **State (2026-11-18):** draft; mergeable; CI green; last update 2026-09-18.
 - **State:** early / experiment
 - **Waiting on:** author. Open: the description is still the empty template and checklist is unchecked. Merge state is "blocked".
 - **Last activity:** 2026-09-18, opened (3 files, 244 lines). 49 days.
@@ -2507,7 +2503,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10403](https://github.com/gfx-rs/wgpu/issues/10403): gles: Support `DownlevelFlags::DEPTH_BIAS_CLAMP` ([@evilpie](https://github.com/evilpie)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; mergeable; CI red (43 failed); last update 2026-10-24.
+- **State (2026-11-18):** draft; mergeable; CI red (43 failed: 01-hello-compute, 02-hello-window, 03-hdr-surface, API Operation Linux x86_64); last update 2026-10-24.
 - **State:** stalled
 - **Waiting on:** other (upstream: new `glow` release with [grovesNL/glow#371](https://github.com/grovesNL/glow/issues/371), and [wasm-bindgen#5336](https://github.com/wasm-bindgen/wasm-bindgen/issues/5336)). Not a maintainer decision.
 - **Last activity:** 2026-10-24, evilpie: "Just waiting for a new release of `glow` now." 13 days.
@@ -2517,7 +2513,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10409](https://github.com/gfx-rs/wgpu/issues/10409): Rework naga's compaction pass to also reorder expressions ([@inner-daemons](https://github.com/inner-daemons)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; mergeable; CI 10 cancelled jobs; last update 2026-11-01.
+- **State (2026-11-18):** draft; has conflicts; CI 10 cancelled jobs; last update 2026-11-01.
 - **State:** close to ready
 - **Waiting on:** author (to undraft); then maintainer review
 - **Last activity:** 2026-11-01, inner-daemons, PR updated. 5 days.
@@ -2535,19 +2531,9 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 > - **Verdict change:** none
 > - **Move-along action change:** none (a rerun of the Mac jobs is needed before landing)
 
-#### [#10751](https://github.com/gfx-rs/wgpu/issues/10751): Update contributor policy ([@inner-daemons](https://github.com/inner-daemons)) [draft]
-- **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; mergeable; CI green; last update 2026-10-27.
-- **State:** in progress
-- **Waiting on:** author
-- **Last activity:** 2026-10-27, inner-daemons, replied to ErichDonGubler's review comments. 10 days.
-- **CI:** not checked (docs-only change, 4 files, +10/-9).
-- **Summary:** Proposes stricter LLM wording in CONTRIBUTING.md, AGENTS.md and the PR template; adds a note that agents must record that this guidance was followed. Author says they do not need it to land, only wants to put out the idea. Three open threads from ErichDonGubler (wording "agents", backticks on AGENTS.md, template checkbox for translation); author agreed on the first, offered an alternative on the third. No push since.
-- **Move-along action:** decide whether you want this policy change (tougher LLM rules are a maintainer-level decision). Then ping author to finish or close.
-
 #### [#10774](https://github.com/gfx-rs/wgpu/issues/10774): [naga] Implement vec2 <-> u32 bitcasts ([@DouglasDwyer](https://github.com/DouglasDwyer)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI green; last update 2026-10-28.
+- **State (2026-11-18):** draft; has conflicts; CI green; last update 2026-10-28.
 - **State:** stalled
 - **Waiting on:** author
 - **Last activity:** 2026-10-28, DouglasDwyer, PR created. 9 days.
@@ -2557,7 +2543,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10783](https://github.com/gfx-rs/wgpu/issues/10783): Cover limit checks for workgroup storage size per-variable rounding in CTS ([@ErichDonGubler](https://github.com/ErichDonGubler)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI red (3 failed); last update 2026-11-05.
+- **State (2026-11-18):** draft; mergeable; CI red (3 failed: API Validation Linux x86_64, API Validation Mac aarch64, API Validation Windows x86_64); last update 2026-11-18.
 - **State:** stalled (blocked on upstream)
 - **Waiting on:** other (gpuweb/cts PR 4723 merge and a CTS revendor), then author
 - **Last activity:** 2026-10-30, ErichDonGubler, comment that CI failures are expected. 7 days. (PR updated 2026-11-05, probably a CI re-run or push.)
@@ -2567,7 +2553,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10790](https://github.com/gfx-rs/wgpu/issues/10790): [d3d12] Use the driver-reported size for committed texture allocations ([@navkagleb](https://github.com/navkagleb)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI 10 cancelled jobs; last update 2026-10-30.
+- **State (2026-11-18):** draft; has conflicts; CI 10 cancelled jobs; last update 2026-10-30.
 - **State:** close to ready
 - **Waiting on:** maintainer (decision: is the breaking change to `dx12::Device::texture_from_raw`, which now takes `&self`, acceptable? The author asks this in the body). The author may also just need to undraft.
 - **Last activity:** 2026-10-30, navkagleb, opened. 7 days. No comments or reviews.
@@ -2587,7 +2573,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10803](https://github.com/gfx-rs/wgpu/issues/10803): Document more features with their own documentation modules in wgpu. ([@inner-daemons](https://github.com/inner-daemons)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; mergeable; CI 10 cancelled jobs; last update 2026-11-01.
+- **State (2026-11-18):** draft; mergeable; CI 10 cancelled jobs; last update 2026-11-01.
 - **State:** in progress
 - **Waiting on:** author
 - **Last activity:** 2026-11-01, inner-daemons, PR updated. 5 days.
@@ -2597,7 +2583,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10804](https://github.com/gfx-rs/wgpu/issues/10804): Multiview fixes ([@inner-daemons](https://github.com/inner-daemons)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI red (9 failed); last update 2026-11-01.
+- **State (2026-11-18):** draft; has conflicts; CI red (9 failed: API Operation Linux x86_64, API Operation Windows x86_64, API Validation Linux x86_64, API Validation Windows x86_64); last update 2026-11-01.
 - **State:** in progress
 - **Waiting on:** author
 - **Last activity:** 2026-11-01, inner-daemons, PR updated. 5 days.
@@ -2607,7 +2593,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10806](https://github.com/gfx-rs/wgpu/issues/10806): Passthrough shaders rework master ([@inner-daemons](https://github.com/inner-daemons)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; mergeable; CI red (1 failed); last update 2026-11-02.
+- **State (2026-11-18):** draft; mergeable; CI red (1 failed: Format & Typos); last update 2026-11-02.
 - **State:** early / experiment
 - **Waiting on:** author
 - **Last activity:** 2026-11-02, inner-daemons, PR updated. 4 days.
@@ -2617,7 +2603,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10811](https://github.com/gfx-rs/wgpu/issues/10811): [naga msl-out] Fix clip distances in mesh shader vertex outputs ([@inner-daemons](https://github.com/inner-daemons)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI red (1 failed); last update 2026-11-02.
+- **State (2026-11-18):** draft; has conflicts; CI red (1 failed: Validate: MSL); last update 2026-11-02.
 - **State:** in progress (looks near complete, but still draft)
 - **Waiting on:** author
 - **Last activity:** 2026-11-02, inner-daemons, PR created. 4 days.
@@ -2637,7 +2623,7 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 
 #### [#10852](https://github.com/gfx-rs/wgpu/issues/10852): ci: tolerate transient download failures in the merge queue ([@matthargett](https://github.com/matthargett)) [draft]
 - **Reviewed:** 2026-11-06
-- **State (2026-11-14):** draft; has conflicts; CI green; last update 2026-11-05.
+- **State (2026-11-18):** draft; has conflicts; CI green; last update 2026-11-05.
 - **State:** in progress
 - **Waiting on:** maintainer (decision: is the scope wanted?). The body is one sentence about retries, but the diff adds a new checksum-pinned `download-release` action with a Python script, a Python test file run in CI, curl timeouts, and `max_checks_retries: 1` in the Mergify queue rules. The author says it may not fix the flakiness.
 - **Last activity:** 2026-11-05, matthargett, pushed (5 commits). 1 day. No comments or reviews.
@@ -2648,25 +2634,6 @@ Targeted pass on: naga validation of untrusted shaders, feature/capability gatin
 Problems: no rate-limit errors. I did not fetch CI for [#9794](https://github.com/gfx-rs/wgpu/issues/9794), [#9853](https://github.com/gfx-rs/wgpu/issues/9853), [#10354](https://github.com/gfx-rs/wgpu/issues/10354) and [#10396](https://github.com/gfx-rs/wgpu/issues/10396), and I did not read the comment or review timelines for [#9853](https://github.com/gfx-rs/wgpu/issues/9853) and [#10396](https://github.com/gfx-rs/wgpu/issues/10396) (the first call showed no comments count; [#9853](https://github.com/gfx-rs/wgpu/issues/9853) has no comment count and [#10396](https://github.com/gfx-rs/wgpu/issues/10396) none). "Last activity" for [#9853](https://github.com/gfx-rs/wgpu/issues/9853) and [#10354](https://github.com/gfx-rs/wgpu/issues/10354) is the PR updated_at time, not a confirmed human action.
 
 ---
-
-#### [#10928](https://github.com/gfx-rs/wgpu/issues/10928): fix(naga/spv): separate workgroup and buffer aggregate layouts ([@5andr0](https://github.com/5andr0))
-- **Reviewed:** 2026-11-13
-- **State (2026-11-14):** draft; mergeable; CI green; last update 2026-11-12.
-- **Verdict:** Needs a bit of work
-- **Waiting on:** a human owner. The PR is a draft. inner-daemons (2026-11-12) asked 5andr0 to review it himself and write the description by hand before he undrafts it. 5andr0 (2026-11-13) declined.
-- **Last activity:** 2026-11-12, 5andr0, opened the PR. 1 day.
-- **Approvals:** none
-- **CI:** green (66 pass, 3 skipped); mergeable
-- **Summary:** This is a rework of [#9295](https://github.com/gfx-rs/wgpu/issues/9295). Types that only Workgroup/TaskPayload variables use are declared without `Offset`/`ArrayStride`/`MatrixStride`/`ColMajor` on all SPIR-V versions (VUID-StandaloneSpirv-None-10684). Types that a buffer also uses get an undecorated copy. Loads and stores convert between the two: `OpCopyLogical` on 1.4+, and below 1.4 struct extract/construct plus a cached loop function for arrays. The copies are declared inside the type-arena loop, so later `ptr<workgroup, S>` arena types point to the copy.
-- **Findings:**
-  1. [medium, reasoned from code, not run] `naga/src/back/spv/mesh_shader.rs:91,114,127` The mesh output wrapper still uses `get_handle_type_id` for the vertex/primitive array types. If one of those types is also used by a buffer, `mesh_output` has the copy type, and the `OpAccessChain` result types are wrong. This is the same bug as [#9295](https://github.com/gfx-rs/wgpu/issues/9295) deeper-review answer 2, and the file is unchanged. The trigger is rare (it needs a buffer that shares the mesh output array type).
-  2. [medium] No test covers a `ptr<workgroup, S>` function parameter with a shared `S`. The fix for the [#9295](https://github.com/gfx-rs/wgpu/issues/9295) pointer-order bug (`writer.rs:4390`, and `type_id_for_space` in `localtype_from_inner`) looks correct from the code. But the fixture `workgroup-shared-layout.wgsl` passes `Buffer` only by value. Add the minimal WGSL from the [#9295](https://github.com/gfx-rs/wgpu/issues/9295) deeper review as a test.
-  3. [low] `naga/src/back/spv/writer.rs:2627-2850` The path below SPIR-V 1.4 (struct rebuild plus a hand-built SPIR-V loop function, about 200 lines) is needed only when a type is shared between a buffer and workgroup memory on a target below 1.4. wgpu-hal selects 1.5+ on Vulkan 1.2+. The maintainer should decide if this path is worth its complexity.
-  4. [low] `naga/tests/out/spv/wgsl-workgroup-var-init.spvasm` When only a member of a workgroup struct is shared, the default (undecorated) struct declaration is still emitted and is not used. This is harmless, but it adds dead types.
-  5. [low] Process: the description is agent-written, and the box "self-reviewed and fully understand" is unchecked. The body says "This draft makes no human attestation". The author says that he will not do the human part. CHANGELOG entry: present.
-- **To land:** A human owner (kvark as co-author, or a maintainer) adopts the commit. Fix the mesh wrapper to use `type_id_for_space`/`workgroup_type_ids`. Add the `ptr<workgroup, S>` parameter test. Decide whether to keep the pre-1.4 copy path. Rewrite the description by hand and undraft.
-- **Move-along action:** ask kvark if he will move [#10928](https://github.com/gfx-rs/wgpu/issues/10928)'s commit into [#9295](https://github.com/gfx-rs/wgpu/issues/9295) (or take over [#10928](https://github.com/gfx-rs/wgpu/issues/10928)) and close the other PR.
-- **Depth:** full for `naga/src/back/spv` and the new tests. I spot-checked the snapshot churn (`workgroup-var-init`, `atomicOps`). I did not read every changed `.spvasm`.
 
 ## Issues
 
