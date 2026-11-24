@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 2
 
     name: Check changelog for errors
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.repository_owner == 'gfx-rs' && 'blacksmith-4vcpu-ubuntu-2604' || 'ubuntu-26.04' }}
 
     permissions: {}
 
