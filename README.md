@@ -163,6 +163,10 @@ Exactly which WGSL features `wgpu` supports depends on how you are using it:
   `wgpu` uses Naga to translate WGSL programs into GLSL.
   This uses the same version of Naga as if you were running `wgpu` as native code.
 
+## Infrastructure Sponsors
+
+<a href="https://www.blacksmith.sh"><img width="100%" src="docs/blacksmith-powered.webp" alt="CI powered by Blacksmith"></a>
+
 [webgpu spec]: https://www.w3.org/TR/webgpu/
 [wgsl spec]: https://gpuweb.github.io/gpuweb/wgsl/
 [naga]: https://github.com/gfx-rs/wgpu/tree/trunk/naga/
